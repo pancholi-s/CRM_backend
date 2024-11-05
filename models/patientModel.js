@@ -22,7 +22,7 @@ const patientSchema = new mongoose.Schema({
   },
   age: {
     type: Number,
-    required: true,
+    //required: true,
   },
   medicalHistory: {
     type: [String],  // List of medical history records
@@ -36,6 +36,11 @@ const patientSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Doctor',
   }],
+  role: {
+    type: String,
+    default: 'patient',
+    required: true,
+  }
 });
 
 const Patient = mongoose.model('Patient', patientSchema);

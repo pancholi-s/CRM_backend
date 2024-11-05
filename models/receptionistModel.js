@@ -24,6 +24,11 @@ const receptionistSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Appointment',
   }],
+  role: {
+    type: String,
+    default: 'receptionist',
+    required: true,
+  }
 });
 
 const Receptionist = mongoose.model('Receptionist', receptionistSchema);

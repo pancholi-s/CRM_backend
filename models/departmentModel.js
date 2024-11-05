@@ -7,16 +7,35 @@ const departmentSchema = new mongoose.Schema({
     unique: true,
   },
   head: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Doctor', // Could also be an admin or other entity
-    required: false,
+    type: {
+      id: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Doctor', // Reference to the department head (Doctor)
+        required: true,
+      },
+      name: {
+        type: String,
+        required: true,
+      },
+    },
   },
-  employees: [{
+  patients: [{
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Employee', // This could refer to Doctor, Receptionist, or any other employee
+    ref: 'Patient', // Reference to patients assigned to this department
+  }],
+  doctors: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Doctor', // Reference to doctors in this department
+  }],
+  specialistDoctors: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Doctor', // Reference to specialist doctors
+  }],
+  nurses: [{
+    type: String,
   }],
   services: [{
-    type: String,  // List of services provided by this department, e.g., ['Cardiology', 'Radiology']
+    type: String, // List of active services provided by this department, e.g., ['ECG', 'Cardiology']
   }],
 });
 

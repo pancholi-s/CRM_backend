@@ -2,8 +2,10 @@ import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import mongoose from 'mongoose';
-//import authRoutes from './routes/authRoutes.js';
-import receptionistRoutes from './routes/receptionistRoutes.js'; // Import receptionist routes
+
+import authRoutes from './routes/authRoutes.js';
+import appointmentRoutes from './routes/appointmentRoutes.js';
+import departmentRoutes from './routes/departmentRoutes.js';
 
 dotenv.config();
 
@@ -25,8 +27,9 @@ const connectDB = async () => {
 connectDB();
 
 // Routes
-//app.use('/auth', authRoutes);
-app.use('/receptionists', receptionistRoutes); // Use receptionist routes
+app.use('/', authRoutes);
+app.use('/', appointmentRoutes);
+app.use('/', departmentRoutes);
 
 // Base route
 app.get('/', (req, res) => {

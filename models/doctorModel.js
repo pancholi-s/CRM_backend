@@ -18,7 +18,11 @@ const doctorSchema = new mongoose.Schema({
   },
   specialization: {
     type: String,
-    required: true,
+    //required: true,
+  },
+  head: {         //if the doctor is head of particular department, fetch the name accordingly
+    type: String,
+    //required: true,
   },
   phone: {
     type: String,
@@ -32,10 +36,19 @@ const doctorSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Appointment',
   }],
+  departments: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Department',
+  }],
   availability: {
     type: [String],  // ['Monday 9:00 AM - 5:00 PM', 'Tuesday 9:00 AM - 5:00 PM']
-    required: true,
+    //required: true,
   },
+  role: {
+    type: String,
+    default: 'doctor',
+    required: true,
+  }
 });
 
 const Doctor = mongoose.model('Doctor', doctorSchema);
