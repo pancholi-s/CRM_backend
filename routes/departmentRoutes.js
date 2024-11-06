@@ -6,6 +6,6 @@ const router = express.Router();
 router.post('/addDepartments', addDepartment);
 
 // Common login route for all roles
-router.post('/getDepartments', getDepartments);
+router.get('/getDepartments', getDepartments);
 
 export default router;
