@@ -1,26 +1,21 @@
 import Appointment from "../models/appointmentModel.js";
 import Patient from "../models/patientModel.js";
 import Doctor from "../models/doctorModel.js";
+import Department from "../models/departmentModel.js";  // Import Department model
 
-// Function to book a new appointment
 export const bookAppointment = async (req, res) => {
   const {
     patientName,
     appointmentType,
-    departmentId,
+    departmentName,  // Change to departmentName for clarity
     doctorEmail,
     mobileNumber,
     email,
     date,
-    note,
-    status
+    note
   } = req.body;
 
-  //Department name fetch in booking, according to UI/UX figma
-
-  // Validate required fields
-  //main ->   if (!patientName || !appointmentType || !departmentId || !doctorEmail || !mobileNumber || !email || !date) {
-  if (!patientName || !appointmentType || !doctorEmail || !mobileNumber || !email || !date) {
+  if (!patientName || !appointmentType || !departmentName || !doctorEmail || !mobileNumber || !email || !date) {
     return res.status(400).json({ message: "All fields are required." });
   }
 
@@ -37,15 +32,21 @@ export const bookAppointment = async (req, res) => {
       return res.status(404).json({ message: "Doctor not found." });
     }
 
+    // Fetch the department by name
+    const department = await Department.findOne({ name: departmentName });
+    if (!department) {
+      return res.status(404).json({ message: "Department not found." });
+    }
+
     // Create and save the new appointment
     const newAppointment = new Appointment({
-      patient: patient._id,  // Use fetched patient's ID
-      doctor: doctor._id,    // Use fetched doctor's ID
+      patient: patient._id,
+      doctor: doctor._id,
       type: appointmentType,
-      department: departmentId,
+      department: department._id,  // Use department's _id here
       tokenDate: date,
-      status: status, // Set default status
-      note,  // Save the note
+      status: 'Scheduled',
+      note,
     });
 
     await newAppointment.save();

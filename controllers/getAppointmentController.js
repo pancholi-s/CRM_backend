@@ -1,4 +1,5 @@
 import Appointment from '../models/appointmentModel.js';
+import { getDepartments } from '../controllers/departmentController.js';
 
 // Fetch all appointments and include total count of 'Scheduled' appointments
 export const getScheduledAppointments = async (req, res) => {
