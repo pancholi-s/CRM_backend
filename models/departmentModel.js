@@ -37,6 +37,22 @@ const departmentSchema = new mongoose.Schema({
   services: [{
     type: String, // List of active services provided by this department, e.g., ['ECG', 'Cardiology']
   }],
+  specializedProcedures: [{
+    type: String,
+    required: false
+  }],
+  facilities: [{
+    type: String,
+    required: false
+  }],
+  criticalEquipments: [{
+    type: String,
+    required: false
+  }],
+  equipmentMaintenance: [{
+    type: String,
+    required: false
+  }],
 });
 
 const Department = mongoose.model('Department', departmentSchema);

@@ -78,6 +78,12 @@ const hospitalSchema = new mongoose.Schema({
   services: [{
     type: String,  // List of services offered by the hospital, e.g. ['Cardiology', 'Surgery', etc.]
   }],
+  totalRooms: {
+    type: String
+  },
+  totalStaff: {
+    type: String
+  }
 });
 
 const Hospital = mongoose.model('Hospital', hospitalSchema);

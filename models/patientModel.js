@@ -28,10 +28,13 @@ const patientSchema = new mongoose.Schema({
     type: [String],  // List of medical history records
     required: false,
   },
-  appointments: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Appointment',
-  }],
+  appointments: [
+    {
+      doctor: { type: mongoose.Schema.Types.ObjectId, ref: 'Doctor' },
+      date: { type: Date },
+      status: { type: String },
+    },
+  ],
   doctors: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Doctor',
@@ -40,7 +43,11 @@ const patientSchema = new mongoose.Schema({
     type: String,
     default: 'patient',
     required: true,
-  }
+  },
+  department: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Department'
+  },
 });
 
 const Patient = mongoose.model('Patient', patientSchema);

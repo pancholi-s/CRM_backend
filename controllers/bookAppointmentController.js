@@ -12,7 +12,8 @@ export const bookAppointment = async (req, res) => {
     mobileNumber,
     email,
     date,
-    note
+    note,
+    status
   } = req.body;
 
   if (!patientName || !appointmentType || !departmentName || !doctorEmail || !mobileNumber || !email || !date) {
@@ -45,7 +46,7 @@ export const bookAppointment = async (req, res) => {
       type: appointmentType,
       department: department._id,  // Use department's _id here
       tokenDate: date,
-      status: 'Scheduled',
+      status: status,
       note,
     });
 
