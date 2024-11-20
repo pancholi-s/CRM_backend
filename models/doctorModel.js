@@ -17,12 +17,13 @@ const doctorSchema = new mongoose.Schema({
     minlength: 8,
   },
   specialization: {
-    type: String,
-    //required: true,
+    type: String, // e.g., "Cardiology", "Orthopedics"
+    required: true,
   },
-  head: {         //if the doctor is head of particular department, fetch the name accordingly
-    type: String,
-    //required: true,
+  head: {
+    type: mongoose.Schema.Types.ObjectId, // Reference to the Department model if the doctor is a head
+    ref: 'Department',
+    default: null,
   },
   phone: {
     type: String,
@@ -40,15 +41,20 @@ const doctorSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Department',
   }],
+  hospital: {
+    type: mongoose.Schema.Types.ObjectId, // Link the doctor to a specific hospital
+    ref: 'Hospital',
+    required: true,
+  },
   availability: {
-    type: [String],  // ['Monday 9:00 AM - 5:00 PM', 'Tuesday 9:00 AM - 5:00 PM']
-    //required: true,
+    type: [String],  // e.g., ['Monday 9:00 AM - 5:00 PM', 'Tuesday 9:00 AM - 5:00 PM']
+    required: true,
   },
   role: {
     type: String,
     default: 'doctor',
     required: true,
-  }
+  },
 });
 
 const Doctor = mongoose.model('Doctor', doctorSchema);

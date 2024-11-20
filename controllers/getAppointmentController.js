@@ -79,3 +79,6 @@ export const getFilteredAppointments = async (req, res) => {
     res.status(500).json({ message: 'Error fetching filtered appointments' });
   }
 };
+
+
+//get info about patients's appointment (active/inactive filtering)

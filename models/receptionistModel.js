@@ -28,7 +28,13 @@ const receptionistSchema = new mongoose.Schema({
     type: String,
     default: 'receptionist',
     required: true,
-  }
+  },
+  hospital: {
+    type: mongoose.Schema.Types.ObjectId, // Link the receptionist to a specific hospital
+    ref: 'Hospital',
+    required: true,
+  },
+  
 });
 
 const Receptionist = mongoose.model('Receptionist', receptionistSchema);

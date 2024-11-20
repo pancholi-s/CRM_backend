@@ -2,23 +2,26 @@ import bcrypt from "bcryptjs";
 import Receptionist from "../models/receptionistModel.js";
 import Doctor from "../models/doctorModel.js";
 import Patient from "../models/patientModel.js";
+import Hospital from "../models/hospitalModel.js";
 
 const models = {
   receptionist: Receptionist,
   doctor: Doctor,
   patient: Patient,
+  Hospital:Hospital, 
 };
 
 // Register a new user based on role
+// Register a new user based on role
 export const registerUser = async (req, res) => {
-  const { name, email, password, phone, role } = req.body;
+  const { name, email, password, phone, role, hospitalName, ...additionalData } = req.body;
 
   // Check for missing fields
-  if (!name || !email || !password || !phone || !role) {
+  if (!name || !email || !password || !phone || !role || !hospitalName) {
     return res.status(400).json({ message: "All fields are required." });
   }
 
-  // Check if the role is valid
+  // Validate the role
   if (!["receptionist", "doctor", "patient"].includes(role)) {
     return res.status(400).json({ message: "Invalid role specified." });
   }
@@ -32,31 +35,45 @@ export const registerUser = async (req, res) => {
       return res.status(400).json({ message: "Email already in use." });
     }
 
-    // Hash password
+    // Find the hospital by its name
+    const hospital = await Hospital.findOne({ name: hospitalName });
+    if (!hospital) {
+      return res.status(400).json({ message: "Hospital not found." });
+    }
+
+    // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create and save new user
+    // Create the user object
     const newUser = new Model({
       name,
       email,
       password: hashedPassword,
       phone,
       role,
+      hospital: hospital._id, // Store the reference to the hospital
+      ...additionalData, // Include additional fields based on the model
     });
 
+    // Automatically set the registration date for patients
+    if (role === "patient") {
+      newUser.registrationDate = new Date();
+    }
+
+    // Save the user
     await newUser.save();
-    res
-      .status(201)
-      .json({
-        message: `${
-          role.charAt(0).toUpperCase() + role.slice(1)
-        } registered successfully.`,
-      });
+
+    res.status(201).json({
+      message: `${
+        role.charAt(0).toUpperCase() + role.slice(1)
+      } registered successfully.`,
+    });
   } catch (error) {
     console.error("Error registering user:", error);
     res.status(500).json({ message: "Error registering user." });
   }
 };
+
 
 export const loginUser = async (req, res) => {
   const { email, password, role } = req.body;
