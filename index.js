@@ -2,6 +2,7 @@ import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import mongoose from 'mongoose';
+import session from 'express-session';
 
 import authRoutes from './routes/authRoutes.js';
 import appointmentRoutes from './routes/appointmentRoutes.js';
@@ -13,6 +14,15 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+
+app.use(
+  session({
+    secret: 'process.env.JWT_SECRET',
+    resave: false,
+    saveUninitialized: true,
+    cookie: { secure: false }, // Set to true in production with HTTPS
+  })
+);
 
 // Connect to MongoDB
 const connectDB = async () => {

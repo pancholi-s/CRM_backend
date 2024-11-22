@@ -1,4 +1,6 @@
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+
 import Receptionist from "../models/receptionistModel.js";
 import Doctor from "../models/doctorModel.js";
 import Patient from "../models/patientModel.js";
@@ -11,8 +13,6 @@ const models = {
   Hospital:Hospital, 
 };
 
-// Register a new user based on role
-// Register a new user based on role
 export const registerUser = async (req, res) => {
   const { name, email, password, phone, role, hospitalName, ...additionalData } = req.body;
 
@@ -63,6 +63,19 @@ export const registerUser = async (req, res) => {
     // Save the user
     await newUser.save();
 
+    // Update the hospital document with the new user
+    const updateField = role === "doctor" ? "doctors" :
+                        role === "receptionist" ? "receptionists" : "patients";
+    
+    // Push the new user's _id into the appropriate array in the hospital document
+    await Hospital.findByIdAndUpdate(
+      hospital._id,
+      { $push: { [updateField]: newUser._id } },
+      { new: true }
+    );
+
+    
+
     res.status(201).json({
       message: `${
         role.charAt(0).toUpperCase() + role.slice(1)
@@ -74,18 +87,16 @@ export const registerUser = async (req, res) => {
   }
 };
 
-
+// login
 export const loginUser = async (req, res) => {
   const { email, password, role } = req.body;
 
-  // Check for missing fields
   if (!email || !password || !role) {
     return res
       .status(400)
       .json({ message: "Email, password, and role are required." });
   }
 
-  // Validate the role
   if (!["receptionist", "doctor", "patient"].includes(role)) {
     return res.status(400).json({ message: "Invalid role specified." });
   }
@@ -93,26 +104,38 @@ export const loginUser = async (req, res) => {
   try {
     const Model = models[role];
 
-    // Find user by email within the specified role
-    const user = await Model.findOne({ email });
+    // Find user by email and role
+    const user = await Model.findOne({ email }).populate("hospital"); // Populate hospital details
 
-    // Check if user exists
     if (!user) {
       return res.status(401).json({ message: "Invalid credentials." });
     }
 
-    // Compare the provided password with the hashed password
     const isMatch = await bcrypt.compare(password, user.password);
 
-    // If password does not match
     if (!isMatch) {
       return res.status(401).json({ message: "Invalid credentials." });
     }
 
-    // If login is successful, respond with user details
-    res
-      .status(200)
-      .json({ message: "Login successful", userId: user._id, role });
+    // Generate JWT token
+    const token = jwt.sign(
+      {
+        userId: user._id,
+        role,
+        hospitalId: user.hospital._id, // Add hospitalId to the token payload
+      },
+      process.env.JWT_SECRET, // Use the secret key
+      { expiresIn: process.env.JWT_EXPIRES_IN || "1d" } // Token expiry
+    );
+
+    // Send token in response
+    res.status(200).json({
+      message: "Login successful",
+      token, // Include the Bearer token in the response
+      userId: user._id,
+      role,
+      hospitalId: user.hospital._id,
+    });
   } catch (error) {
     console.error("Error logging in:", error);
     res.status(500).json({ message: "Error logging in." });

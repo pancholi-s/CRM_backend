@@ -18,7 +18,7 @@ const doctorSchema = new mongoose.Schema({
   },
   specialization: {
     type: String, // e.g., "Cardiology", "Orthopedics"
-    required: true,
+    required: false,
   },
   head: {
     type: mongoose.Schema.Types.ObjectId, // Reference to the Department model if the doctor is a head
@@ -42,7 +42,7 @@ const doctorSchema = new mongoose.Schema({
     ref: 'Department',
   }],
   hospital: {
-    type: mongoose.Schema.Types.ObjectId, // Link the doctor to a specific hospital
+    type: mongoose.Schema.Types.ObjectId,
     ref: 'Hospital',
     required: true,
   },
