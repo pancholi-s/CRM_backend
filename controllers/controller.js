@@ -5,13 +5,109 @@ import Receptionist from "../models/receptionistModel.js";
 import Doctor from "../models/doctorModel.js";
 import Patient from "../models/patientModel.js";
 import Hospital from "../models/hospitalModel.js";
+import HospitalAdmin from "../models/hospitalAdminModel.js";
 
 const models = {
   receptionist: Receptionist,
   doctor: Doctor,
   patient: Patient,
   Hospital:Hospital, 
+  HospitalAdmin:HospitalAdmin
 };
+
+// export const registerUser = async (req, res) => {
+//   const { name, email, password, phone, role, hospitalName, ...additionalData } = req.body;
+
+//   // Check for missing fields
+//   if (!name || !email || !password || !phone || !role || !hospitalName) {
+//     return res.status(400).json({ message: "All fields are required." });
+//   }
+
+//   // Validate the role
+//   if (!["receptionist", "doctor", "patient", "HospitalAdmin"].includes(role)) {
+//     return res.status(400).json({ message: "Invalid role specified." });
+//   }
+
+//   try {
+//     let Model = models[role];
+
+//     // Check if email is unique for role
+//     const existingUser = await Model.findOne({ email });
+//     if (existingUser) {
+//       return res.status(400).json({ message: "Email already in use." });
+//     }
+
+//     // Find the hospital by its name
+//     const hospital = await Hospital.findOne({ name: hospitalName });
+//     if (!hospital) {
+//       return res.status(400).json({ message: "Hospital not found." });
+//     }
+
+//     // Hash the password
+//     const hashedPassword = await bcrypt.hash(password, 10);
+
+//     // If role is HospitalAdmin, create a hospital admin
+//     if (role === "HospitalAdmin") {
+//       const newAdmin = new HospitalAdmin({
+//         name,
+//         email,
+//         password: hashedPassword,
+//         phone,
+//         hospital: hospital._id, // Link to the hospital
+//         ...additionalData,
+//       });
+
+//       // Save the new admin and update the hospital document
+//       await newAdmin.save();
+//       await Hospital.findByIdAndUpdate(hospital._id, {
+//         $push: { admins: newAdmin._id }, // Assuming the hospital has an admins field
+//       });
+
+//       return res.status(201).json({
+//         message: "Hospital Admin registered successfully.",
+//       });
+//     }
+
+//     // For other roles (doctor, receptionist, patient), proceed with normal registration flow
+//     const newUser = new Model({
+//       name,
+//       email,
+//       password: hashedPassword,
+//       phone,
+//       role,
+//       hospital: hospital._id,
+//       ...additionalData,
+//     });
+
+//     // Automatically set the registration date for patients
+//     if (role === "patient") {
+//       newUser.registrationDate = new Date();
+//     }
+
+//     // Save the user
+//     await newUser.save();
+
+//     // Update the hospital document with the new user
+//     const updateField = role === "doctor" ? "doctors" :
+//                         role === "receptionist" ? "receptionists" : "patients";
+    
+//     // Push the new user's _id into the appropriate array in the hospital document
+//     await Hospital.findByIdAndUpdate(
+//       hospital._id,
+//       { $push: { [updateField]: newUser._id } },
+//       { new: true }
+//     );
+
+//     res.status(201).json({
+//       message: `${
+//         role.charAt(0).toUpperCase() + role.slice(1)
+//       } registered successfully.`,
+//     });
+//   } catch (error) {
+//     console.error("Error registering user:", error);
+//     res.status(500).json({ message: "Error registering user." });
+//   }
+// };
 
 export const registerUser = async (req, res) => {
   const { name, email, password, phone, role, hospitalName, ...additionalData } = req.body;
@@ -22,14 +118,14 @@ export const registerUser = async (req, res) => {
   }
 
   // Validate the role
-  if (!["receptionist", "doctor", "patient"].includes(role)) {
+  if (!["receptionist", "doctor", "patient", "HospitalAdmin"].includes(role)) {
     return res.status(400).json({ message: "Invalid role specified." });
   }
 
   try {
-    const Model = models[role];
+    let Model = models[role];
 
-    // Check if email is unique
+    // Check if email is unique for role
     const existingUser = await Model.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ message: "Email already in use." });
@@ -44,20 +140,71 @@ export const registerUser = async (req, res) => {
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create the user object
-    const newUser = new Model({
-      name,
-      email,
-      password: hashedPassword,
-      phone,
-      role,
-      hospital: hospital._id, // Store the reference to the hospital
-      ...additionalData, // Include additional fields based on the model
-    });
+    // If role is HospitalAdmin, create a hospital admin
+    if (role === "HospitalAdmin") {
+      const newAdmin = new HospitalAdmin({
+        name,
+        email,
+        password: hashedPassword,
+        phone,
+        hospital: hospital._id, // Link to the hospital
+        ...additionalData,
+      });
 
-    // Automatically set the registration date for patients
+      // Save the new admin and update the hospital document
+      await newAdmin.save();
+      await Hospital.findByIdAndUpdate(hospital._id, {
+        $push: { admins: newAdmin._id }, // Assuming the hospital has an admins field
+      });
+
+      return res.status(201).json({
+        message: "Hospital Admin registered successfully.",
+      });
+    }
+
+    // For patient, receptionist, and doctor roles, proceed with normal registration flow
+    let newUser;
     if (role === "patient") {
-      newUser.registrationDate = new Date();
+      newUser = new Patient({
+        name,
+        email,
+        password: hashedPassword,
+        phone,
+        role,
+        hospital: hospital._id,
+        registrationDate: new Date(),
+        ...additionalData,
+      });
+    } else if (role === "receptionist") {
+      newUser = new Receptionist({
+        name,
+        email,
+        password: hashedPassword,
+        phone,
+        role,
+        hospital: hospital._id,
+        ...additionalData,
+      });
+    } else if (role === "doctor") {
+      newUser = new Doctor({
+        name,
+        email,
+        password: hashedPassword,
+        phone,
+        role,
+        hospital: hospital._id,
+        ...additionalData,
+      });
+    } else {
+      newUser = new Model({
+        name,
+        email,
+        password: hashedPassword,
+        phone,
+        role,
+        hospital: hospital._id,
+        ...additionalData,
+      });
     }
 
     // Save the user
@@ -74,18 +221,16 @@ export const registerUser = async (req, res) => {
       { new: true }
     );
 
-    
-
     res.status(201).json({
-      message: `${
-        role.charAt(0).toUpperCase() + role.slice(1)
-      } registered successfully.`,
+      message: `${role.charAt(0).toUpperCase() + role.slice(1)} registered successfully.`,
     });
   } catch (error) {
     console.error("Error registering user:", error);
     res.status(500).json({ message: "Error registering user." });
   }
 };
+
+
 
 // login
 export const loginUser = async (req, res) => {
@@ -97,7 +242,7 @@ export const loginUser = async (req, res) => {
       .json({ message: "Email, password, and role are required." });
   }
 
-  if (!["receptionist", "doctor", "patient"].includes(role)) {
+  if (!["receptionist", "doctor", "patient","HospitalAdmin"].includes(role)) {
     return res.status(400).json({ message: "Invalid role specified." });
   }
 

@@ -90,5 +90,6 @@ const hospitalSchema = new mongoose.Schema({
   }
 });
 
+
 const Hospital = mongoose.model('Hospital', hospitalSchema);
 export default Hospital;

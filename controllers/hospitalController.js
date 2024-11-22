@@ -11,7 +11,8 @@ export const registerHospital = async (req, res) => {
     services,
     totalRooms,
     totalStaff,
-    departments
+    departments,
+
   } = req.body;
 
   // Check for missing fields
@@ -23,8 +24,7 @@ export const registerHospital = async (req, res) => {
     !establishedDate ||
     !services ||
     !totalRooms ||
-    !totalStaff ||
-    !departments
+    !totalStaff 
   ) {
     return res.status(400).json({ message: "All fields are required." });
   }
@@ -48,6 +48,7 @@ export const registerHospital = async (req, res) => {
       totalRooms,
       totalStaff,
       departments,
+
     //   mainAdmin, // Assuming MainAdmin is a reference to a user that exists
     //   hospitalAdmin, // Assuming HospitalAdmin is a reference to a user that exists
     });
