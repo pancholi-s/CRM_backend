@@ -113,6 +113,10 @@ const patientSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Department'
   },
+  hospital: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hospital'
+  },
 
   status: {
     enum:["active","inactive"]

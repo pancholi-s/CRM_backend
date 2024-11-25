@@ -26,6 +26,7 @@ const departmentSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Doctor', // Reference to doctors in this department
   }],
+  
   specialistDoctors: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Doctor', // Reference to specialist doctors

@@ -45,7 +45,6 @@ export const bookAppointment = async (req, res) => {
         .status(404)
         .json({ message: "Patient not found in this hospital." });
     }
-    console.log("Found Patient:", patient);
 
     // Find the doctor
     const doctor = await Doctor.findOne({ email: doctorEmail, hospital: hospitalId });
@@ -54,34 +53,19 @@ export const bookAppointment = async (req, res) => {
         .status(404)
         .json({ message: "Doctor not found in this hospital." });
     }
-    console.log("Found Doctor:", doctor);
 
     // Fetch the hospital and validate the department
     const hospital = await Hospital.findById(hospitalId).populate("departments");
     if (!hospital) {
       return res.status(404).json({ message: "Hospital not found." });
     }
-    console.log("Hospital Departments:", hospital.departments);
 
-    // Find the department by name
-    const department = await Department.findOne({ name: departmentName });
+    const department = hospital.departments.find(
+      (dept) => dept.name.toLowerCase() === departmentName.toLowerCase()
+    );
+
     if (!department) {
-      return res.status(404).json({ message: "Department not found." });
-    }
-    console.log("Found Department:", department);
-
-    // Check if the department belongs to the hospital
-    const isDepartmentInHospital = hospital.departments.some(
-      (dept) => dept.toString() === department._id.toString()
-    );
-    console.log(
-      `Department Validation - Is in hospital? ${isDepartmentInHospital}`
-    );
-
-    if (!isDepartmentInHospital) {
-      return res.status(404).json({
-        message: "Department not found in this hospital.",
-      });
+      return res.status(404).json({ message: "Department not found in this hospital." });
     }
 
     // Create and save the new appointment
@@ -91,14 +75,23 @@ export const bookAppointment = async (req, res) => {
       type: appointmentType,
       department: department._id, // Use department's _id here
       tokenDate: date,
-      status: status,
+      status: status || "Scheduled",
       note,
       hospital: hospitalId, // Add hospitalId to the appointment for tracking
     });
-
+  
     await newAppointment.save();
-    console.log("New Appointment Created:", newAppointment);
-
+  
+    // Update the hospital's appointments array
+    await Hospital.findByIdAndUpdate(hospitalId, {
+      $push: { appointments: newAppointment._id },
+    });
+  
+    // Optional: Update the department's appointments array (if maintained)
+    await Department.findByIdAndUpdate(department._id, {
+      $push: { appointments: newAppointment._id },
+    });
+  
     res.status(201).json({
       message: "Appointment booked successfully.",
       appointment: newAppointment,
@@ -107,4 +100,5 @@ export const bookAppointment = async (req, res) => {
     console.error("Error booking appointment:", error);
     res.status(500).json({ message: "Error booking appointment." });
   }
+  
 };
