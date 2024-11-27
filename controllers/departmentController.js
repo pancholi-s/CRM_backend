@@ -50,7 +50,7 @@ export const addDepartment = async (req, res) => {
 
     // Fetch doctor IDs for the department (excluding the head doctor)
     const doctorIds = await Doctor.find({ _id: { $ne: headDoctor._id }, hospital: hospitalId }).select('_id');
-    
+
     // Create a new department
     const newDepartment = new Department({
       name,
@@ -67,10 +67,10 @@ export const addDepartment = async (req, res) => {
     // Update the hospital document to include the new department
     const updatedHospital = await Hospital.findByIdAndUpdate(
       hospitalId,
-      { 
-        $push: { 
+      {
+        $push: {
           departments: newDepartment._id,
-          doctors: headDoctor._id 
+          doctors: headDoctor._id
         }
       },
       { new: true }
@@ -99,15 +99,45 @@ export const getDepartments = async (req, res) => {
   const { departmentId } = req.params;
 
   try {
-    // Find the department by ID
-    const department = await Department.findById(departmentId).populate('doctors specialistDoctors');
+    // Retrieve hospitalId from the session
+    const hospitalId = req.session.hospitalId;
+
+    if (!hospitalId) {
+      return res.status(403).json({ message: "Hospital context not found in session." });
+    }
+
+    // Find the hospital and populate the departments field
+    const hospital = await Hospital.findById(hospitalId).populate({
+      path: "departments",
+      populate:[ 
+        { path: "doctors" },
+        { path: "head.id" }, // Populate department head details
+      ], // Populate doctors within departments
+    });
+
+    if (!hospital) {
+      return res.status(404).json({ message: "Hospital not found." });
+    }
+
+    // Use the `find` method to locate the department by its `_id`
+    const department = hospital.departments.find(
+      (dept) => dept._id.toString() === departmentId
+    );
 
     if (!department) {
-      return res.status(404).json({ message: "Department not found." });
+      return res.status(404).json({ message: "Department not found in this hospital." });
     }
 
     // Fetch total doctors with names
     const totalDoctors = department.doctors.map(doctor => doctor.name);
+    
+    // Fetch department head's name
+    const departmentHead = department.head?.id?.name || "Not assigned";
+
+    // Ensure department head is included in `totalDoctors`
+    if (department.head?.id && !totalDoctors.includes(departmentHead)) {
+      totalDoctors.push(departmentHead);
+    }
 
     // Fetch total nurses (names already stored as strings in the schema)
     const totalNurses = department.nurses;
@@ -127,6 +157,7 @@ export const getDepartments = async (req, res) => {
     res.status(200).json({
       departmentName: department.name,
       totalDoctors,
+      departmentHead,
       totalNurses,
       specialistDoctors,
       availableServices,
@@ -143,22 +174,40 @@ export const getDepartments = async (req, res) => {
 
 export const getAllDepartments = async (req, res) => {
   try {
-    // Fetch all departments and populate necessary references
-    const departments = await Department.find()
-      .populate('head.id') // Populate department head details
-      .populate('specialistDoctors') // Populate specialist doctors
-      .populate('doctors') // Populate doctors
-      .populate('patients'); // Populate patients to calculate count
+    // Retrieve hospitalId from the session
+    const hospitalId = req.session.hospitalId;
 
-    if (!departments.length) {
-      return res.status(404).json({ message: "No departments found." });
+    if (!hospitalId) {
+      return res.status(403).json({ message: "Hospital context not found in session." });
+    }
+
+    // Fetch the hospital and populate the departments array
+    const hospital = await Hospital.findById(hospitalId)
+      .populate({
+        path: "departments", // Populate the departments array
+        populate: [
+          { path: "head", populate: { path: "id" } }, // Populate head of department details
+          { path: "specialistDoctors" }, // Populate specialist doctors
+          { path: "doctors" }, // Populate doctors
+          { path: "patients" } // Populate patients
+        ]
+      });
+
+    // Check if the hospital was found
+    if (!hospital) {
+      return res.status(404).json({ message: "Hospital not found." });
+    }
+
+    // Check if the hospital has departments
+    if (!hospital.departments || hospital.departments.length === 0) {
+      return res.status(404).json({ message: "No departments found for the given hospital." });
     }
 
     // Map departments to extract required details
-    const response = departments.map(department => {
+    const response = hospital.departments.map(department => {
       return {
         departmentName: department.name,
-        departmentHead: department.head.name, // Assuming `head` has `name`
+        departmentHead: department.head?.name || 'Not Assigned', // Safely access the head's name
         totalPatients: department.patients.length, // Count of patients
         specialistDocs: department.specialistDoctors.length, // Count of specialist doctors
         Docs: department.doctors.length, // Count of doctors
