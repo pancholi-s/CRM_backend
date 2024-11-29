@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Appointment from "../models/appointmentModel.js";
 import Patient from "../models/patientModel.js";
 import Doctor from "../models/doctorModel.js";
@@ -17,7 +18,7 @@ export const bookAppointment = async (req, res) => {
     status,
   } = req.body;
 
-  const { hospitalId } = req.session; // Extract hospitalId from session
+  const { hospitalId } = req.session;
 
   if (!hospitalId) {
     return res
@@ -37,9 +38,12 @@ export const bookAppointment = async (req, res) => {
     return res.status(400).json({ message: "All fields are required." });
   }
 
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     // Find the patient
-    const patient = await Patient.findOne({ email });
+    const patient = await Patient.findOne({ email, hospital: hospitalId });
     if (!patient) {
       return res
         .status(404)
@@ -73,32 +77,54 @@ export const bookAppointment = async (req, res) => {
       patient: patient._id,
       doctor: doctor._id,
       type: appointmentType,
-      department: department._id, // Use department's _id here
+      department: department._id,
       tokenDate: date,
       status: status || "Scheduled",
       note,
-      hospital: hospitalId, // Add hospitalId to the appointment for tracking
+      hospital: hospitalId,
     });
-  
-    await newAppointment.save();
-  
+
+    await newAppointment.save({ session });
+
+    // Log for debugging
+    console.log("New Appointment Created:", newAppointment);
+
+    // Update the patient's appointments array with the correct _id
+    const updatedPatient = await Patient.findByIdAndUpdate(
+      patient._id,
+      { $push: { appointments: { _id: newAppointment._id } } }, // Ensure _id from newAppointment is pushed
+      { session, new: true }
+    );
+
+    // Log the updated patient appointments array
+    console.log("Updated Patient Appointments:", updatedPatient.appointments);
+
     // Update the hospital's appointments array
-    await Hospital.findByIdAndUpdate(hospitalId, {
-      $push: { appointments: newAppointment._id },
-    });
-  
+    await Hospital.findByIdAndUpdate(
+      hospitalId,
+      { $push: { appointments: newAppointment._id } },
+      { session, new: true }
+    );
+
     // Optional: Update the department's appointments array (if maintained)
-    await Department.findByIdAndUpdate(department._id, {
-      $push: { appointments: newAppointment._id },
-    });
-  
+    await Department.findByIdAndUpdate(
+      department._id,
+      { $push: { appointments: newAppointment._id } },
+      { session, new: true }
+    );
+
+    await session.commitTransaction();
+    session.endSession();
+
     res.status(201).json({
       message: "Appointment booked successfully.",
       appointment: newAppointment,
+      updatedPatientAppointments: updatedPatient.appointments,
     });
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
     console.error("Error booking appointment:", error);
-    res.status(500).json({ message: "Error booking appointment." });
+    res.status(500).json({ message: "Error booking appointment.", error: error.message });
   }
-  
 };

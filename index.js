@@ -7,6 +7,8 @@ import session from 'express-session';
 import authRoutes from './routes/authRoutes.js';
 import appointmentRoutes from './routes/appointmentRoutes.js';
 import departmentRoutes from './routes/departmentRoutes.js';
+import doctorRoutes from "./routes/doctorRoutes.js" ;
+import patientRoutes from "./routes/patientRoutes.js" ;
 
 dotenv.config();
 
@@ -40,6 +42,8 @@ connectDB();
 app.use('/', authRoutes);
 app.use('/', appointmentRoutes);
 app.use('/', departmentRoutes);
+app.use('/', doctorRoutes);
+app.use('/', patientRoutes);
 
 // Base route
 app.get('/', (req, res) => {

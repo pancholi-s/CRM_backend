@@ -29,6 +29,10 @@ const doctorSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+  status: {
+    type: String,
+    default: null,  
+  },
   patients: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Patient',

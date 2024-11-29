@@ -91,12 +91,11 @@ const patientSchema = new mongoose.Schema({
 
   appointments: [
     {
-      doctor: { type: mongoose.Schema.Types.ObjectId, ref: 'Doctor' },
-      date: { type: Date },
-      status: { type: String },
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Appointment', // Reference to the Appointment model
     },
   ],
-
+  
   //can be used as asserted by
   doctors: [{
     type: mongoose.Schema.Types.ObjectId,
