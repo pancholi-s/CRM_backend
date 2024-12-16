@@ -38,6 +38,7 @@ export const bookAppointment = async (req, res) => {
     return res.status(400).json({ message: "All fields are required." });
   }
 
+  //to avoid differences in the last digit of object id stored as references in patient  
   const session = await mongoose.startSession();
   session.startTransaction();
 
@@ -90,14 +91,30 @@ export const bookAppointment = async (req, res) => {
     console.log("New Appointment Created:", newAppointment);
 
     // Update the patient's appointments array with the correct _id
+    // Update the patient's appointments array and ensure doctor is only added once
     const updatedPatient = await Patient.findByIdAndUpdate(
       patient._id,
-      { $push: { appointments: { _id: newAppointment._id } } }, // Ensure _id from newAppointment is pushed
+      {
+        $push: { appointments: { _id: newAppointment._id } }, // Push appointment ID
+        $addToSet: { doctors: doctor._id }, // Add doctor ID only if not already present
+      },
       { session, new: true }
     );
 
+      // Update the doctor's appointments and patients arrays
+    const updatedDoctor = await Doctor.findByIdAndUpdate(
+      doctor._id,
+      {
+        $push: { appointments: newAppointment._id },
+        $addToSet: { patients: patient._id },
+      },
+      { session, new: true }
+    );
+
+
     // Log the updated patient appointments array
     console.log("Updated Patient Appointments:", updatedPatient.appointments);
+    console.log("Updated Patient Doctors Array:", updatedPatient.doctors);
 
     // Update the hospital's appointments array
     await Hospital.findByIdAndUpdate(
@@ -112,6 +129,8 @@ export const bookAppointment = async (req, res) => {
       { $push: { appointments: newAppointment._id } },
       { session, new: true }
     );
+
+    
 
     await session.commitTransaction();
     session.endSession();
