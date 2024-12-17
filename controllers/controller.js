@@ -5,6 +5,7 @@ import Receptionist from "../models/receptionistModel.js";
 import Doctor from "../models/doctorModel.js";
 import Patient from "../models/patientModel.js";
 import Hospital from "../models/hospitalModel.js";
+import Department from "../models/departmentModel.js";
 import HospitalAdmin from "../models/hospitalAdminModel.js";
 
 const models = {
@@ -12,6 +13,7 @@ const models = {
   doctor: Doctor,
   patient: Patient,
   Hospital:Hospital, 
+  Department:Department,
   HospitalAdmin:HospitalAdmin
 };
 
@@ -92,6 +94,13 @@ export const registerUser = async (req, res) => {
         ...additionalData,
       });
     } else if (role === "doctor") {
+        const { department } = additionalData;
+        const departmentDoc = await Department.findOne({ name: department });
+
+        if (!departmentDoc) {
+          return res.status(400).json({ message: "Department not found." });
+        }
+
       newUser = new Doctor({
         name,
         email,
@@ -99,6 +108,7 @@ export const registerUser = async (req, res) => {
         phone,
         role,
         hospital: hospital._id,
+        departments: [departmentDoc._id],
         ...additionalData,
       });
     } else {
