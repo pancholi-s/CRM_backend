@@ -87,9 +87,12 @@ const hospitalSchema = new mongoose.Schema({
   },
   totalStaff: {
     type: String
-  }
+  },
+  rooms: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Room',
+  }],  
 });
-
 
 const Hospital = mongoose.model('Hospital', hospitalSchema);
 export default Hospital;

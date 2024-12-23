@@ -26,7 +26,6 @@ const departmentSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Doctor', // Reference to doctors in this department
   }],
-  
   specialistDoctors: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Doctor', // Reference to specialist doctors
@@ -53,6 +52,15 @@ const departmentSchema = new mongoose.Schema({
     type: String,
     required: false
   }],
+  rooms: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Room',
+  }],
+  hospital: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hospital', // Reference to the hospital this department belongs to
+    required: true,
+  }
 });
 
 const Department = mongoose.model('Department', departmentSchema);

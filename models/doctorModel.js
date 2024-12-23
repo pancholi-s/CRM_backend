@@ -59,6 +59,10 @@ const doctorSchema = new mongoose.Schema({
     default: 'doctor',
     required: true,
   },
+  assignedRooms: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Room',
+  }],  
 });
 
 const Doctor = mongoose.model('Doctor', doctorSchema);
