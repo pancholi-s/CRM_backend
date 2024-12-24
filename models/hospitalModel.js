@@ -92,6 +92,11 @@ const hospitalSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Room',
   }],  
+  staffs: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Staff',
+    default: [],
+  }],
 });
 
 const Hospital = mongoose.model('Hospital', hospitalSchema);

@@ -18,6 +18,12 @@ export const addDepartment = async (req, res) => {
       return res.status(403).json({ message: "Hospital context not found." });
     }
 
+    // Validate hospital
+    const hospital = await Hospital.findById(hospitalId);
+    if (!hospital) {
+      return res.status(404).json({ message: "Hospital not found." });
+    }
+
     // Check if the head doctor already exists in the database
     let headDoctor = await Doctor.findOne({ name: head.name });
 
@@ -39,7 +45,7 @@ export const addDepartment = async (req, res) => {
         phone,
         role: 'Head',
         specialization: 'Department Head',
-        hospital: hospitalId,
+        hospital: hospitalId, // Link doctor to hospital
       });
       await headDoctor.save();
     }
@@ -51,7 +57,7 @@ export const addDepartment = async (req, res) => {
     // Fetch doctor IDs for the department (excluding the head doctor)
     const doctorIds = await Doctor.find({ _id: { $ne: headDoctor._id }, hospital: hospitalId }).select('_id');
 
-    // Create a new department
+    // FIX: Add hospital reference to department
     const newDepartment = new Department({
       name,
       head: { id: headDoctor._id, name: headDoctor.name },
@@ -59,6 +65,7 @@ export const addDepartment = async (req, res) => {
       doctors: doctorIds,
       nurses: nurses || [],
       services: services || [],
+      hospital: hospitalId, // Explicitly add hospital reference
     });
 
     // Save the department
@@ -70,11 +77,11 @@ export const addDepartment = async (req, res) => {
       {
         $push: {
           departments: newDepartment._id,
-          doctors: headDoctor._id
-        }
+          doctors: headDoctor._id,
+        },
       },
       { new: true }
-    ).populate('departments');  // Ensure the hospital is populated with the departments
+    ).populate('departments'); // Ensure the hospital is populated with departments
 
     // Check if the update was successful
     if (!updatedHospital) {
@@ -85,7 +92,7 @@ export const addDepartment = async (req, res) => {
     res.status(201).json({
       message: "Department created and hospital updated successfully.",
       department: newDepartment,
-      hospital: updatedHospital
+      hospital: updatedHospital,
     });
 
   } catch (error) {
@@ -93,7 +100,6 @@ export const addDepartment = async (req, res) => {
     res.status(500).json({ message: "Error creating department." });
   }
 };
-
 
 export const getDepartments = async (req, res) => {
   const { departmentId } = req.params;

@@ -56,9 +56,14 @@ const departmentSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Room',
   }],
+  staffs: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Staff',
+    default: [],
+  }],
   hospital: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Hospital', // Reference to the hospital this department belongs to
+    ref: 'Hospital',
     required: true,
   }
 });

@@ -10,6 +10,7 @@ import departmentRoutes from './routes/departmentRoutes.js';
 import doctorRoutes from "./routes/doctorRoutes.js" ;
 import patientRoutes from "./routes/patientRoutes.js" ;
 import roomRoutes from "./routes/roomRoutes.js" ;
+import staffRoutes from "./routes/staffRoutes.js" ;
 
 dotenv.config();
 
@@ -46,6 +47,7 @@ app.use('/', departmentRoutes);
 app.use('/', doctorRoutes);
 app.use('/', patientRoutes);
 app.use('/', roomRoutes);
+app.use('/', staffRoutes);
 
 // Base route
 app.get('/', (req, res) => {
