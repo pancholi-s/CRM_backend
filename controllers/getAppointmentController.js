@@ -51,7 +51,6 @@ export const getAppointmentsByStatus = async (req, res) => {
   }
 };
 
-
 export const getFilteredAppointments = async (req, res) => {
   const { departmentId, status } = req.query;
 

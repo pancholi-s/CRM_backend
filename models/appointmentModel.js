@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';  // Using UUID to ensure uniqueness
 const appointmentSchema = new mongoose.Schema({
   caseId: {
     type: String,
-    //required: true,
+    required: true,
     unique: true,
   },
   patient: {
@@ -30,7 +30,7 @@ const appointmentSchema = new mongoose.Schema({
   department: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Department',
-    //required: true,
+    required: true,
   },
   tokenDate: {
     type: Date,
@@ -44,13 +44,29 @@ const appointmentSchema = new mongoose.Schema({
 });
 
 // Middleware to generate caseId before saving a new appointment
+appointmentSchema.pre('save', async function (next) {
+  const Appointment = mongoose.model('Appointment'); // Access the Appointment model
 
-//check for repeated genearted ids from "UUID"
-appointmentSchema.pre('save', function (next) {
+  // Ensure caseId is generated only for NEW appointments
   if (!this.caseId) {
-    this.caseId = `CASE-${uuidv4()}`;  // Generates a unique ID in the format CASE-<UUID>
+    let unique = false; // Flag to track uniqueness
+    let newCaseId;
+
+    // Keep generating new UUID until a unique caseId is found
+    while (!unique) {
+      newCaseId = `CASE-${uuidv4()}`; // Generate a new UUID
+
+      // Check if the generated caseId already exists
+      const existingAppointment = await Appointment.findOne({ caseId: newCaseId });
+      if (!existingAppointment) {
+        unique = true; // UUID is unique, exit the loop
+      }
+    }
+    // Assign the unique caseId
+    this.caseId = newCaseId;
   }
-  next();
+
+  next(); // Proceed to save the document
 });
 
 const Appointment = mongoose.model('Appointment', appointmentSchema);

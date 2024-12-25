@@ -1,5 +1,3 @@
-// import mongoose from 'mongoose';
-// import Patient from '../models/patientModel.js';
 
 // export const getPatientsByHospital = async (req, res) => {
 //     try {
@@ -112,6 +110,7 @@ export const getPatientsByHospital = async (req, res) => {
           }))
         : [];
 
+        //return every attribute of patient and add appointments
       return {
         ...patient.toObject(), // Include all patient fields
         appointments, // Add transformed appointments data

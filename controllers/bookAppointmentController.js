@@ -43,7 +43,6 @@ export const bookAppointment = async (req, res) => {
   session.startTransaction();
 
   try {
-    // Find the patient
     const patient = await Patient.findOne({ email, hospital: hospitalId });
     if (!patient) {
       return res
@@ -51,7 +50,6 @@ export const bookAppointment = async (req, res) => {
         .json({ message: "Patient not found in this hospital." });
     }
 
-    // Find the doctor
     const doctor = await Doctor.findOne({ email: doctorEmail, hospital: hospitalId });
     if (!doctor) {
       return res
@@ -73,7 +71,6 @@ export const bookAppointment = async (req, res) => {
       return res.status(404).json({ message: "Department not found in this hospital." });
     }
 
-    // Create and save the new appointment
     const newAppointment = new Appointment({
       patient: patient._id,
       doctor: doctor._id,
