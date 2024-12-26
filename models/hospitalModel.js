@@ -80,7 +80,8 @@ const hospitalSchema = new mongoose.Schema({
     ref: 'HospitalAdmin', // Reference to the HospitalAdmin model
   },
   services: [{
-    type: String,  // List of services offered by the hospital, e.g. ['Cardiology', 'Surgery', etc.]
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'HospitalAdmin',
   }],
   totalRooms: {
     type: String

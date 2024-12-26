@@ -11,6 +11,8 @@ import doctorRoutes from "./routes/doctorRoutes.js" ;
 import patientRoutes from "./routes/patientRoutes.js" ;
 import roomRoutes from "./routes/roomRoutes.js" ;
 import staffRoutes from "./routes/staffRoutes.js" ;
+import serviceRoutes from './routes/serviceRoutes.js';
+import billRoutes from './routes/billRoutes.js';
 
 dotenv.config();
 
@@ -48,6 +50,8 @@ app.use('/', doctorRoutes);
 app.use('/', patientRoutes);
 app.use('/', roomRoutes);
 app.use('/', staffRoutes);
+app.use('/', billRoutes);
+app.use('/', serviceRoutes);
 
 // Base route
 app.get('/', (req, res) => {
