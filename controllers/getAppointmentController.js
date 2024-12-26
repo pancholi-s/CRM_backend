@@ -2,10 +2,7 @@ import Appointment from '../models/appointmentModel.js';
 import Hospital from '../models/hospitalModel.js';
 import mongoose from 'mongoose';
 
-// Fetch appointments based on dynamic status or get all if status is 'Scheduled'
-
-//extra 1 appointment getting fetched
-//get info about patients's appointment (active/inactive filtering)
+//get info about patients's appointment (active/inactive filtering) 
 
 export const getAppointmentsByStatus = async (req, res) => {
   const { status } = req.query;

@@ -57,7 +57,7 @@ export const addDepartment = async (req, res) => {
     // Fetch doctor IDs for the department (excluding the head doctor)
     const doctorIds = await Doctor.find({ _id: { $ne: headDoctor._id }, hospital: hospitalId }).select('_id');
 
-    // FIX: Add hospital reference to department
+
     const newDepartment = new Department({
       name,
       head: { id: headDoctor._id, name: headDoctor.name },
@@ -65,7 +65,7 @@ export const addDepartment = async (req, res) => {
       doctors: doctorIds,
       nurses: nurses || [],
       services: services || [],
-      hospital: hospitalId, // Explicitly add hospital reference
+      hospital: hospitalId, 
     });
 
     // Save the department
@@ -83,12 +83,12 @@ export const addDepartment = async (req, res) => {
       { new: true }
     ).populate('departments'); // Ensure the hospital is populated with departments
 
-    // Check if the update was successful
+    
     if (!updatedHospital) {
       return res.status(404).json({ message: "Hospital not found or failed to update." });
     }
 
-    // Return the newly updated hospital with the new department
+ 
     res.status(201).json({
       message: "Department created and hospital updated successfully.",
       department: newDepartment,

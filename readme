@@ -1,0 +1,11 @@
+bookAppointmentController:- POST req for booking an appointment. ROUTE:- Appointment Route
+controller:- login register. ROUTE:- AuthRoutes 
+departmentController:- POST for adding a department and GET for returning department in a hospital. ROUTE:-departmentRoutes
+doctorController:- GET request for doctors. ROUTE:- doctorRoutes
+getAppointmentController:- GET request for appointments by status(Scheduled etc and filter appointments department-wise ). ROUTE:- AppointmentRoute 
+hospitalContext:- JWT token verification. 
+hospitalController:- POST request for hospitals. ROUTE:- hospitalRoutes
+patientController:- GET request for patients. ROUTE:- patientRoutes
+requestAppointmentController:- POST request for requesting,accepting and rejecting an appointment. ROUTE:- AppointmentRoute
+roomController:- POST request for adding a room and GET request for returning rooms in a hospital(also update and delete). ROUTE:- roomRoutes
+staffController:- POST request for adding a staff and GET request for returning staff in a hospital(also update and delete). ROUTE:- staffRoutes

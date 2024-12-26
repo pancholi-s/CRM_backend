@@ -108,7 +108,6 @@ export const bookAppointment = async (req, res) => {
       { session, new: true }
     );
 
-
     // Log the updated patient appointments array
     console.log("Updated Patient Appointments:", updatedPatient.appointments);
     console.log("Updated Patient Doctors Array:", updatedPatient.doctors);
@@ -126,8 +125,6 @@ export const bookAppointment = async (req, res) => {
       { $push: { appointments: newAppointment._id } },
       { session, new: true }
     );
-
-    
 
     await session.commitTransaction();
     session.endSession();
