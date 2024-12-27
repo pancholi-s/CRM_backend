@@ -141,3 +141,25 @@ export const bookAppointment = async (req, res) => {
     res.status(500).json({ message: "Error booking appointment.", error: error.message });
   }
 };
+
+export const completeAppointment = async (req, res) => {
+  const { appointmentId, note } = req.body;
+
+  try {
+    // Find the appointment
+    const appointment = await Appointment.findById(appointmentId);
+    if (!appointment) {
+      return res.status(404).json({ message: "Appointment not found." });
+    }
+
+    // Update status and notes
+    appointment.status = "Completed";
+    appointment.note = note;
+
+    await appointment.save();
+
+    res.status(200).json({ message: "Appointment completed successfully." });
+  } catch (error) {
+    res.status(500).json({ message: "Error updating appointment.", error: error.message });
+  }
+};

@@ -41,6 +41,9 @@ const appointmentSchema = new mongoose.Schema({
     enum: ['Scheduled', 'Ongoing', 'Waiting', 'Completed'],
     default: 'Scheduled',
   },
+  note: {
+    type: String
+  }, // Doctor's notes for billing
 });
 
 // Middleware to generate caseId before saving a new appointment

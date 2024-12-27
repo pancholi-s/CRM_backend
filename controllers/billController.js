@@ -1,30 +1,73 @@
 import Bill from "../models/billModel.js";
+import Appointment from "../models/appointmentModel.js";
+import Service from "../models/serviceModel.js";
 
-// Create Bill
+// Create Bill with Service Validation
 export const createBill = async (req, res) => {
-  const { patientId, doctorId, services } = req.body;
+  const { appointmentId, services } = req.body;
+
+  const { hospitalId } = req.session; // Retrieve hospital and user context from session
+
+  if (!hospitalId) {
+    return res
+      .status(403)
+      .json({ message: "Access denied. No hospital context found." });
+  }
 
   try {
-    const totalAmount = services.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0
-    );
+    // 1. Validate Appointment
+    const appointment = await Appointment.findById(appointmentId)
+      .populate("patient", "name email phone")
+      .populate("doctor", "name email specialization");
+
+    if (!appointment) {
+      return res.status(404).json({ message: "Appointment not found." });
+    }
+
+    if (appointment.status !== "Completed") {
+      return res.status(400).json({ message: "Appointment is not completed yet." });
+    }
+
+    // 2. Validate Services
+    let totalAmount = 0;
+    const validatedServices = [];
+
+    for (const serviceItem of services) {
+      const service = await Service.findOne({
+        _id: serviceItem.serviceId,
+        createdBy: hospitalId, // Ensures the service belongs to the hospital
+      });
+
+      if (!service) {
+        return res.status(404).json({ message: `Service not found: ${serviceItem.serviceId}` });
+      }
+
+      // Calculate price and add to validated services
+      const serviceTotal = service.price * serviceItem.quantity;
+      validatedServices.push({
+        service: service._id,
+        quantity: serviceItem.quantity,
+      });
+      totalAmount += serviceTotal;
+    }
+
+    // 3. Create Bill
     const newBill = new Bill({
-      patient: patientId,
-      doctor: doctorId,
-      services,
+      patient: appointment.patient._id,
+      doctor: appointment.doctor._id,
+      services: validatedServices,
       totalAmount,
-      createdBy: req.session.userId,
+      createdBy: hospitalId, // Fixed: Use hospital ID for createdBy
     });
 
+    // Save the bill
     await newBill.save();
-    res
-      .status(201)
-      .json({ message: "Bill created successfully.", bill: newBill });
+
+    res.status(201).json({ message: "Bill generated successfully.", bill: newBill });
   } catch (error) {
     res
       .status(500)
-      .json({ message: "Error creating bill.", error: error.message });
+      .json({ message: "Error generating bill.", error: error.message });
   }
 };
 
