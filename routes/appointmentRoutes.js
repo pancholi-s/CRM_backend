@@ -1,6 +1,5 @@
 import express from 'express';
-import { bookAppointment, completeAppointment } from '../controllers/bookAppointmentController.js';
-import { getAppointmentsByStatus, getFilteredAppointments } from '../controllers/getAppointmentController.js';
+import { bookAppointment, completeAppointment,getAppointmentsByStatus, getFilteredAppointments } from '../controllers/bookAppointmentController.js';
 import { requireHospitalContext } from '../controllers/hospitalContext.js';
 import { requestAppointment, approveAppointment, rejectAppointment } from '../controllers/requestedAppointmentController.js';
 
