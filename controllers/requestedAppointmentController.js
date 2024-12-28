@@ -8,7 +8,6 @@ import Doctor from '../models/doctorModel.js';
 import Department from '../models/departmentModel.js';
 import Hospital from '../models/hospitalModel.js';
 
-//request, approve and reject appointments
 // Book Appointment Request
 export const requestAppointment = async (req, res) => {
   const {
