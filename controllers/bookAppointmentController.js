@@ -4,6 +4,7 @@ import Patient from "../models/patientModel.js";
 import Doctor from "../models/doctorModel.js";
 import Department from "../models/departmentModel.js";
 import Hospital from "../models/hospitalModel.js";
+import RejectedAppointment from '../models/rejectedAppointmentModel.js';
 
 // direct booking of appointment withoput request and approval
 export const bookAppointment = async (req, res) => {
@@ -274,3 +275,25 @@ export const getFilteredAppointments = async (req, res) => {
 };
 
 
+export const getAppointmentCounts = async (req, res) => {
+  const { hospitalId } = req.session;
+
+  if (!hospitalId) {
+    return res.status(403).json({ message: 'Unauthorized access. Hospital ID not found in session.' });
+  }
+
+  try {
+    const completedCount = await Appointment.countDocuments({ hospital: hospitalId, status: 'Completed' });
+    const cancelledCount = await RejectedAppointment.countDocuments({ hospital: hospitalId });
+
+    const totalCount = completedCount + cancelledCount;
+
+    res.status(200).json({
+      completedCount,
+      cancelledCount,
+      totalCount,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to get appointment counts.', error: error.message });
+  }
+};

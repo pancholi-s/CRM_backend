@@ -51,6 +51,10 @@ const hospitalSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Appointment', // Referencing the Department model
   }],
+  RejectedAppointment: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'RejectedAppointment', // Referencing the Department model
+  }],
   // employees: [{
   //   type: mongoose.Schema.Types.ObjectId,
   //   ref: 'Employee', // General employee list

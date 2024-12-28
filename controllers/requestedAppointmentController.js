@@ -101,20 +101,33 @@ export const approveAppointment = async (req, res) => {
   }
 };
 
+
 export const rejectAppointment = async (req, res) => {
   const { requestId } = req.params;
+  const { hospitalId } = req.session;
+
+  if (!hospitalId) {
+    return res.status(403).json({ message: 'Unauthorized access. Hospital ID not found in session.' });
+  }
 
   try {
-    const request = await RequestedAppointment.findById(requestId);
+    const request = await RequestedAppointment.findOne({ _id: requestId, hospital: hospitalId });
     if (!request) return res.status(404).json({ message: 'Request not found.' });
 
     const rejectedAppointment = new RejectedAppointment({
       caseId: request.caseId,
       patient: request.patient,
       doctor: request.doctor,
+      hospital: hospitalId,
     });
 
     await rejectedAppointment.save();
+
+    // Push the reference of the rejected appointment into the hospital's RejectedAppointment array
+    await Hospital.findByIdAndUpdate(hospitalId, {
+      $push: { RejectedAppointment: rejectedAppointment._id }
+    });
+
     await RequestedAppointment.findByIdAndDelete(requestId);
 
     res.status(201).json({ message: 'Appointment rejected.', rejectedAppointment });

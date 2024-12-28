@@ -19,6 +19,11 @@ const rejectedAppointmentSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+    hospital: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Hospital',
+      required: true,
+    }
 });
 
 const RejectedAppointment = mongoose.model('RejectedAppointment', rejectedAppointmentSchema);
