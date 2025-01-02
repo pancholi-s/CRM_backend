@@ -102,6 +102,11 @@ const hospitalSchema = new mongoose.Schema({
     ref: 'Staff',
     default: [],
   }],
+  expenses: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Expense',
+    default: []
+  }],
 });
 
 const Hospital = mongoose.model('Hospital', hospitalSchema);

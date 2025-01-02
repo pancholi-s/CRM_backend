@@ -1,5 +1,5 @@
 import express from 'express';
-import { bookAppointment, completeAppointment, getAppointmentsByStatus, getFilteredAppointments, getAppointmentCounts, getRejectedAppointments } from '../controllers/bookAppointmentController.js';
+import { bookAppointment, completeAppointment, getAppointmentsByStatus, getFilteredAppointments, getAppointmentCounts, getRejectedAppointments, getAppointmentsByVisitType } from '../controllers/bookAppointmentController.js';
 import { requireHospitalContext } from '../controllers/hospitalContext.js';
 import { requestAppointment, approveAppointment, rejectAppointment } from '../controllers/requestedAppointmentController.js';
 
@@ -7,7 +7,6 @@ const router = express.Router();
 
 router.use(requireHospitalContext);
 
-// Route to book an appointment
 router.post('/bookappointment', bookAppointment);
 router.post('/completeAppointment', completeAppointment);
 
@@ -19,5 +18,6 @@ router.get('/getAppointmentsByStatus', getAppointmentsByStatus);
 router.get('/getFilteredAppointments', getFilteredAppointments);
 router.get('/getAppointmentCounts', getAppointmentCounts);
 router.get('/getRejectedAppointments', getRejectedAppointments);
+router.get('/getAppointmentsByVisitType', getAppointmentsByVisitType);
 
 export default router;

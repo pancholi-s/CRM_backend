@@ -1,4 +1,3 @@
-import mongoose from 'mongoose';
 import Patient from '../models/patientModel.js';
 
 export const getPatientsByHospital = async (req, res) => {
@@ -63,5 +62,39 @@ export const getPatientsByHospital = async (req, res) => {
   } catch (error) {
     console.error("Error fetching patients:", error);
     res.status(500).json({ message: "Failed to fetch patients", error: error.message });
+  }
+};
+
+export const getPatientsByStatus = async (req, res) => {
+  try {
+    const { status } = req.query; // Capture status query parameter
+    const hospitalId = req.session.hospitalId; // Get hospitalId from session
+
+    // Validate status
+    if (!['active', 'inactive'].includes(status)) {
+      return res.status(400).json({ message: "Invalid status. Use 'active' or 'inactive'." });
+    }
+
+    // Validate hospital context
+    if (!hospitalId) {
+      return res.status(403).json({ message: "Access denied. No hospital context found." });
+    }
+
+    // Fetch patients based on status and hospital context
+    const patients = await Patient.find({ status: status, hospital: hospitalId })
+      .populate('appointments', 'caseId tokenDate status') // Populate appointment details
+      .populate('doctors', 'name specialization') // Populate doctor details
+      .select('-password -medicalHistory -socialHistory'); // Exclude sensitive fields
+
+    // Return results
+    res.status(200).json({
+      hospitalId: hospitalId,
+      status: status,
+      count: patients.length,
+      patients,
+    });
+  } catch (error) {
+    console.error('Error fetching patients by status:', error);
+    res.status(500).json({ message: 'Failed to fetch patients.', error: error.message });
   }
 };

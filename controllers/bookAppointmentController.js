@@ -100,7 +100,7 @@ export const bookAppointment = async (req, res) => {
       { session, new: true }
     );
 
-      // Update the doctor's appointments and patients arrays
+    // Update the doctor's appointments and patients arrays
     const updatedDoctor = await Doctor.findByIdAndUpdate(
       doctor._id,
       {
@@ -322,6 +322,50 @@ export const getRejectedAppointments = async (req, res) => {
     console.error('Error fetching rejected appointments:', error);
     res.status(500).json({
       message: "Error fetching rejected appointments.",
+      error: error.message,
+    });
+  }
+};
+
+export const getAppointmentsByVisitType = async (req, res) => {
+  try {
+    const { typeVisit } = req.query; // Capture visit type query parameter
+    const hospitalId = req.session.hospitalId; // Get hospitalId from session
+
+    // Validate typeVisit
+    const validVisitTypes = ['Walk in', 'Referral', 'Online'];
+    if (!typeVisit || !validVisitTypes.includes(typeVisit)) {
+      return res.status(400).json({
+        message: "Invalid visit type. Use 'Walk in', 'Referral', or 'Online'.",
+      });
+    }
+
+    // Validate hospital context
+    if (!hospitalId) {
+      return res.status(403).json({ message: 'Access denied. No hospital context found.' });
+    }
+
+    // Fetch appointments based on visit type and hospital context
+    const appointments = await Appointment.find({
+      typeVisit: typeVisit,
+      hospital: hospitalId,
+    })
+      .populate('patient', 'name email phone') // Populate patient details
+      .populate('doctor', 'name specialization') // Populate doctor details
+      .populate('department', 'name') // Populate department details
+      .select('-__v'); // Exclude version field
+
+    // Return results
+    res.status(200).json({
+      hospitalId: hospitalId,
+      typeVisit: typeVisit,
+      count: appointments.length,
+      appointments,
+    });
+  } catch (error) {
+    console.error('Error fetching appointments by visit type:', error);
+    res.status(500).json({
+      message: 'Failed to fetch appointments.',
       error: error.message,
     });
   }
