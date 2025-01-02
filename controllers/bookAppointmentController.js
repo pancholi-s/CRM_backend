@@ -1,10 +1,10 @@
 import mongoose from "mongoose";
 import Appointment from "../models/appointmentModel.js";
+import RejectedAppointment from '../models/rejectedAppointmentModel.js';
 import Patient from "../models/patientModel.js";
 import Doctor from "../models/doctorModel.js";
 import Department from "../models/departmentModel.js";
 import Hospital from "../models/hospitalModel.js";
-import RejectedAppointment from '../models/rejectedAppointmentModel.js';
 
 // direct booking of appointment withoput request and approval
 export const bookAppointment = async (req, res) => {
@@ -166,9 +166,7 @@ export const completeAppointment = async (req, res) => {
   }
 };
 
-
 //get info about patients's appointment (active/inactive filtering) 
-
 export const getAppointmentsByStatus = async (req, res) => {
   const { status } = req.query;
 
@@ -274,7 +272,6 @@ export const getFilteredAppointments = async (req, res) => {
   }
 };
 
-
 export const getAppointmentCounts = async (req, res) => {
   const { hospitalId } = req.session;
 
@@ -295,5 +292,37 @@ export const getAppointmentCounts = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: 'Failed to get appointment counts.', error: error.message });
+  }
+};
+
+export const getRejectedAppointments = async (req, res) => {
+  const { hospitalId } = req.session; // Retrieve hospital context from session
+
+  // Validate hospitalId
+  if (!hospitalId) {
+    return res.status(403).json({ message: "Access denied. No hospital context found." });
+  }
+
+  try {
+    // Fetch all rejected appointments for the same hospital
+    const rejectedAppointments = await RejectedAppointment.find({ hospital: hospitalId })
+      .populate('patient', 'name email phone') // Populate patient details
+      .populate('doctor', 'name email specialization') // Populate doctor details
+      .sort({ dateRejected: -1 }); // Sort by dateRejected (latest first)
+
+    // Count of rejected appointments
+    const count = rejectedAppointments.length;
+
+    res.status(200).json({
+      message: "Rejected appointments retrieved successfully.",
+      count,
+      rejectedAppointments,
+    });
+  } catch (error) {
+    console.error('Error fetching rejected appointments:', error);
+    res.status(500).json({
+      message: "Error fetching rejected appointments.",
+      error: error.message,
+    });
   }
 };
