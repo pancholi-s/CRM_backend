@@ -27,6 +27,14 @@ const appointmentSchema = new mongoose.Schema({
     enum: ['Follow up', 'Consultation', 'Vaccination', 'Other'],
     required: true,
   },
+  typeVisit:{
+    type: String,
+    enum: ['Walk in', 'Referral', 'Online'],
+    default: 'Walk in', //change
+    required: true,
+  },
+  
+  
   department: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Department',

@@ -118,7 +118,9 @@ const patientSchema = new mongoose.Schema({
   },
 
   status: {
-    enum:["active","inactive"]
+    type:String,
+    enum:["active","inactive"], 
+    default: ["active"],
   },
 
   files: [{

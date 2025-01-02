@@ -73,12 +73,15 @@ export const registerUser = async (req, res) => {
     // For patient, receptionist, and doctor roles, proceed with normal registration flow
     let newUser;
     if (role === "patient") {
+      const patientStatus = additionalData.status || ["active"];
+
       newUser = new Patient({
         name,
         email,
         password: hashedPassword,
         phone,
         role,
+        status:patientStatus,
         hospital: hospital._id,
         registrationDate: new Date(),
         ...additionalData,
