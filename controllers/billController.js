@@ -2,7 +2,7 @@ import Bill from "../models/billModel.js";
 import Appointment from "../models/appointmentModel.js";
 import Service from "../models/serviceModel.js";
 
-// Create Bill with Service Validation
+// Create Bill with Dynamic Service Details
 export const createBill = async (req, res) => {
   const { appointmentId, services, paidAmount, mode } = req.body;
   const { hospitalId } = req.session;
@@ -45,7 +45,18 @@ export const createBill = async (req, res) => {
           .json({ message: `Service not found: ${serviceItem.serviceId}` });
       }
 
-      const serviceTotal = service.price * serviceItem.quantity;
+      // Find sub-category details
+      const serviceDetails = service.categories.find(
+        (sub) => sub.category === serviceItem.category
+      );
+
+      if (!serviceDetails) {
+        return res
+          .status(404)
+          .json({ message: `Sub-category not found: ${serviceItem.category}` });
+      }
+
+      const serviceTotal = serviceDetails.rate * serviceItem.quantity;
       validatedServices.push({
         service: service._id,
         quantity: serviceItem.quantity,
@@ -55,9 +66,9 @@ export const createBill = async (req, res) => {
 
     const outstanding = totalAmount - paidAmount;
 
-    // Create Bill with case_id
+    // Create Bill
     const newBill = new Bill({
-      caseId: appointment.caseId, // Add case_id here
+      caseId: appointment.caseId,
       patient: appointment.patient._id,
       doctor: appointment.doctor._id,
       services: validatedServices,
@@ -82,6 +93,7 @@ export const createBill = async (req, res) => {
   }
 };
 
+// Get All Bills
 export const getAllBills = async (req, res) => {
   const { hospitalId } = req.session;
 
@@ -95,7 +107,7 @@ export const getAllBills = async (req, res) => {
     const bills = await Bill.find({ createdBy: hospitalId })
       .populate("patient", "name phone")
       .populate("doctor", "name specialization")
-      .populate("services.service", "name price")
+      .populate("services.service", "name")
       .sort({ createdAt: -1 });
 
     res.status(200).json({ count: bills.length, bills });
@@ -104,7 +116,7 @@ export const getAllBills = async (req, res) => {
       .status(500)
       .json({ message: "Error fetching bills.", error: error.message });
   }
-}
+};
 
 // Get Bill Details
 export const getBillDetails = async (req, res) => {
@@ -114,7 +126,7 @@ export const getBillDetails = async (req, res) => {
     const bill = await Bill.findById(billId)
       .populate("patient", "name phone")
       .populate("doctor", "name specialization")
-      .populate("services.service", "name price");
+      .populate("services.service", "name rateType rate");
 
     if (!bill) {
       return res.status(404).json({ message: "Bill not found." });
@@ -122,14 +134,16 @@ export const getBillDetails = async (req, res) => {
 
     const services = bill.services.map((item) => ({
       name: item.service.name,
-      price: item.service.price,
+      category: item.service.category,
+      rateType: item.service.rateType,
+      rate: item.service.rate,
       quantity: item.quantity,
-      total: item.service.price * item.quantity,
+      total: item.service.rate * item.quantity,
     }));
 
     res.status(200).json({
       invoiceNumber: bill.invoiceNumber,
-      caseId: bill.caseId, // Include case_id
+      caseId: bill.caseId,
       invoiceDate: bill.invoiceDate,
       patient: { name: bill.patient.name, phone: bill.patient.phone },
       doctor: {

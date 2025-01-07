@@ -1,9 +1,9 @@
+import mongoose from 'mongoose';
 import Service from "../models/serviceModel.js";
 import Hospital from "../models/hospitalModel.js"; // Import the Hospital model
 
-// Add Service
 export const addService = async (req, res) => {
-  const { name, description, price } = req.body;
+  const { name, description, category, rateType, rate, effectiveDate, amenities } = req.body;
   const hospitalId = req.session.hospitalId;
 
   if (!hospitalId) {
@@ -13,28 +13,35 @@ export const addService = async (req, res) => {
   }
 
   try {
-    const newService = new Service({
-      name,
-      description,
-      price,
-      createdBy: hospitalId,
-    });
-    await newService.save();
+    const existingService = await mongoose.model("Service").findOne({ name, createdBy: hospitalId });
 
-    // Update the hospital's services array
-    await Hospital.findByIdAndUpdate(
-      hospitalId,
-      { $push: { services: newService._id } },
-      { new: true }
-    );
+    if (existingService) {
+      // Add sub-category to existing service
+      existingService.categories.push({ category, rateType, rate, effectiveDate, amenities });
+      await existingService.save();
+      res.status(200).json({ message: "Sub-category added successfully.", service: existingService });
+    } else {
+      // Create new service
+      const newService = new mongoose.model("Service")({
+        name,
+        description,
+        categories: [{ category, rateType, rate, effectiveDate, amenities }],
+        createdBy: hospitalId,
+      });
 
-    res
-      .status(201)
-      .json({ message: "Service added successfully.", service: newService });
+      await newService.save();
+
+      // Update the hospital's services array
+      await mongoose.model("Hospital").findByIdAndUpdate(
+        hospitalId,
+        { $push: { services: newService._id } },
+        { new: true }
+      );
+
+      res.status(201).json({ message: "Service added successfully.", service: newService });
+    }
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Error adding service.", error: error.message });
+    res.status(500).json({ message: "Error adding service.", error: error.message });
   }
 };
 
