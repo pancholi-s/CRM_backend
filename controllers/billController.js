@@ -1,10 +1,10 @@
 import Bill from "../models/billModel.js";
-import Appointment from "../models/appointmentModel.js";
+import Patient from "../models/patientModel.js";
 import Service from "../models/serviceModel.js";
 
-// Create Bill with Dynamic Service Details
+// Create Bill with Direct Patient Reference
 export const createBill = async (req, res) => {
-  const { appointmentId, services, paidAmount, mode } = req.body;
+  const { patientId, services, paidAmount, mode } = req.body;
   const { hospitalId } = req.session;
 
   if (!hospitalId) {
@@ -14,19 +14,13 @@ export const createBill = async (req, res) => {
   }
 
   try {
-    // Fetch appointment
-    const appointment = await Appointment.findById(appointmentId)
-      .populate("patient", "name phone")
-      .populate("doctor", "name specialization");
+    // Fetch the patient directly
+    const patient = await Patient.findOne({ _id: patientId, hospital: hospitalId }).select(
+      "name phone"
+    );
 
-    if (!appointment) {
-      return res.status(404).json({ message: "Appointment not found." });
-    }
-
-    if (appointment.status !== "Completed") {
-      return res
-        .status(400)
-        .json({ message: "Appointment is not completed yet." });
+    if (!patient) {
+      return res.status(404).json({ message: "Patient not found." });
     }
 
     // Validate services
@@ -59,8 +53,12 @@ export const createBill = async (req, res) => {
       const serviceTotal = serviceDetails.rate * serviceItem.quantity;
       validatedServices.push({
         service: service._id,
+        category: serviceItem.category,
         quantity: serviceItem.quantity,
+        rate: serviceDetails.rate,
+        total: serviceTotal,
       });
+
       totalAmount += serviceTotal;
     }
 
@@ -68,9 +66,7 @@ export const createBill = async (req, res) => {
 
     // Create Bill
     const newBill = new Bill({
-      caseId: appointment.caseId,
-      patient: appointment.patient._id,
-      doctor: appointment.doctor._id,
+      patient: patient._id,
       services: validatedServices,
       totalAmount,
       paidAmount,
@@ -92,6 +88,7 @@ export const createBill = async (req, res) => {
       .json({ message: "Error generating bill.", error: error.message });
   }
 };
+
 
 // Get All Bills
 export const getAllBills = async (req, res) => {
