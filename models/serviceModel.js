@@ -19,6 +19,11 @@ const serviceSchema = new mongoose.Schema(
       ref: "Hospital",
       required: true,
     },
+    revenueType: {
+      type: String,
+      enum: ['Outpatient', 'Inpatient', 'Surgery', 'Diagnostics'], // Main categories for revenue grouping
+      required: true,
+    },
   },
   { timestamps: true }
 );
