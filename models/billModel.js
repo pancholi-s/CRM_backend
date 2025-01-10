@@ -5,7 +5,8 @@ const billSchema = new mongoose.Schema(
     caseId: {
       type: String,
       required: true,
-    }, // Add case_id field
+    },
+    
     patient: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Patient",
@@ -14,8 +15,9 @@ const billSchema = new mongoose.Schema(
     doctor: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Doctor",
-      required: true,
+      // required: true,
     },
+
     services: [
       {
         service: { type: mongoose.Schema.Types.ObjectId, ref: "Service" },

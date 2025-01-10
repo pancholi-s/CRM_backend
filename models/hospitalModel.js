@@ -107,6 +107,7 @@ const hospitalSchema = new mongoose.Schema({
     ref: 'Expense',
     default: []
   }],
+  revenue: { type: Number, default: 0 }, 
 });
 
 const Hospital = mongoose.model('Hospital', hospitalSchema);

@@ -22,7 +22,7 @@ const serviceSchema = new mongoose.Schema(
     revenueType: {
       type: String,
       enum: ['Outpatient', 'Inpatient', 'Surgery', 'Diagnostics'], // Main categories for revenue grouping
-      required: true,
+      // required: true,
     },
   },
   { timestamps: true }

@@ -1,10 +1,11 @@
+import Appointment from "../models/appointmentModel.js";
 import Bill from "../models/billModel.js";
 import Patient from "../models/patientModel.js";
 import Service from "../models/serviceModel.js";
+import Hospital from "../models/hospitalModel.js";
 
-// Create Bill with Direct Patient Reference
 export const createBill = async (req, res) => {
-  const { patientId, services, paidAmount, mode } = req.body;
+  const { patientId, caseID, services, paidAmount, mode } = req.body;
   const { hospitalId } = req.session;
 
   if (!hospitalId) {
@@ -14,13 +15,25 @@ export const createBill = async (req, res) => {
   }
 
   try {
-    // Fetch the patient directly
-    const patient = await Patient.findOne({ _id: patientId, hospital: hospitalId }).select(
-      "name phone"
-    );
+    // Fetch patient
+    const patient = await Patient.findOne({
+      _id: patientId,
+      hospital: hospitalId,
+    }).select("name phone");
 
     if (!patient) {
       return res.status(404).json({ message: "Patient not found." });
+    }
+
+    // Validate appointment (caseId)
+    const appointment = await Appointment.findOne({
+      caseId: caseID,
+      patient: patientId,
+      hospital: hospitalId,
+    });
+
+    if (!appointment) {
+      return res.status(404).json({ message: "Appointment not found." });
     }
 
     // Validate services
@@ -39,7 +52,6 @@ export const createBill = async (req, res) => {
           .json({ message: `Service not found: ${serviceItem.serviceId}` });
       }
 
-      // Find sub-category details
       const serviceDetails = service.categories.find(
         (sub) => sub.category === serviceItem.category
       );
@@ -67,6 +79,7 @@ export const createBill = async (req, res) => {
     // Create Bill
     const newBill = new Bill({
       patient: patient._id,
+      caseId: appointment.caseId,
       services: validatedServices,
       totalAmount,
       paidAmount,
@@ -78,6 +91,12 @@ export const createBill = async (req, res) => {
     });
 
     await newBill.save();
+
+    // Update hospital revenue
+    await Hospital.updateOne(
+      { _id: hospitalId },
+      { $inc: { revenue: paidAmount } }
+    );
 
     res
       .status(201)
