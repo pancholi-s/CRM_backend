@@ -4,8 +4,8 @@ import { v4 as uuidv4 } from 'uuid';  // Using UUID to ensure uniqueness
 const appointmentSchema = new mongoose.Schema({
   caseId: {
     type: String,
-    required: true,
     unique: true,
+    default: () => `CASE-${uuidv4()}`,
   },
   patient: {
     type: mongoose.Schema.Types.ObjectId,
