@@ -14,6 +14,7 @@ import staffRoutes from "./routes/staffRoutes.js" ;
 import serviceRoutes from './routes/serviceRoutes.js';
 import billRoutes from './routes/billRoutes.js';
 import expenseRoutes from './routes/expenseRoutes.js';
+import resourceRoutes from './routes/resourceRoutes.js';
 
 dotenv.config();
 
@@ -54,6 +55,7 @@ app.use('/', staffRoutes);
 app.use('/', billRoutes);
 app.use('/', serviceRoutes);
 app.use('/', expenseRoutes);
+app.use('/', resourceRoutes);
 
 // Base route
 app.get('/', (req, res) => {
