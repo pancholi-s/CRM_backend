@@ -5,7 +5,7 @@ const router = express.Router();
 
 router.post('/addDepartments', addDepartment);
 
-router.get('/getDepartments/:departmentId', getDepartments); // Assuming you fetch by ID
+router.get('/getDepartments/:departmentId', getDepartments); 
 router.get('/getAllDepartments', getAllDepartments);
 
 export default router;

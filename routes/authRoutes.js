@@ -11,6 +11,6 @@ router.post('/login', loginUser);
 //register a hospital
 router.post('/registerHospital', registerHospital);
 
-router.use(requireHospitalContext);     // Apply globally or to specific routes
+router.use( requireHospitalContext );     // Apply globally or to specific routes
 
 export default router;
