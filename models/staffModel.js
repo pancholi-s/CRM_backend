@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 
 const staffSchema = new mongoose.Schema({
   profile: {
-    type: String, // URL or path to profile photo
+    type: String, 
   },
   staff_id: {
     type: String,
@@ -38,5 +38,5 @@ const staffSchema = new mongoose.Schema({
   },
 });
 
-const Staff = mongoose.model('Staff', staffSchema);
-export default Staff;
+export default mongoose.model('Staff', staffSchema);
+

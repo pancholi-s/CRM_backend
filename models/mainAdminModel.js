@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 
+//check afterwards
 const mainAdminSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -32,5 +33,4 @@ const mainAdminSchema = new mongoose.Schema({
   },
 });
 
-const MainAdmin = mongoose.model('MainAdmin', mainAdminSchema);
-export default MainAdmin;
+export default mongoose.model('MainAdmin', mainAdminSchema);

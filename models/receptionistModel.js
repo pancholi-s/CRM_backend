@@ -20,17 +20,13 @@ const receptionistSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-  appointmentsHandled: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Appointment',
-  }],
   role: {
     type: String,
     default: 'receptionist',
     required: true,
   },
   hospital: {
-    type: mongoose.Schema.Types.ObjectId, // Link the receptionist to a specific hospital
+    type: mongoose.Schema.Types.ObjectId, 
     ref: 'Hospital',
     required: true,
   },

@@ -2,18 +2,21 @@ import mongoose from "mongoose";
 
 const serviceSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true }, // Main category name
+    name: { type: String, required: true }, 
     description: { type: String },
     categories: [
       {
-        category: { type: String, required: true }, // Sub-category name
+        category: { type: String, required: true }, 
         rateType: { type: String, required: true },
-        rate: { type: Number, required: true }, // Rate for the sub-category
-        effectiveDate: { type: Date, required: true }, // Effective date for the rate
-        amenities: { type: String, default: "N/A" }, // Additional amenities
+        rate: { type: Number, required: true }, 
+        effectiveDate: { type: Date, required: true }, 
+        amenities: { type: String, default: "N/A" }, 
       }
     ],
-    lastUpdated: { type: Date, default: Date.now }, // Last updated date
+    lastUpdated: { 
+      type: Date,
+      default: Date.now
+    }, 
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Hospital",

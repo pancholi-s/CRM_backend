@@ -26,5 +26,5 @@ const rejectedAppointmentSchema = new mongoose.Schema({
     }
 });
 
-const RejectedAppointment = mongoose.model('RejectedAppointment', rejectedAppointmentSchema);
-export default RejectedAppointment;
+export default mongoose.model('RejectedAppointment', rejectedAppointmentSchema);
+

@@ -47,31 +47,5 @@ const requestedAppointmentSchema = new mongoose.Schema({
   },
 });
 
-// // Middleware to generate caseId before saving a new appointment
-// appointmentSchema.pre('save', async function (next) {
-//   const RequestedAppointment = mongoose.model('RequestedAppointment'); // Access the Appointment model
+export default mongoose.model('RequestedAppointment', requestedAppointmentSchema);
 
-//   // Ensure caseId is generated only for NEW appointments
-//   if (!this.caseId) {
-//     let unique = false; // Flag to track uniqueness
-//     let newCaseId;
-
-//     // Keep generating new UUID until a unique caseId is found
-//     while (!unique) {
-//       newCaseId = `CASE-${uuidv4()}`; // Generate a new UUID
-
-//       // Check if the generated caseId already exists
-//       const existingAppointment = await RequestedAppointment.findOne({ caseId: newCaseId });
-//       if (!existingAppointment) {
-//         unique = true; // UUID is unique, exit the loop
-//       }
-//     }
-//     // Assign the unique caseId
-//     this.caseId = newCaseId;
-//   }
-
-//   next(); // Proceed to save the document
-// });
-
-const RequestedAppointment = mongoose.model('RequestedAppointment', requestedAppointmentSchema);
-export default RequestedAppointment;

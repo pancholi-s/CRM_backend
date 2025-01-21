@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
 const patientSchema = new mongoose.Schema({
   name: {
@@ -11,6 +11,7 @@ const patientSchema = new mongoose.Schema({
     required: true,
   },
 
+  //automatically calculate date according to the date of birth
   birthday: {
     type: String,
     required: true,
@@ -27,7 +28,7 @@ const patientSchema = new mongoose.Schema({
     unique: true,
     lowercase: true,
   },
-  
+
   password: {
     type: String,
     required: true,
@@ -41,97 +42,107 @@ const patientSchema = new mongoose.Schema({
 
   age: {
     type: Number,
-    //required: true,
+    required: true,
   },
 
-  medicalHistory: [{
-    type: [String],  // List of medical history records
-  }],
+  medicalHistory: [
+    {
+      type: [String],
+    },
+  ],
 
-  currentMedication: [{
-    type: String,
+  currentMedication: [
+    {
+      type: String,
+    },
+  ],
 
-  }],
+  symptoms: [
+    {
+      type: String,
+    },
+  ],
 
-  symptoms: [{
-    type: String,
+  socialHistory: [
+    {
+      type: String,
+    },
+  ],
 
-  }],
+  healingProgress: [
+    {
+      type: String,
+    },
+  ],
 
-  socialHistory: [{
-    type: String,
+  goals: [
+    {
+      type: String,
+    },
+  ],
 
-  }],
-
-  healingProgress: [{
-    type: String,
-
-  }],
-
-  goals: [{
-    type: String,
-
-  }],
-
-  nextStep: [{
-    type: String,
-
-  }],
-
+  nextStep: [
+    {
+      type: String,
+    },
+  ],
 
   registrationDate: {
     type: Date,
-    default: Date.now, // Automatically sets the registration date when a patient is created
+    default: Date.now,
   },
 
   profilePhoto: {
-    type: String, // Store the file path or URL of the profile photo
+    type: String,
     required: false,
   },
 
   appointments: [
     {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Appointment', // Reference to the Appointment model
+      ref: "Appointment",
     },
   ],
-  
-  //can be used as asserted by
-  doctors: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Doctor',
-  }],
+
+  doctors: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Doctor",
+    },
+  ],
 
   role: {
     type: String,
-    default: 'patient',
+    default: "patient",
     required: true,
   },
-  
+
   department: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Department'
+    ref: "Department",
   },
+
+  //check for patients in multiple hospitals
   hospital: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Hospital'
+    ref: "Hospital",
   },
 
   status: {
-    type:String,
-    enum:["active","inactive"], 
+    type: String,
+    enum: ["active", "inactive"],
     default: ["active"],
   },
 
-  files: [{
-    fileName: { type: String, required: true }, // Name of the file
-    fileType: { type: String, required: true }, // Type of the file (e.g., "PDF", "Image")
-    fileUrl: { type: String, required: true },  // URL or path to download the file
-    uploadedAt: { type: Date, default: Date.now }, // Timestamp when the file was uploaded
-    description: { type: String, required: false }, // Optional description of the file
-  }],
-
+  files: [
+    {
+      fileName: { type: String, required: true },
+      fileType: { type: String, required: true },
+      fileUrl: { type: String, required: true },
+      uploadedAt: { type: Date, default: Date.now },
+      description: { type: String, required: false },
+    },
+  ],
 });
 
-const Patient = mongoose.model('Patient', patientSchema);
-export default Patient;
+export default mongoose.model("Patient", patientSchema);
