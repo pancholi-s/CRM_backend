@@ -8,9 +8,6 @@ export const registerHospital = async (req, res) => {
     email,
     website,
     establishedDate,
-    services,
-    totalRooms,
-    totalStaff,
     departments,
 
   } = req.body;
@@ -21,10 +18,7 @@ export const registerHospital = async (req, res) => {
     !address ||
     !phone ||
     !email ||
-    !establishedDate ||
-    !services ||
-    !totalRooms ||
-    !totalStaff 
+    !establishedDate
   ) {
     return res.status(400).json({ message: "All fields are required." });
   }
@@ -44,13 +38,7 @@ export const registerHospital = async (req, res) => {
       email,
       website,
       establishedDate,
-      services,
-      totalRooms,
-      totalStaff,
       departments,
-
-    //   mainAdmin, // Assuming MainAdmin is a reference to a user that exists
-    //   hospitalAdmin, // Assuming HospitalAdmin is a reference to a user that exists
     });
 
     // Save the hospital to the database

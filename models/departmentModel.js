@@ -36,12 +36,30 @@ const departmentSchema = new mongoose.Schema({
       ref: "Doctor",
     },
   ],
-  nurses: [
+  rooms: [
     {
-      type: String,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Room",
+      default: [],
     },
   ],
-  services: [
+  staffs: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Staff",
+      default: [],
+    },
+  ],
+  hospital: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Hospital",
+    required: true,
+  },
+  services: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Service',
+  }],
+  nurses: [
     {
       type: String,
     },
@@ -66,25 +84,6 @@ const departmentSchema = new mongoose.Schema({
       type: String,
     },
   ],
-  rooms: [
-    {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Room",
-      default: [],
-    },
-  ],
-  staffs: [
-    {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Staff",
-      default: [],
-    },
-  ],
-  hospital: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "Hospital",
-    required: true,
-  },
 });
 
 export default mongoose.model("Department", departmentSchema);

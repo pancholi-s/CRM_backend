@@ -82,10 +82,12 @@ const hospitalSchema = new mongoose.Schema({
   services: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Service',
+    default: [],
   }],
   rooms: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Room',
+    default: [],
   }],  
   staffs: [{
     type: mongoose.Schema.Types.ObjectId,
