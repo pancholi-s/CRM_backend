@@ -21,11 +21,11 @@ const hospitalSchema = new mongoose.Schema({
     },
     zipCode: {
       type: String,
-      required: false,
+      required: true,
     },
     country: {
       type: String,
-      required: false,
+      required: true,
     },
   },
   phone: {
@@ -45,20 +45,16 @@ const hospitalSchema = new mongoose.Schema({
   },
   departments: [{
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Department', // Referencing the Department model
+    ref: 'Department',
   }],
   appointments: [{
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Appointment', // Referencing the Department model
+    ref: 'Appointment',
   }],
   RejectedAppointment: [{
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'RejectedAppointment', // Referencing the Department model
+    ref: 'RejectedAppointment',
   }],
-  // employees: [{
-  //   type: mongoose.Schema.Types.ObjectId,
-  //   ref: 'Employee', // General employee list
-  // }],
   doctors: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Doctor',
@@ -77,22 +73,16 @@ const hospitalSchema = new mongoose.Schema({
   },
   mainAdmin: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'MainAdmin', // Reference to the MainAdmin model
+    ref: 'MainAdmin',
   },
   hospitalAdmin: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'HospitalAdmin', // Reference to the HospitalAdmin model
+    ref: 'HospitalAdmin',
   },
   services: [{
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'HospitalAdmin',
+    ref: 'Service',
   }],
-  totalRooms: {
-    type: String
-  },
-  totalStaff: {
-    type: String
-  },
   rooms: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Room',
@@ -107,8 +97,10 @@ const hospitalSchema = new mongoose.Schema({
     ref: 'Expense',
     default: []
   }],
-  revenue: { type: Number, default: 0 }, 
+  revenue: {
+    type: Number,
+    default: 0
+  },
 });
 
-const Hospital = mongoose.model('Hospital', hospitalSchema);
-export default Hospital;
+export default mongoose.model('Hospital', hospitalSchema);

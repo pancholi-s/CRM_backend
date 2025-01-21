@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
 const doctorSchema = new mongoose.Schema({
   name: {
@@ -17,12 +17,12 @@ const doctorSchema = new mongoose.Schema({
     minlength: 8,
   },
   specialization: {
-    type: String, // e.g., "Cardiology", "Orthopedics"
+    type: String,
     required: false,
   },
   head: {
-    type: mongoose.Schema.Types.ObjectId, // Reference to the Department model if the doctor is a head
-    ref: 'Department',
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Department",
     default: null,
   },
   phone: {
@@ -31,39 +31,48 @@ const doctorSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    default: null,  
+    enum: ["active", "inactive"],
+    default: null,
   },
-  patients: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Patient',
-  }],
-  appointments: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Appointment',
-  }],
-  departments: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Department',
-  }],
+  patients: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Patient",
+    },
+  ],
+  appointments: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Appointment",
+    },
+  ],
+  departments: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Department",
+      required: true,
+    },
+  ],
   hospital: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Hospital',
+    ref: "Hospital",
     required: true,
   },
   availability: {
-    type: [String],  // e.g., ['Monday 9:00 AM - 5:00 PM', 'Tuesday 9:00 AM - 5:00 PM']
-    required: true,
+    type: [String], // e.g., ['Monday 9:00 AM - 5:00 PM', 'Tuesday 9:00 AM - 5:00 PM']
+    required: false, // change during doctor view
   },
   role: {
     type: String,
-    default: 'doctor',
+    default: "doctor",
     required: true,
   },
-  assignedRooms: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Room',
-  }],  
+  assignedRooms: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Room",
+    },
+  ],
 });
 
-const Doctor = mongoose.model('Doctor', doctorSchema);
-export default Doctor;
+export default mongoose.model("Doctor", doctorSchema);

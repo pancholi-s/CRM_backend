@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
 const hospitalAdminSchema = new mongoose.Schema({
   name: {
@@ -18,14 +18,15 @@ const hospitalAdminSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    default: 'HospitalAdmin',
+    default: "HospitalAdmin",
   },
   hospital: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Hospital',
-    required: true,  // The hospital that the admin manages
+    ref: "Hospital",
+    required: true,
   },
   canManage: {
+    // check later
     type: Object,
     default: {
       doctors: true,
@@ -36,5 +37,4 @@ const hospitalAdminSchema = new mongoose.Schema({
   },
 });
 
-const HospitalAdmin = mongoose.model('HospitalAdmin', hospitalAdminSchema);
-export default HospitalAdmin;
+export default mongoose.model("HospitalAdmin", hospitalAdminSchema);

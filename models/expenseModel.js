@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
 const expenseSchema = new mongoose.Schema({
   expenseType: {
@@ -15,7 +15,7 @@ const expenseSchema = new mongoose.Schema({
   },
   details: {
     type: String,
-    required: false,
+    required: false, //check later
   },
   date: {
     type: Date,
@@ -23,10 +23,9 @@ const expenseSchema = new mongoose.Schema({
   },
   hospital: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Hospital',
+    ref: "Hospital",
     required: true,
   },
 });
 
-const Expense = mongoose.model('Expense', expenseSchema);
-export default Expense;
+export default mongoose.model("Expense", expenseSchema);

@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
 const departmentSchema = new mongoose.Schema({
   name: {
@@ -9,7 +9,7 @@ const departmentSchema = new mongoose.Schema({
     type: {
       id: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Doctor', // Reference to the department head (Doctor)
+        ref: "Doctor",
         required: true,
       },
       name: {
@@ -18,55 +18,73 @@ const departmentSchema = new mongoose.Schema({
       },
     },
   },
-  patients: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Patient', // Reference to patients assigned to this department
-  }],
-  doctors: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Doctor', // Reference to doctors in this department
-  }],
-  specialistDoctors: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Doctor', // Reference to specialist doctors
-  }],
-  nurses: [{
-    type: String,
-  }],
-  services: [{
-    type: String, // List of active services provided by this department, e.g., ['ECG', 'Cardiology']
-  }],
-  specializedProcedures: [{
-    type: String,
-    required: false
-  }],
-  facilities: [{
-    type: String,
-    required: false
-  }],
-  criticalEquipments: [{
-    type: String,
-    required: false
-  }],
-  equipmentMaintenance: [{
-    type: String,
-    required: false
-  }],
-  rooms: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Room',
-  }],
-  staffs: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Staff',
-    default: [],
-  }],
+  patients: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Patient",
+    },
+  ],
+  doctors: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Doctor",
+    },
+  ],
+  specialistDoctors: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Doctor",
+    },
+  ],
+  nurses: [
+    {
+      type: String,
+    },
+  ],
+  services: [
+    {
+      type: String,
+    },
+  ],
+  specializedProcedures: [
+    {
+      type: String,
+    },
+  ],
+  facilities: [
+    {
+      type: String,
+    },
+  ],
+  criticalEquipments: [
+    {
+      type: String,
+    },
+  ],
+  equipmentMaintenance: [
+    {
+      type: String,
+    },
+  ],
+  rooms: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Room",
+      default: [],
+    },
+  ],
+  staffs: [
+    {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Staff",
+      default: [],
+    },
+  ],
   hospital: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Hospital',
+    ref: "Hospital",
     required: true,
-  }
+  },
 });
 
-const Department = mongoose.model('Department', departmentSchema);
-export default Department;
+export default mongoose.model("Department", departmentSchema);

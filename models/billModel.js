@@ -6,7 +6,6 @@ const billSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    
     patient: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Patient",
@@ -15,28 +14,52 @@ const billSchema = new mongoose.Schema(
     doctor: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Doctor",
-      // required: true,
+      required: false, //change to true -> when doctor view is being developed to link doctor to bill
     },
-
     services: [
       {
         service: { type: mongoose.Schema.Types.ObjectId, ref: "Service" },
         quantity: { type: Number, default: 1 },
       },
     ],
-    totalAmount: { type: Number, required: true },
-    paidAmount: { type: Number, required: true, default: 0 },
-    outstanding: { type: Number, required: true },
-    status: { type: String, enum: ["Pending", "Paid"], default: "Pending" },
-    invoiceNumber: { type: String, unique: true },
-    invoiceDate: { type: Date, default: Date.now },
+    totalAmount: {
+      type: Number,
+      required: true,
+    },
+    paidAmount: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+    outstanding: {
+      type: Number,
+      required: true,
+    },
+    status: {
+      type: String,
+      enum: ["Pending", "Paid"],
+      default: "Pending",
+    },
+    invoiceNumber: {
+      type: String,
+      unique: true,
+    },
+    invoiceDate: {
+      type: Date,
+      default: Date.now,
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Receptionist",
       required: true,
     },
-    mode: { type: String, enum: ["Online", "Cash"], required: true },
+    mode: {
+      type: String,
+      enum: ["Online", "Cash"],
+      required: true,
+    },
   },
+
   { timestamps: true }
 );
 
