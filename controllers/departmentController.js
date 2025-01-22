@@ -88,6 +88,12 @@ export const addDepartment = async (req, res) => {
       return res.status(404).json({ message: "Hospital not found or failed to update." });
     }
 
+    // Update the head doctor's document to reference the new department
+    await Doctor.findByIdAndUpdate(
+      headDoctor._id,
+      { $push: { departments: newDepartment._id } }, // Add the new department to the head doctor's departments array
+      { new: true }
+    );
  
     res.status(201).json({
       message: "Department created and hospital updated successfully.",

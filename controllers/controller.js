@@ -48,40 +48,47 @@ export const registerUser = async (req, res) => {
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // If role is HospitalAdmin, create a hospital admin
-    if (role === "HospitalAdmin") {
-      const newAdmin = new HospitalAdmin({
+    let newUser;
+
+    if (role === "doctor") {
+      const { department } = additionalData;
+
+      // Find the department by its name
+      const departmentDoc = await Department.findOne({ name: department });
+      if (!departmentDoc) {
+        return res.status(400).json({ message: "Department not found." });
+      }
+
+      // Create a new doctor
+      newUser = new Doctor({
         name,
         email,
         password: hashedPassword,
         phone,
-        hospital: hospital._id, // Link to the hospital
+        role,
+        hospital: hospital._id,
+        departments: [departmentDoc._id],
         ...additionalData,
       });
 
-      // Save the new admin and update the hospital document
-      await newAdmin.save();
-      await Hospital.findByIdAndUpdate(hospital._id, {
-        $push: { admins: newAdmin._id }, // Assuming the hospital has an admins field
-      });
+      // Save the doctor
+      await newUser.save();
 
-      return res.status(201).json({
-        message: "Hospital Admin registered successfully.",
-      });
-    }
-
-    // For patient, receptionist, and doctor roles, proceed with normal registration flow
-    let newUser;
-    if (role === "patient") {
+      // Update the department document to include the new doctor
+      await Department.findByIdAndUpdate(
+        departmentDoc._id,
+        { $push: { doctors: newUser._id } },
+        { new: true }
+      );
+    } else if (role === "patient") {
       const patientStatus = additionalData.status || ["active"];
-
       newUser = new Patient({
         name,
         email,
         password: hashedPassword,
         phone,
         role,
-        status:patientStatus,
+        status: patientStatus,
         hospital: hospital._id,
         registrationDate: new Date(),
         ...additionalData,
@@ -96,33 +103,24 @@ export const registerUser = async (req, res) => {
         hospital: hospital._id,
         ...additionalData,
       });
-    } else if (role === "doctor") {
-        const { department } = additionalData;
-        const departmentDoc = await Department.findOne({ name: department });
-
-        if (!departmentDoc) {
-          return res.status(400).json({ message: "Department not found." });
-        }
-
-      newUser = new Doctor({
+    } else if (role === "HospitalAdmin") {
+      newUser = new HospitalAdmin({
         name,
         email,
         password: hashedPassword,
         phone,
-        role,
         hospital: hospital._id,
-        departments: [departmentDoc._id],
         ...additionalData,
       });
-    } else {
-      newUser = new Model({
-        name,
-        email,
-        password: hashedPassword,
-        phone,
-        role,
-        hospital: hospital._id,
-        ...additionalData,
+
+      // Save the new admin and update the hospital document
+      await newUser.save();
+      await Hospital.findByIdAndUpdate(hospital._id, {
+        $push: { admins: newUser._id },
+      });
+
+      return res.status(201).json({
+        message: "Hospital Admin registered successfully.",
       });
     }
 
@@ -130,9 +128,13 @@ export const registerUser = async (req, res) => {
     await newUser.save();
 
     // Update the hospital document with the new user
-    const updateField = role === "doctor" ? "doctors" :
-                        role === "receptionist" ? "receptionists" : "patients";
-    
+    const updateField =
+      role === "doctor"
+        ? "doctors"
+        : role === "receptionist"
+        ? "receptionists"
+        : "patients";
+
     // Push the new user's _id into the appropriate array in the hospital document
     await Hospital.findByIdAndUpdate(
       hospital._id,
@@ -148,8 +150,6 @@ export const registerUser = async (req, res) => {
     res.status(500).json({ message: "Error registering user." });
   }
 };
-
-
 
 // login
 export const loginUser = async (req, res) => {

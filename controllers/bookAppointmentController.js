@@ -124,7 +124,7 @@ export const bookAppointment = async (req, res) => {
     // Optional: Update the department's appointments array (if maintained)
     await Department.findByIdAndUpdate(
       department._id,
-      { $push: { appointments: newAppointment._id } },
+      { $push: { appointments: newAppointment._id },$addToSet: { patients: patient._id }, },
       { session, new: true }
     );
 

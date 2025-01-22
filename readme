@@ -9,3 +9,7 @@ patientController:- GET request for patients. ROUTE:- patientRoutes
 requestAppointmentController:- POST request for requesting,accepting and rejecting an appointment. ROUTE:- AppointmentRoute
 roomController:- POST request for adding a room and GET request for returning rooms in a hospital(also update and delete). ROUTE:- roomRoutes
 staffController:- POST request for adding a staff and GET request for returning staff in a hospital(also update and delete). ROUTE:- staffRoutes
+
+
+FLOW->
+Hospital-> Hospital Admin adds departments

@@ -22,6 +22,11 @@ const serviceSchema = new mongoose.Schema(
       ref: "Hospital",
       required: true,
     },
+    department: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Department',
+      required: true,
+    }],
     revenueType: {
       type: String,
       enum: ['Outpatient', 'Inpatient', 'Surgery', 'Diagnostics'], // Main categories for revenue grouping

@@ -30,6 +30,10 @@ const departmentSchema = new mongoose.Schema({
       ref: "Doctor",
     },
   ],
+  appointments: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Appointment',
+  }],
   specialistDoctors: [
     {
       type: mongoose.Schema.Types.ObjectId,

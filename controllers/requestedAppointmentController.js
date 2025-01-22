@@ -75,11 +75,17 @@ export const requestAppointment = async (req, res) => {
 export const approveAppointment = async (req, res) => {
   const { requestId } = req.params;
 
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
-    const request = await RequestedAppointment.findById(requestId);
+    // Fetch the requested appointment
+    const request = await RequestedAppointment.findById(requestId).session(session);
     if (!request) return res.status(404).json({ message: 'Request not found.' });
 
+    // Create a new Appointment document while retaining the original ID
     const confirmedAppointment = new Appointment({
+      _id: request._id, // Retain the original ID
       caseId: request.caseId,
       patient: request.patient,
       doctor: request.doctor,
@@ -91,12 +97,52 @@ export const approveAppointment = async (req, res) => {
       note: request.note,
     });
 
-    await confirmedAppointment.save();
-    await RequestedAppointment.findByIdAndDelete(requestId);
+    await confirmedAppointment.save({ session });
+
+    // Update references in related entities
+    await Promise.all([
+      // Add reference to the hospital
+      Hospital.findByIdAndUpdate(
+        request.hospital,
+        { $push: { appointments: confirmedAppointment._id } },
+        { session }
+      ),
+
+      // Add reference to the department
+      Department.findByIdAndUpdate(
+        request.department,
+        { $push: { appointments: confirmedAppointment._id } },
+        { session }
+      ),
+
+      // Add reference to the patient
+      Patient.findByIdAndUpdate(
+        request.patient,
+        { $push: { appointments: confirmedAppointment._id } },
+        { session }
+      ),
+
+      // Add reference to the doctor
+      Doctor.findByIdAndUpdate(
+        request.doctor,
+        { $push: { appointments: confirmedAppointment._id } },
+        { session }
+      ),
+    ]);
+
+    // Delete the original request
+    await RequestedAppointment.findByIdAndDelete(requestId, { session });
+
+    // Commit the transaction
+    await session.commitTransaction();
+    session.endSession();
 
     res.status(201).json({ message: 'Appointment approved.', appointment: confirmedAppointment });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to approve appointment.' });
+    await session.abortTransaction();
+    session.endSession();
+    console.error('Error approving appointment:', error);
+    res.status(500).json({ message: 'Failed to approve appointment.', error: error.message });
   }
 };
 
