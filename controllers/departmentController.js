@@ -218,6 +218,7 @@ export const getAllDepartments = async (req, res) => {
     // Map departments to extract required details
     const response = hospital.departments.map(department => {
       return {
+        departmentId: department._id,
         departmentName: department.name,
         departmentHead: department.head?.name || 'Not Assigned', // Safely access the head's name
         totalPatients: department.patients.length, // Count of patients
