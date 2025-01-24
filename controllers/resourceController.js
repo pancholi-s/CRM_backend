@@ -1,46 +1,34 @@
 import { editResource, deleteResource } from "../utils/resourceOperations.js";
 
 export const handleEdit = async (req, res) => {
+  const { id } = req.params;
+  const updates = req.body;
+  const { hospitalId } = req.session;
+
+  if (!hospitalId) {
+    return res.status(403).json({ message: 'Unauthorized access. Hospital ID not found in session.' });
+  }
+
   try {
-    const { modelName, id } = req.params;
-    const updates = req.body;
-    const hospitalId = req.session.hospitalId;
-
-    if (!hospitalId) {
-      return res
-        .status(403)
-        .json({ message: "Unauthorized access. No hospital context." });
-    }
-
-    const { default: model } = await import(`../models/${modelName}.js`);
-    const updated = await editResource(model, id, updates, hospitalId);
-
-    res
-      .status(200)
-      .json({ message: `${modelName} updated successfully`, updated });
+    const updatedResource = await editResource(id, updates, hospitalId);
+    res.status(200).json({ message: 'Resource updated successfully.', resource: updatedResource });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(404).json({ message: error.message });
   }
 };
 
 export const handleDelete = async (req, res) => {
+  const { id } = req.params;
+  const { hospitalId } = req.session;
+
+  if (!hospitalId) {
+    return res.status(403).json({ message: 'Unauthorized access. Hospital ID not found in session.' });
+  }
+
   try {
-    const { modelName, id } = req.params;
-    const hospitalId = req.session.hospitalId;
-
-    if (!hospitalId) {
-      return res
-        .status(403)
-        .json({ message: "Unauthorized access. No hospital context." });
-    }
-
-    const { default: model } = await import(`../models/${modelName}.js`);
-    const deleted = await deleteResource(model, id, hospitalId);
-
-    res
-      .status(200)
-      .json({ message: `${modelName} deleted successfully`, deleted });
+    const deletedResource = await deleteResource(id, hospitalId);
+    res.status(200).json({ message: 'Resource deleted successfully.', resource: deletedResource });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(404).json({ message: error.message });
   }
 };

@@ -20,12 +20,10 @@ const models = {
 export const registerUser = async (req, res) => {
   const { name, email, password, phone, role, hospitalName, ...additionalData } = req.body;
 
-  // Check for missing fields
   if (!name || !email || !password || !phone || !role || !hospitalName) {
     return res.status(400).json({ message: "All fields are required." });
   }
 
-  // Validate the role
   if (!["receptionist", "doctor", "patient", "HospitalAdmin"].includes(role)) {
     return res.status(400).json({ message: "Invalid role specified." });
   }
@@ -39,7 +37,6 @@ export const registerUser = async (req, res) => {
       return res.status(400).json({ message: "Email already in use." });
     }
 
-    // Find the hospital by its name
     const hospital = await Hospital.findOne({ name: hospitalName });
     if (!hospital) {
       return res.status(400).json({ message: "Hospital not found." });
@@ -53,13 +50,11 @@ export const registerUser = async (req, res) => {
     if (role === "doctor") {
       const { department } = additionalData;
 
-      // Find the department by its name
       const departmentDoc = await Department.findOne({ name: department });
       if (!departmentDoc) {
         return res.status(400).json({ message: "Department not found." });
       }
 
-      // Create a new doctor
       newUser = new Doctor({
         name,
         email,
@@ -71,7 +66,6 @@ export const registerUser = async (req, res) => {
         ...additionalData,
       });
 
-      // Save the doctor
       await newUser.save();
 
       // Update the department document to include the new doctor
@@ -151,37 +145,35 @@ export const registerUser = async (req, res) => {
   }
 };
 
-// login
 export const loginUser = async (req, res) => {
-  const { email, password, role } = req.body;
+  const { email, password } = req.body;
 
-  if (!email || !password || !role) {
-    return res
-      .status(400)
-      .json({ message: "Email, password, and role are required." });
-  }
-
-  if (!["receptionist", "doctor", "patient","HospitalAdmin"].includes(role)) {
-    return res.status(400).json({ message: "Invalid role specified." });
+  if (!email || !password) {
+    return res.status(400).json({ message: "Email and password are required." });
   }
 
   try {
-    const Model = models[role];
+    // Iterate over all roles to find the user
+    let user = null;
+    let role = null;
 
-    // Find user by email and role
-    const user = await Model.findOne({ email }).populate("hospital"); // Populate hospital details
+    for (const [key, Model] of Object.entries(models)) {
+      user = await Model.findOne({ email }).populate("hospital");
+      if (user) {
+        role = key;
+        break;
+      }
+    }
 
     if (!user) {
       return res.status(401).json({ message: "Invalid credentials." });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
-
     if (!isMatch) {
       return res.status(401).json({ message: "Invalid credentials." });
     }
 
-    // Generate JWT token
     const token = jwt.sign(
       {
         userId: user._id,
@@ -192,10 +184,9 @@ export const loginUser = async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN || "1d" } // Token expiry
     );
 
-    // Send token in response
     res.status(200).json({
       message: "Login successful",
-      token, // Include the Bearer token in the response
+      token,
       userId: user._id,
       role,
       hospitalId: user.hospital._id,

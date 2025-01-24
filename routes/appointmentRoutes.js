@@ -8,7 +8,7 @@ const router = express.Router();
 
 router.use(requireHospitalContext);
 
-router.post('/bookAppointment', bookAppointment);
+router.post('/bookAppointment', bookAppointment); 
 router.post('/completeAppointment', completeAppointment);
 
 router.post('/requestAppointment', requestAppointment);
