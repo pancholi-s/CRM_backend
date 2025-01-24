@@ -72,6 +72,57 @@ export const requestAppointment = async (req, res) => {
   }
 };
 
+export const getRequestedAppointments = async (req, res) => {
+  const { hospitalId } = req.session;
+
+  if (!hospitalId) {
+    return res
+      .status(403)
+      .json({ message: 'Unauthorized access. Hospital ID not found in session.' });
+  }
+
+  const { patientId, doctorId, departmentName, status } = req.query;
+
+  try {
+    // Build a filter object for the query
+    const filters = { hospital: hospitalId };
+
+    // Add optional filters
+    if (patientId) filters.patient = patientId;
+    if (doctorId) filters.doctor = doctorId;
+    if (status) filters.status = status;
+
+    // Filter by department name if provided
+    if (departmentName) {
+      const department = await Department.findOne({
+        name: departmentName,
+        hospital: hospitalId,
+      });
+      if (!department) {
+        return res
+          .status(404)
+          .json({ message: `Department '${departmentName}' not found.` });
+      }
+      filters.department = department._id;
+    }
+
+    // Fetch requested appointments based on filters
+    const requestedAppointments = await RequestedAppointment.find(filters)
+      .populate('patient', 'name email mobileNumber')
+      .populate('doctor', 'name email')
+      .populate('department', 'name')
+      .sort({ tokenDate: 1 }); // Sort by appointment date
+
+    res.status(200).json({
+      message: 'Requested appointments fetched successfully.',
+      appointments: requestedAppointments,
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching appointments.', error: error.message });
+  }
+};
+
+
 export const approveAppointment = async (req, res) => {
   const { requestId } = req.params;
 

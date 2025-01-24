@@ -1,7 +1,7 @@
 import express from 'express';
 import { bookAppointment, completeAppointment, getAppointmentsByStatus, getFilteredAppointments, getAppointmentCounts, getRejectedAppointments, getAppointmentsByVisitType } from '../controllers/bookAppointmentController.js';
 import { requireHospitalContext } from '../controllers/hospitalContext.js';
-import { requestAppointment, approveAppointment, rejectAppointment } from '../controllers/requestedAppointmentController.js';
+import { requestAppointment, approveAppointment, rejectAppointment,getRequestedAppointments } from '../controllers/requestedAppointmentController.js';
 import { updateStatusesMiddleware } from '../middleware/statusMiddleware.js';
 
 const router = express.Router();
@@ -20,5 +20,6 @@ router.get('/getFilteredAppointments', updateStatusesMiddleware, getFilteredAppo
 router.get('/getAppointmentCounts', updateStatusesMiddleware, getAppointmentCounts);
 router.get('/getRejectedAppointments', updateStatusesMiddleware, getRejectedAppointments);
 router.get('/getAppointmentsByVisitType', updateStatusesMiddleware, getAppointmentsByVisitType);
+router.get('/getRequestedAppointments', updateStatusesMiddleware, getRequestedAppointments);
 
 export default router;
