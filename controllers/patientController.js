@@ -9,14 +9,15 @@ export const getPatientsByHospital = async (req, res) => {
 
     // Fetch patients with populated appointments and nested doctor/department fields
     const patients = await Patient.find({ hospital: hospitalId })
-      .select('-address -email -password') // Exclude address, email, and password fields
+      .select(' -email -password') // Exclude address, email, and password fields
       .populate({
         path: 'appointments',
         populate: [
           { path: 'doctor', select: 'name _id' },
           { path: 'department', select: 'name' },
         ],
-      });
+      })
+      .populate({ path: 'doctors', select: 'name _id' }); // Populate the doctors array
 
     if (!patients || patients.length === 0) {
       return res.status(404).json({ message: "No patients found for this hospital" });
@@ -39,10 +40,17 @@ export const getPatientsByHospital = async (req, res) => {
           }))
         : [];
 
+      // Extract doctor names from the populated doctors array
+      const doctorNames = patient.doctors.map((doctor) => ({
+        id: doctor._id,
+        name: doctor.name,
+      }));
+
       // Return all patient attributes except excluded fields
       return {
         ...patient.toObject(), // Include all patient fields
         appointments, // Add transformed appointments data
+        doctors: doctorNames, // Add doctor names
       };
     });
 
@@ -64,6 +72,7 @@ export const getPatientsByHospital = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch patients", error: error.message });
   }
 };
+
 
 export const getPatientsByStatus = async (req, res) => {
   try {
