@@ -1,20 +1,14 @@
 import express from 'express';
-import {
-  addStaff,
-  getStaff,
-  updateStaff,
-  deleteStaff,
-} from '../controllers/staffController.js';
+import { authorizeRoles } from '../middleware/roleMiddleware.js';
+
+import { addStaff, getStaff } from '../controllers/staffController.js';
 import { requireHospitalContext } from '../controllers/hospitalContext.js';
 
 const router = express.Router();
 
-// Middleware to enforce hospital context
 router.use(requireHospitalContext);
 
-router.post('/addStaff', addStaff);
-router.get('/getStaff', getStaff);
-router.put('/updateStaff/:id', updateStaff);
-router.delete('/deleteStaff/:id', deleteStaff);
+router.post('/addStaff', authorizeRoles("hospitalAdmin"), addStaff);
+router.get('/getStaff', authorizeRoles("receptionist", "hospitalAdmin"), getStaff);
 
 export default router;

@@ -18,7 +18,7 @@ const hospitalAdminSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    default: "HospitalAdmin",
+    default: "hospitalAdmin",
   },
   hospital: {
     type: mongoose.Schema.Types.ObjectId,

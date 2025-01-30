@@ -19,7 +19,7 @@ const mainAdminSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    default: 'MainAdmin',
+    default: 'mainAdmin',
   },
   canManage: {
     type: Object,

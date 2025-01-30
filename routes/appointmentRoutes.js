@@ -1,4 +1,6 @@
 import express from 'express';
+import { authorizeRoles } from "../middleware/roleMiddleware.js";
+
 import { bookAppointment, completeAppointment, getAppointmentsByStatus, getFilteredAppointments, getAppointmentCounts, getRejectedAppointments, getAppointmentsByVisitType } from '../controllers/bookAppointmentController.js';
 import { requireHospitalContext } from '../controllers/hospitalContext.js';
 import { requestAppointment, approveAppointment, rejectAppointment,getRequestedAppointments } from '../controllers/requestedAppointmentController.js';
@@ -8,18 +10,18 @@ const router = express.Router();
 
 router.use(requireHospitalContext);
 
-router.post('/bookAppointment', bookAppointment); 
-router.post('/completeAppointment', completeAppointment);
+router.post('/bookAppointment', authorizeRoles("receptionist"), bookAppointment); 
+router.post('/completeAppointment', authorizeRoles("doctor"), completeAppointment);
 
-router.post('/requestAppointment', requestAppointment);
-router.post('/approveAppointment/:requestId', approveAppointment);
-router.post('/rejectAppointment/:requestId', rejectAppointment);
+router.post('/requestAppointment', authorizeRoles("patient"), requestAppointment);
+router.post('/approveAppointment/:requestId', authorizeRoles("receptionist", "doctor"), approveAppointment);
+router.post('/rejectAppointment/:requestId', authorizeRoles("receptionist", "doctor"), rejectAppointment);
 
-router.get('/getAppointmentsByStatus', updateStatusesMiddleware, getAppointmentsByStatus);
-router.get('/getFilteredAppointments', updateStatusesMiddleware, getFilteredAppointments);
-router.get('/getAppointmentCounts', updateStatusesMiddleware, getAppointmentCounts);
-router.get('/getRejectedAppointments', updateStatusesMiddleware, getRejectedAppointments);
-router.get('/getAppointmentsByVisitType', updateStatusesMiddleware, getAppointmentsByVisitType);
-router.get('/getRequestedAppointments', updateStatusesMiddleware, getRequestedAppointments);
+router.get('/getAppointmentsByStatus', authorizeRoles("receptionist", "hospitalAdmin"), updateStatusesMiddleware, getAppointmentsByStatus);
+router.get('/getFilteredAppointments', authorizeRoles("receptionist", "hospitalAdmin"), updateStatusesMiddleware, getFilteredAppointments);
+router.get('/getAppointmentCounts', authorizeRoles("receptionist", "hospitalAdmin"), updateStatusesMiddleware, getAppointmentCounts);
+router.get('/getRejectedAppointments', authorizeRoles("receptionist", "hospitalAdmin"), updateStatusesMiddleware, getRejectedAppointments);
+router.get('/getAppointmentsByVisitType', authorizeRoles("receptionist", "hospitalAdmin"), updateStatusesMiddleware, getAppointmentsByVisitType);
+router.get('/getRequestedAppointments', authorizeRoles("receptionist", "hospitalAdmin"), updateStatusesMiddleware, getRequestedAppointments);
 
 export default router;

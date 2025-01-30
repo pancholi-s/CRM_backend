@@ -1,23 +1,13 @@
 import express from 'express';
-import {
-  addRoom,
-  getRooms,
-  editRoom,
-  deleteRoom,
-} from '../controllers/roomController.js';
+import { authorizeRoles } from '../middleware/roleMiddleware.js';
+
+import { addRoom, getRooms } from '../controllers/roomController.js';
 
 const router = express.Router();
 
-// Create a new room
-router.post('/addRoom', addRoom);
+router.post('/addRoom', authorizeRoles("hospitalAdmin"), addRoom);
 
 // Get rooms (with optional filtering by hospital and department)
-router.get('/getRooms', getRooms);
-
-// Edit a room
-router.put('/editRoom/:id', editRoom);
-
-// Delete a room
-router.delete('/deleteRoom/:id', deleteRoom);
+router.get('/getRooms', authorizeRoles("receptionist", "hospitalAdmin"), getRooms);
 
 export default router;

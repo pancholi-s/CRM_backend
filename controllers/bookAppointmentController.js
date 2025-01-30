@@ -156,7 +156,8 @@ export const completeAppointment = async (req, res) => {
 
     // Update status and notes
     appointment.status = "Completed";
-    appointment.note = note;
+    // appointment.note = note;
+    appointment.note = appointment.note ? `${appointment.note}\n${note}` : note;
 
     await appointment.save();
 

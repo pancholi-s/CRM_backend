@@ -11,7 +11,7 @@ export const getDoctorsByHospital = async (req, res) => {
 
     // Fetch doctors belonging to the hospital
     const doctors = await Doctor.find({ hospital: hospitalId })
-      .select('name phone specialization status'); // Select only the required fields
+      .select('name email phone specialization status'); // Select only the required fields
 
     // Count of retrieved doctors
     const count = doctors.length;
