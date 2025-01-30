@@ -2,14 +2,14 @@ import Patient from '../models/patientModel.js';
 
 export const getPatientsByHospital = async (req, res) => {
   try {
-    const hospitalId = req.session.hospitalId; // Retrieve hospital ID from session
+    const hospitalId = req.session.hospitalId;
     if (!hospitalId) {
       return res.status(400).json({ message: "Hospital ID is required" });
     }
 
     // Fetch patients with populated appointments and nested doctor/department fields
     const patients = await Patient.find({ hospital: hospitalId })
-      .select(' -email -password') // Exclude address, email, and password fields
+      .select('-password') // Exclude password field
       .populate({
         path: 'appointments',
         populate: [
@@ -50,7 +50,7 @@ export const getPatientsByHospital = async (req, res) => {
       return {
         ...patient.toObject(), // Include all patient fields
         appointments, // Add transformed appointments data
-        doctors: doctorNames, // Add doctor names
+        doctors: doctorNames,
       };
     });
 
@@ -73,18 +73,16 @@ export const getPatientsByHospital = async (req, res) => {
   }
 };
 
-
 export const getPatientsByStatus = async (req, res) => {
   try {
-    const { status } = req.query; // Capture status query parameter
-    const hospitalId = req.session.hospitalId; // Get hospitalId from session
+    const { status } = req.query;
+    const hospitalId = req.session.hospitalId;
 
     // Validate status
     if (!['active', 'inactive'].includes(status)) {
       return res.status(400).json({ message: "Invalid status. Use 'active' or 'inactive'." });
     }
 
-    // Validate hospital context
     if (!hospitalId) {
       return res.status(403).json({ message: "Access denied. No hospital context found." });
     }
@@ -95,7 +93,6 @@ export const getPatientsByStatus = async (req, res) => {
       .populate('doctors', 'name specialization') // Populate doctor details
       .select('-password -medicalHistory -socialHistory'); // Exclude sensitive fields
 
-    // Return results
     res.status(200).json({
       hospitalId: hospitalId,
       status: status,
