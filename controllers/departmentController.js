@@ -193,16 +193,17 @@ export const getAllDepartments = async (req, res) => {
       return res.status(403).json({ message: "Hospital context not found in session." });
     }
 
-    // Fetch the hospital and populate the departments array
+    // Fetch the hospital and populate the departments array along with services
     const hospital = await Hospital.findById(hospitalId)
       .populate({
-        path: "departments", // Populate the departments array
+        path: "departments",
         populate: [
           { path: "head", populate: { path: "id" } }, // Populate head of department details
           { path: "specialistDoctors" }, // Populate specialist doctors
           { path: "doctors" }, // Populate doctors
-          { path: "patients" } // Populate patients
-        ]
+          { path: "patients" }, // Populate patients
+          { path: "services", select: "name" }, // Populate service names
+        ],
       });
 
     // Check if the hospital was found
@@ -216,18 +217,19 @@ export const getAllDepartments = async (req, res) => {
     }
 
     // Map departments to extract required details
-    const response = hospital.departments.map(department => {
-      return {
-        departmentId: department._id,
-        departmentName: department.name,
-        departmentHead: department.head?.name || 'Not Assigned', // Safely access the head's name
-        totalPatients: department.patients.length, // Count of patients
-        specialistDocs: department.specialistDoctors.length, // Count of specialist doctors
-        Docs: department.doctors.length, // Count of doctors
-        totalNurses: department.nurses.length, // Count of nurses
-        activeServices: department.services.join(', '), // Convert array to comma-separated string
-      };
-    });
+    const response = hospital.departments.map(department => ({
+      departmentId: department._id,
+      departmentName: department.name,
+      departmentHead: department.head?.id?.name || "Not Assigned",
+      totalPatients: department.patients.length,
+      specialistDocs: department.specialistDoctors.length,
+      Docs: department.doctors.length,
+      totalNurses: department.nurses.length,
+      activeServices: department.services.map(service => service.name), // Extract service names
+      facilities: department.facilities || [],
+      criticalEquipment: department.criticalEquipment || [],
+      equipmentMaintenance: department.equipmentMaintenance || [],
+    }));
 
     // Send response
     res.status(200).json(response);
@@ -237,3 +239,4 @@ export const getAllDepartments = async (req, res) => {
     res.status(500).json({ message: "Error fetching departments." });
   }
 };
+
