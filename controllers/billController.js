@@ -142,30 +142,50 @@ export const getBillDetails = async (req, res) => {
     const bill = await Bill.findById(billId)
       .populate("patient", "name phone")
       .populate("doctor", "name specialization")
-      .populate("services.service", "name rateType rate");
+      .populate("services.service", "name categories"); // Get all categories but filter later
 
     if (!bill) {
       return res.status(404).json({ message: "Bill not found." });
     }
 
-    const services = bill.services.map((item) => ({
-      name: item.service.name,
-      category: item.service.category,
-      rateType: item.service.rateType,
-      rate: item.service.rate,
-      quantity: item.quantity,
-      total: item.service.rate * item.quantity,
-    }));
+    // Map services and extract only the selected category
+    const services = bill.services.map((item) => {
+      const service = item?.service || {};
+      const selectedCategory = item.category; // Now, we have the selected category from the bill
+
+      const filteredCategories = service.categories
+        ?.filter((cat) => cat.category === selectedCategory) // Match stored category
+        .map((cat) => ({
+          category: cat.category,
+          rateType: cat.rateType,
+          rate: cat.rate,
+          total: (cat.rate || 0) * (item.quantity || 1),
+        }));
+
+      return {
+        name: service.name || "Unknown Service",
+        quantity: item.quantity || 1,
+        categories: filteredCategories.length > 0 ? filteredCategories : [
+          {
+            category: "Unknown Category",
+            rateType: "N/A",
+            rate: 0,
+            total: 0,
+          },
+        ],
+      };
+    });
 
     res.status(200).json({
       invoiceNumber: bill.invoiceNumber,
       caseId: bill.caseId,
       invoiceDate: bill.invoiceDate,
-      patient: { name: bill.patient.name, phone: bill.patient.phone },
-      doctor: {
-        name: bill.doctor.name,
-        specialization: bill.doctor.specialization,
-      },
+      patient: bill.patient
+        ? { name: bill.patient.name, phone: bill.patient.phone }
+        : { name: "Unknown", phone: "N/A" },
+      doctor: bill.doctor
+        ? { name: bill.doctor.name, specialization: bill.doctor.specialization }
+        : { name: "Unknown", specialization: "N/A" },
       services,
       totalAmount: bill.totalAmount,
       paidAmount: bill.paidAmount,
@@ -174,6 +194,7 @@ export const getBillDetails = async (req, res) => {
       mode: bill.mode,
     });
   } catch (error) {
+    console.error("Error fetching bill details:", error);
     res
       .status(500)
       .json({ message: "Error fetching bill details.", error: error.message });

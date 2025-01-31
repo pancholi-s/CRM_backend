@@ -19,6 +19,7 @@ const billSchema = new mongoose.Schema(
     services: [
       {
         service: { type: mongoose.Schema.Types.ObjectId, ref: "Service" },
+        category: { type: String, required: true },
         quantity: { type: Number, default: 1 },
       },
     ],
