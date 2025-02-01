@@ -28,8 +28,8 @@ const staffSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Active', 'Inactive'],
-    default: 'Active',
+    enum: ['Available', 'On Leave'],
+    default: 'Avaliable',
   },
   hospital: {
     type: mongoose.Schema.Types.ObjectId,
@@ -39,4 +39,3 @@ const staffSchema = new mongoose.Schema({
 });
 
 export default mongoose.model('Staff', staffSchema);
-

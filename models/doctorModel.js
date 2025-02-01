@@ -31,8 +31,8 @@ const doctorSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ["active", "inactive"],
-    default: null,
+    enum: ["Emergency Room", "On Leave", "Idle", "In Meeting", "With Patient"],
+    default: "Idle",
   },
   patients: [
     {

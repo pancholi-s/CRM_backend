@@ -1,4 +1,3 @@
-// Function to add a new department
 import Department from '../models/departmentModel.js';
 import Patient from '../models/patientModel.js';
 import Doctor from '../models/doctorModel.js';
@@ -18,7 +17,6 @@ export const addDepartment = async (req, res) => {
       return res.status(403).json({ message: "Hospital context not found." });
     }
 
-    // Validate hospital
     const hospital = await Hospital.findById(hospitalId);
     if (!hospital) {
       return res.status(404).json({ message: "Hospital not found." });
@@ -26,6 +24,8 @@ export const addDepartment = async (req, res) => {
 
     // Check if the head doctor already exists in the database
     let headDoctor = await Doctor.findOne({ name: head.name });
+
+    // change password, ph_no when add dept page is created
 
     // If head doctor doesn't exist, create a new one
     if (!headDoctor) {
@@ -111,61 +111,44 @@ export const getDepartments = async (req, res) => {
   const { departmentId } = req.params;
 
   try {
-    // Retrieve hospitalId from the session
     const hospitalId = req.session.hospitalId;
 
     if (!hospitalId) {
       return res.status(403).json({ message: "Hospital context not found in session." });
     }
 
-    // Find the hospital and populate the departments field
-    const hospital = await Hospital.findById(hospitalId).populate({
-      path: "departments",
-      populate:[ 
-        { path: "doctors" },
-        { path: "head.id" }, // Populate department head details
-      ], // Populate doctors within departments
-    });
-
-    if (!hospital) {
-      return res.status(404).json({ message: "Hospital not found." });
-    }
-
-    // Use the `find` method to locate the department by its `_id`
-    const department = hospital.departments.find(
-      (dept) => dept._id.toString() === departmentId
-    );
+    // Find the department for the specific hospital
+    const department = await Department.findOne({
+      _id: departmentId,
+      hospital: hospitalId,
+    })
+      .populate("doctors", "name")
+      .populate("head.id", "name")
+      .populate("services", "name")
+      .populate("specialistDoctors", "name"); // ✅ Removed `.populate()` for string arrays
 
     if (!department) {
-      return res.status(404).json({ message: "Department not found in this hospital." });
+      return res.status(404).json({ message: "Department not found for this hospital." });
     }
 
-    // Fetch total doctors with names
-    const totalDoctors = department.doctors.map(doctor => doctor.name);
-    
-    // Fetch department head's name
+    // Extract department data, ensuring all fields return valid arrays
+    const totalDoctors = department.doctors?.map((doctor) => doctor.name).filter(Boolean) || [];
     const departmentHead = department.head?.id?.name || "Not assigned";
 
-    // Ensure department head is included in `totalDoctors`
     if (department.head?.id && !totalDoctors.includes(departmentHead)) {
       totalDoctors.push(departmentHead);
     }
 
-    // Fetch total nurses (names already stored as strings in the schema)
-    const totalNurses = department.nurses;
+    const availableServices = department.services?.map((service) => service.name).filter(Boolean) || [];
+    const specialistDoctors = department.specialistDoctors?.map((doc) => doc.name).filter(Boolean) || [];
 
-    // Fetch specialist doctors (only names)
-    const specialistDoctors = department.specialistDoctors.map(doc => doc.name);
+    // Now directly accessing fields instead of populating
+    const facilities = department.facilities || []; // Already stored as strings
+    const criticalEquipment = department.criticalEquipments || []; // Already stored as strings
+    const specializedProcedures = department.specializedProcedures || []; // Already stored as strings
+    const equipmentMaintenance = department.equipmentMaintenance || []; // Already stored as strings
+    const totalNurses = department.nurses ? department.nurses.length : 0;
 
-    // Fetch available services (already stored as names in the schema)
-    const availableServices = department.services;
-
-    // Fetch facilities, critical equipment, and maintenance details (if these are added to the schema later)
-    const facilities = department.facilities || []; // Replace with schema property if defined
-    const criticalEquipment = department.criticalEquipment || []; // Replace with schema property if defined
-    const equipmentMaintenance = department.equipmentMaintenance || []; // Replace with schema property if defined
-
-    // Send response
     res.status(200).json({
       departmentName: department.name,
       totalDoctors,
@@ -175,6 +158,7 @@ export const getDepartments = async (req, res) => {
       availableServices,
       facilities,
       criticalEquipment,
+      specializedProcedures,
       equipmentMaintenance,
     });
 
