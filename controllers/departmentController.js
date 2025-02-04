@@ -50,23 +50,32 @@ export const addDepartment = async (req, res) => {
       await headDoctor.save();
     }
 
-    // Fetch all patient IDs (for future assignment)
-    const allPatients = await Patient.find().select('_id');
-    const patientIds = allPatients.map(patient => patient._id);
+    // // Fetch all patient IDs (for future assignment)
+    // const allPatients = await Patient.find().select('_id');
+    // const patientIds = allPatients.map(patient => patient._id);
 
-    // Fetch doctor IDs for the department (excluding the head doctor)
-    const doctorIds = await Doctor.find({ _id: { $ne: headDoctor._id }, hospital: hospitalId }).select('_id');
+    // // Fetch doctor IDs for the department (excluding the head doctor)
+    // const doctorIds = await Doctor.find({ _id: { $ne: headDoctor._id }, hospital: hospitalId }).select('_id');
 
 
     const newDepartment = new Department({
       name,
       head: { id: headDoctor._id, name: headDoctor.name },
-      patients: patientIds || [],
-      doctors: doctorIds,
+      patients: req.body.patients || [],    // Only add patients if provided
+      doctors: [...(req.body.doctors || []), headDoctor._id],
       nurses: nurses || [],
       services: services || [],
-      hospital: hospitalId, 
+      hospital: hospitalId,
+      facilities: req.body.facilities || [],
+      specializedProcedures: req.body.specializedProcedures || [],
+      criticalEquipments: req.body.criticalEquipments || [],
+      equipmentMaintenance: req.body.equipmentMaintenance || [],
+      appointments: [],
+      specialistDoctors: [],
+      rooms: [],
+      staffs: []                     
     });
+    
 
     // Save the department
     await newDepartment.save();

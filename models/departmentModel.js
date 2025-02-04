@@ -75,7 +75,8 @@ const departmentSchema = new mongoose.Schema({
   ],
   facilities: [
     {
-      type: String,
+      key: { type: String, required: true },
+      value: { type: String, required: true },
     },
   ],
   criticalEquipments: [
