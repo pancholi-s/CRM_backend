@@ -184,15 +184,17 @@ export const getAppointmentsByStatus = async (req, res) => {
     // If status is 'Scheduled', fetch all appointments regardless of status
     if (status === 'Scheduled') {
       appointments = await Appointment.find({ hospital: hospitalId })
-        .populate('patient', 'name email') // Populate patient details
-        .populate('doctor', 'name email') // Populate doctor details
-        .populate('hospital', 'name address'); // Populate hospital details if needed
+        .populate('patient', 'name email')
+        .populate('doctor', 'name email')
+        .populate('department', 'name')
+        .populate('hospital', 'name address');
     } else if (status) {
       // Otherwise, filter by the provided status and hospitalId
       appointments = await Appointment.find({ status, hospital: hospitalId })
-        .populate('patient', 'name email') // Populate patient details
-        .populate('doctor', 'name email') // Populate doctor details
-        .populate('hospital', 'name address'); // Populate hospital details if needed
+        .populate('patient', 'name email')
+        .populate('doctor', 'name email')
+        .populate('department', 'name')
+        .populate('hospital', 'name address');
     } else {
       return res.status(400).json({ message: 'Status query parameter is required.' });
     }
@@ -200,7 +202,6 @@ export const getAppointmentsByStatus = async (req, res) => {
     // Count of retrieved appointments
     const count = appointments.length;
 
-    // Send response
     res.status(200).json({
       message: `${status || 'All'} appointments retrieved successfully`,
       count,
@@ -252,16 +253,16 @@ export const getFilteredAppointments = async (req, res) => {
     const appointments = await Appointment.find({
       department: departmentObjectId,
       status: status,
-      hospital: hospitalId, // Ensure appointments belong to the hospital
+      hospital: hospitalId,
     })
-      .populate('patient', 'name email') // Populate patient details
-      .populate('doctor', 'name email') // Populate doctor details
-      .populate('hospital', 'name address'); // Populate hospital details
+      .populate('patient', 'name email')
+      .populate('doctor', 'name email')
+      .populate('department', 'name')
+      .populate('hospital', 'name address');
 
     // Count of filtered appointments
     const count = appointments.length;
 
-    // Respond with filtered appointments
     res.status(200).json({
       message: 'Filtered appointments retrieved successfully',
       count,
@@ -305,11 +306,11 @@ export const getRejectedAppointments = async (req, res) => {
   }
 
   try {
-    // Fetch all rejected appointments for the same hospital
     const rejectedAppointments = await RejectedAppointment.find({ hospital: hospitalId })
-      .populate('patient', 'name email phone') // Populate patient details
-      .populate('doctor', 'name email specialization') // Populate doctor details
-      .sort({ dateRejected: -1 }); // Sort by dateRejected (latest first)
+      .populate('patient', 'name email phone')
+      .populate('doctor', 'name email specialization')
+      .populate('department', 'name')
+      .sort({ dateRejected: -1 });
 
     // Count of rejected appointments
     const count = rejectedAppointments.length;
@@ -330,8 +331,8 @@ export const getRejectedAppointments = async (req, res) => {
 
 export const getAppointmentsByVisitType = async (req, res) => {
   try {
-    const { typeVisit } = req.query; // Capture visit type query parameter
-    const hospitalId = req.session.hospitalId; // Get hospitalId from session
+    const { typeVisit } = req.query;
+    const hospitalId = req.session.hospitalId;
 
     // Validate typeVisit
     const validVisitTypes = ['Walk in', 'Referral', 'Online'];
@@ -341,7 +342,6 @@ export const getAppointmentsByVisitType = async (req, res) => {
       });
     }
 
-    // Validate hospital context
     if (!hospitalId) {
       return res.status(403).json({ message: 'Access denied. No hospital context found.' });
     }
@@ -351,12 +351,11 @@ export const getAppointmentsByVisitType = async (req, res) => {
       typeVisit: typeVisit,
       hospital: hospitalId,
     })
-      .populate('patient', 'name email phone') // Populate patient details
-      .populate('doctor', 'name specialization') // Populate doctor details
-      .populate('department', 'name') // Populate department details
-      .select('-__v'); // Exclude version field
+      .populate('patient', 'name email phone')
+      .populate('doctor', 'name specialization')
+      .populate('department', 'name')
+      .select('-__v');
 
-    // Return results
     res.status(200).json({
       hospitalId: hospitalId,
       typeVisit: typeVisit,
