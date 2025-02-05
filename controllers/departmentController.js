@@ -29,13 +29,13 @@ export const addDepartment = async (req, res) => {
 
     // If head doctor doesn't exist, create a new one
     if (!headDoctor) {
-      const { email, password, phone } = head;
-      if (!email || !password || !phone) {
-        return res.status(400).json({ message: "Email, password, and phone are required to create a new head doctor." });
+      const { email, password, phone, specialization } = head;
+      if (!email || !phone) {
+        return res.status(400).json({ message: "Email, and phone are required to create a new head doctor." });
       }
 
-      // Hash the password for the new head doctor
-      const hashedPassword = await bcrypt.hash(password, 10);
+      const defaultPassword = "changeme123";
+      const hashedPassword = await bcrypt.hash(defaultPassword, 10);
 
       // Create the new head doctor
       headDoctor = new Doctor({
@@ -43,9 +43,9 @@ export const addDepartment = async (req, res) => {
         email,
         password: hashedPassword,
         phone,
-        role: 'Head',
-        specialization: 'Department Head',
-        hospital: hospitalId, // Link doctor to hospital
+        role: 'Doctor',
+        specialization,
+        hospital: hospitalId,
       });
       await headDoctor.save();
     }
@@ -100,7 +100,7 @@ export const addDepartment = async (req, res) => {
     // Update the head doctor's document to reference the new department
     await Doctor.findByIdAndUpdate(
       headDoctor._id,
-      { $push: { departments: newDepartment._id } }, // Add the new department to the head doctor's departments array
+      { $push: { departments: newDepartment._id }, $set: { head: newDepartment._id }  },
       { new: true }
     );
  
@@ -134,7 +134,7 @@ export const getDepartments = async (req, res) => {
       .populate("doctors", "name")
       .populate("head.id", "name")
       .populate("services", "name")
-      .populate("specialistDoctors", "name"); // ✅ Removed `.populate()` for string arrays
+      .populate("specialistDoctors", "name");
 
     if (!department) {
       return res.status(404).json({ message: "Department not found for this hospital." });
@@ -152,10 +152,10 @@ export const getDepartments = async (req, res) => {
     const specialistDoctors = department.specialistDoctors?.map((doc) => doc.name).filter(Boolean) || [];
 
     // Now directly accessing fields instead of populating
-    const facilities = department.facilities || []; // Already stored as strings
-    const criticalEquipment = department.criticalEquipments || []; // Already stored as strings
-    const specializedProcedures = department.specializedProcedures || []; // Already stored as strings
-    const equipmentMaintenance = department.equipmentMaintenance || []; // Already stored as strings
+    const facilities = department.facilities || [];
+    const criticalEquipment = department.criticalEquipments || [];
+    const specializedProcedures = department.specializedProcedures || [];
+    const equipmentMaintenance = department.equipmentMaintenance || [];
     const totalNurses = department.nurses ? department.nurses.length : 0;
 
     res.status(200).json({
@@ -191,15 +191,14 @@ export const getAllDepartments = async (req, res) => {
       .populate({
         path: "departments",
         populate: [
-          { path: "head", populate: { path: "id" } }, // Populate head of department details
-          { path: "specialistDoctors" }, // Populate specialist doctors
-          { path: "doctors" }, // Populate doctors
-          { path: "patients" }, // Populate patients
-          { path: "services", select: "name" }, // Populate service names
+          { path: "head", populate: { path: "id" } },
+          { path: "specialistDoctors" },
+          { path: "doctors" },
+          { path: "patients" },
+          { path: "services", select: "name" },
         ],
       });
 
-    // Check if the hospital was found
     if (!hospital) {
       return res.status(404).json({ message: "Hospital not found." });
     }
@@ -224,7 +223,6 @@ export const getAllDepartments = async (req, res) => {
       equipmentMaintenance: department.equipmentMaintenance || [],
     }));
 
-    // Send response
     res.status(200).json(response);
 
   } catch (error) {
@@ -232,4 +230,3 @@ export const getAllDepartments = async (req, res) => {
     res.status(500).json({ message: "Error fetching departments." });
   }
 };
-

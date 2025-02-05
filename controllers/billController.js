@@ -76,7 +76,6 @@ export const createBill = async (req, res) => {
 
     const outstanding = totalAmount - paidAmount;
 
-    // Create Bill
     const newBill = new Bill({
       patient: patient._id,
       caseId: appointment.caseId,
@@ -134,7 +133,6 @@ export const getAllBills = async (req, res) => {
   }
 };
 
-// Get Bill Details
 export const getBillDetails = async (req, res) => {
   const { billId } = req.params;
 
@@ -142,38 +140,45 @@ export const getBillDetails = async (req, res) => {
     const bill = await Bill.findById(billId)
       .populate("patient", "name phone")
       .populate("doctor", "name specialization")
-      .populate("services.service", "name categories"); // Get all categories but filter later
+      .populate("services.service", "name categories");
 
     if (!bill) {
       return res.status(404).json({ message: "Bill not found." });
     }
 
-    // Map services and extract only the selected category
-    const services = bill.services.map((item) => {
-      const service = item?.service || {};
-      const selectedCategory = item.category; // Now, we have the selected category from the bill
+    // Map services and group by service name
+    const serviceMap = new Map();
 
-      const filteredCategories = service.categories
-        ?.filter((cat) => cat.category === selectedCategory) // Match stored category
+    bill.services.forEach((item) => {
+      if (!item.service) return;
+
+      const serviceName = item.service.name || "Unknown Service";
+      const selectedCategory = item.category;
+      const categoryQuantity = item.quantity || 1;
+
+      const filteredCategories = item.service.categories
+        ?.filter((cat) => cat.category === selectedCategory)
         .map((cat) => ({
           category: cat.category,
           rateType: cat.rateType,
           rate: cat.rate,
-          total: (cat.rate || 0) * (item.quantity || 1),
-        }));
+          quantity: categoryQuantity,
+          total: (cat.rate || 0) * categoryQuantity,
+        })) || [];
 
-      return {
-        name: service.name || "Unknown Service",
-        quantity: item.quantity || 1,
-        categories: filteredCategories.length > 0 ? filteredCategories : [
-          {
-            category: "Unknown Category",
-            rateType: "N/A",
-            rate: 0,
-            total: 0,
-          },
-        ],
-      };
+      if (!serviceMap.has(serviceName)) {
+        serviceMap.set(serviceName, {
+          name: serviceName,
+          totalQuantity: categoryQuantity,
+          totalCategories: filteredCategories.length,
+          categories: filteredCategories,
+        });
+      } else {
+        const existingService = serviceMap.get(serviceName);
+        existingService.totalQuantity += categoryQuantity;
+        existingService.categories.push(...filteredCategories);
+        existingService.totalCategories = existingService.categories.length;
+      }
     });
 
     res.status(200).json({
@@ -186,7 +191,7 @@ export const getBillDetails = async (req, res) => {
       doctor: bill.doctor
         ? { name: bill.doctor.name, specialization: bill.doctor.specialization }
         : { name: "Unknown", specialization: "N/A" },
-      services,
+      services: Array.from(serviceMap.values()), // Convert map back to array
       totalAmount: bill.totalAmount,
       paidAmount: bill.paidAmount,
       outstanding: bill.outstanding,

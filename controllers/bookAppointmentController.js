@@ -309,7 +309,6 @@ export const getRejectedAppointments = async (req, res) => {
     const rejectedAppointments = await RejectedAppointment.find({ hospital: hospitalId })
       .populate('patient', 'name email phone')
       .populate('doctor', 'name email specialization')
-      .populate('department', 'name')
       .sort({ dateRejected: -1 });
 
     // Count of rejected appointments
