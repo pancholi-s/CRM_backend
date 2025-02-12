@@ -197,7 +197,6 @@ export const approveAppointment = async (req, res) => {
   }
 };
 
-
 export const rejectAppointment = async (req, res) => {
   const { requestId } = req.params;
   const { hospitalId } = req.session;
@@ -211,15 +210,15 @@ export const rejectAppointment = async (req, res) => {
     if (!request) return res.status(404).json({ message: 'Request not found.' });
 
     const rejectedAppointment = new RejectedAppointment({
+      hospital: hospitalId,
       caseId: request.caseId,
       patient: request.patient,
       doctor: request.doctor,
-      hospital: hospitalId,
+      tokenDate: request.tokenDate,
     });
 
     await rejectedAppointment.save();
 
-    // Push the reference of the rejected appointment into the hospital's RejectedAppointment array
     await Hospital.findByIdAndUpdate(hospitalId, {
       $push: { RejectedAppointment: rejectedAppointment._id }
     });
