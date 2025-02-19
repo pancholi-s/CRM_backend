@@ -7,7 +7,6 @@ const roomSchema = new mongoose.Schema({
   },
   name: {
     type: String,
-    enum: ['ICU', 'General', 'Surgery', 'Pediatrics', 'Neurology', 'Others'],
     required: true,
   },
   hospital: {
@@ -29,8 +28,8 @@ const roomSchema = new mongoose.Schema({
     type: String,
     enum: ['Available', 'Occupied', 'Under Maintenance'],
     default: 'Available',
+    required: true,
   },
 });
 
 export default mongoose.model('Room', roomSchema);
-

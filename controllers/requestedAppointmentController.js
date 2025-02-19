@@ -215,6 +215,7 @@ export const rejectAppointment = async (req, res) => {
       patient: request.patient,
       doctor: request.doctor,
       tokenDate: request.tokenDate,
+      status: 'Rejected',
     });
 
     await rejectedAppointment.save();
@@ -228,5 +229,40 @@ export const rejectAppointment = async (req, res) => {
     res.status(201).json({ message: 'Appointment rejected.', rejectedAppointment });
   } catch (error) {
     res.status(500).json({ message: 'Failed to reject appointment.' });
+  }
+};
+
+export const cancelAppointment = async (req, res) => {
+  const { appointmentId } = req.params;
+  const { hospitalId } = req.session;
+
+  if (!hospitalId) {
+    return res.status(403).json({ message: 'Unauthorized access. Hospital ID not found in session.' });
+  }
+
+  try {
+    const appointment = await Appointment.findOne({ _id: appointmentId, hospital: hospitalId });
+    if (!appointment) return res.status(404).json({ message: 'Appointment not found.' });
+
+    const cancelledAppointment = new RejectedAppointment({
+      hospital: hospitalId,
+      caseId: appointment.caseId,
+      patient: appointment.patient,
+      doctor: appointment.doctor,
+      tokenDate: appointment.tokenDate,
+      status: 'Cancelled',
+    });
+
+    await cancelledAppointment.save();
+
+    await Hospital.findByIdAndUpdate(hospitalId, {
+      $push: { RejectedAppointment: cancelledAppointment._id }
+    });
+
+    await Appointment.findByIdAndDelete(appointmentId);
+
+    res.status(201).json({ message: 'Appointment cancelled.', cancelledAppointment });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to cancel appointment.', error: error.message });
   }
 };

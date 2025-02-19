@@ -178,10 +178,11 @@ export const loginUser = async (req, res) => {
       {
         userId: user._id,
         role,
-        hospitalId: user.hospital._id, // Add hospitalId to the token payload
+        hospitalId: user.hospital._id,
+        hospitalName: user.hospital.name,
       },
-      process.env.JWT_SECRET, // Use the secret key
-      { expiresIn: process.env.JWT_EXPIRES_IN || "1d" } // Token expiry
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || "1d" }
     );
 
     res.status(200).json({
@@ -190,6 +191,7 @@ export const loginUser = async (req, res) => {
       userId: user._id,
       role,
       hospitalId: user.hospital._id,
+      hospitalName: user.hospital.name,
     });
   } catch (error) {
     console.error("Error logging in:", error);

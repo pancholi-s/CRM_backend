@@ -24,9 +24,14 @@ const rejectedAppointmentSchema = new mongoose.Schema({
     type: Date,
     required: true,
   },
-  dateRejected: {
+  dateActioned: {
     type: Date,
     default: Date.now,
+  },
+  status: {
+    type: String,
+    enum: ['Rejected', 'Cancelled'],
+    required: true,
   },
 });
 
