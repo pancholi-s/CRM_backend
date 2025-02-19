@@ -298,31 +298,54 @@ export const getAppointmentCounts = async (req, res) => {
 };
 
 export const getRejectedAppointments = async (req, res) => {
-  const { hospitalId } = req.session; // Retrieve hospital context from session
+  const { hospitalId } = req.session;
 
-  // Validate hospitalId
   if (!hospitalId) {
     return res.status(403).json({ message: "Access denied. No hospital context found." });
   }
 
   try {
-    const rejectedAppointments = await RejectedAppointment.find({ hospital: hospitalId })
+    const rejectedAppointments = await RejectedAppointment.find({ hospital: hospitalId, status: 'Rejected' })
       .populate('patient', 'name email phone')
       .populate('doctor', 'name email specialization')
-      .sort({ dateRejected: -1 });
-
-    // Count of rejected appointments
-    const count = rejectedAppointments.length;
+      .sort({ dateActioned: -1 });
 
     res.status(200).json({
       message: "Rejected appointments retrieved successfully.",
-      count,
+      count: rejectedAppointments.length,
       rejectedAppointments,
     });
   } catch (error) {
     console.error('Error fetching rejected appointments:', error);
     res.status(500).json({
       message: "Error fetching rejected appointments.",
+      error: error.message,
+    });
+  }
+};
+
+export const getCancelledAppointments = async (req, res) => {
+  const { hospitalId } = req.session;
+
+  if (!hospitalId) {
+    return res.status(403).json({ message: "Access denied. No hospital context found." });
+  }
+
+  try {
+    const cancelledAppointments = await RejectedAppointment.find({ hospital: hospitalId, status: 'Cancelled' })
+      .populate('patient', 'name email phone')
+      .populate('doctor', 'name email specialization')
+      .sort({ dateActioned: -1 });
+
+    res.status(200).json({
+      message: "Cancelled appointments retrieved successfully.",
+      count: cancelledAppointments.length,
+      cancelledAppointments,
+    });
+  } catch (error) {
+    console.error('Error fetching cancelled appointments:', error);
+    res.status(500).json({
+      message: "Error fetching cancelled appointments.",
       error: error.message,
     });
   }
