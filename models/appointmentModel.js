@@ -1,5 +1,5 @@
 import mongoose from "mongoose";
-import { v4 as uuidv4 } from "uuid"; // Using UUID to ensure uniqueness
+import { v4 as uuidv4 } from "uuid";
 
 const appointmentSchema = new mongoose.Schema({
   caseId: {
@@ -41,6 +41,10 @@ const appointmentSchema = new mongoose.Schema({
   tokenDate: {
     type: Date,
     required: true,
+  },
+  tokenNumber: {
+    type: Number,
+    default: null, // Will be assigned later when the patient arrives
   },
   status: {
     type: String,

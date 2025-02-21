@@ -79,11 +79,6 @@ const hospitalSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'HospitalAdmin',
   },
-  services: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Service',
-    default: [],
-  }],
   rooms: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Room',

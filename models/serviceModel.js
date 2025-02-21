@@ -6,7 +6,7 @@ const serviceSchema = new mongoose.Schema(
     description: { type: String },
     categories: [
       {
-        category: { type: String, required: true }, 
+        subCategoryName: { type: String, required: true }, 
         rateType: { type: String, required: true },
         rate: { type: Number, required: true }, 
         effectiveDate: { type: Date, required: true }, 
@@ -22,11 +22,11 @@ const serviceSchema = new mongoose.Schema(
       ref: "Hospital",
       required: true,
     },
-    department: [{
+    department: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Department',
       required: true,
-    }],
+    },
     revenueType: {
       type: String,
       enum: ['Outpatient', 'Inpatient', 'Surgery', 'Diagnostics'], // Main categories for revenue grouping

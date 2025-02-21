@@ -3,46 +3,43 @@ import Hospital from "../models/hospitalModel.js";
 import Department from "../models/departmentModel.js";
 
 export const addService = async (req, res) => {
-  const { name, description, category, rateType, rate, effectiveDate, amenities, departmentNames } = req.body;
+  const { name, description, subCategoryName, rateType, rate, effectiveDate, amenities, departmentName } = req.body;
   const hospitalId = req.session.hospitalId;
 
   if (!hospitalId) {
-    return res
-      .status(403)
-      .json({ message: "Unauthorized access. No hospital context." });
+    return res.status(403).json({ message: "Unauthorized access. No hospital context." });
   }
 
   try {
-    // Find the department IDs based on the provided department names
-    const departments = await Department.find({
-      name: { $in: departmentNames },
-      hospital: hospitalId, // Ensure departments belong to the current hospital
+    // Ensure departments belong to the current hospital
+    const department = await Department.findOne({
+      name: departmentName,
+      hospital: hospitalId,
     });
 
-    if (!departments.length) {
+    if (!department) {
       return res.status(404).json({ message: "No matching departments found." });
     }
 
-    const departmentIds = departments.map((dept) => dept._id);
-
-    // Check if the service with the same name already exists for the hospital
-    const existingService = await Service.findOne({ name, createdBy: hospitalId });
+    const existingService = await Service.findOne({ name, department: department._id });
 
     if (existingService) {
-      // Add sub-category to the existing service
-      existingService.categories.push({ category, rateType, rate, effectiveDate, amenities });
-      existingService.department.push(...departmentIds); // Add department references if not already present
-      existingService.department = [...new Set(existingService.department.map(String))]; // Ensure unique department IDs
-      await existingService.save();
-
-      // Add the service to the departments' services array
-      await Department.updateMany(
-        { _id: { $in: departmentIds } },
-        { $addToSet: { services: existingService._id } } // Use $addToSet to avoid duplicates
+      // Check if the subcategory already exists in the service
+      const subCategoryExists = existingService.categories.some(
+        (cat) => cat.subCategoryName === subCategoryName
       );
 
+      if (subCategoryExists) {
+        return res.status(400).json({ message: "Subcategory already exists in this service." });
+      }
+
+      // Add new subcategory to the existing service
+      existingService.categories.push({ subCategoryName, rateType, rate, effectiveDate, amenities });
+      existingService.lastUpdated = new Date();
+      await existingService.save();
+
       return res.status(200).json({
-        message: "Sub-category and department references added successfully.",
+        message: "Subcategory added successfully to the existing service.",
         service: existingService,
       });
     }
@@ -51,23 +48,16 @@ export const addService = async (req, res) => {
     const newService = new Service({
       name,
       description,
-      categories: [{ category, rateType, rate, effectiveDate, amenities }],
+      categories: [{ subCategoryName, rateType, rate, effectiveDate, amenities }],
       createdBy: hospitalId,
-      department: departmentIds, // Add department IDs to the service
+      department: department._id,
     });
 
     await newService.save();
 
-    // Push the new service ID into the hospital's services array
-    await Hospital.findByIdAndUpdate(
-      hospitalId,
-      { $push: { services: newService._id } },
-      { new: true }
-    );
-
     // Push the new service ID into the specified departments' services array
-    await Department.updateMany(
-      { _id: { $in: departmentIds } },
+    await Department.findByIdAndUpdate(
+      department._id,
       { $push: { services: newService._id } }
     );
 
@@ -80,23 +70,25 @@ export const addService = async (req, res) => {
   }
 };
 
-
-
 // Get Services
 export const getServices = async (req, res) => {
   try {
+    const { departmentId } = req.query;   //optional query parameter
+
     const hospitalId = req.session.hospitalId;
+
     if (!hospitalId) {
-      return res
-        .status(403)
-        .json({ message: "Unauthorized access. No hospital context." });
+      return res.status(403).json({ message: "Unauthorized access. No hospital context." });
     }
 
-    const services = await Service.find({ createdBy: hospitalId });
+    // Build query filter (optional)
+    const filter = { createdBy: hospitalId };
+    if (departmentId) filter.department = departmentId;
+
+    const services = await Service.find(filter).populate("department", "name");
+
     res.status(200).json({ services });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Error fetching services.", error: error.message });
+    res.status(500).json({ message: "Error fetching services.", error: error.message });
   }
 };

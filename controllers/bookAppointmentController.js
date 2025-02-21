@@ -23,9 +23,7 @@ export const bookAppointment = async (req, res) => {
   const { hospitalId } = req.session;
 
   if (!hospitalId) {
-    return res
-      .status(403)
-      .json({ message: "Access denied. No hospital context found." });
+    return res.status(403).json({ message: "Access denied. No hospital context found." });
   }
 
   if (
@@ -44,33 +42,28 @@ export const bookAppointment = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
-  try {
+  try {   
     const patient = await Patient.findOne({ email, hospital: hospitalId });
     if (!patient) {
-      return res
-        .status(404)
-        .json({ message: "Patient not found in this hospital." });
+      return res.status(404).json({ message: "Patient not found in this hospital." });
     }
 
-    const doctor = await Doctor.findOne({ email: doctorEmail, hospital: hospitalId });
+    // Validate doctor
+    const doctor = await Doctor.findOne({ email: doctorEmail, hospital: hospitalId }).populate("departments");
     if (!doctor) {
-      return res
-        .status(404)
-        .json({ message: "Doctor not found in this hospital." });
+      return res.status(404).json({ message: "Doctor not found in this hospital." });
     }
 
-    // Fetch the hospital and validate the department
-    const hospital = await Hospital.findById(hospitalId).populate("departments");
-    if (!hospital) {
-      return res.status(404).json({ message: "Hospital not found." });
-    }
-
-    const department = hospital.departments.find(
-      (dept) => dept.name.toLowerCase() === departmentName.toLowerCase()
-    );
-
+    // Validate department within hospital
+    const department = await Department.findOne({ name: departmentName, hospital: hospitalId });
     if (!department) {
       return res.status(404).json({ message: "Department not found in this hospital." });
+    }
+
+    // Ensure doctor belongs to the department
+    const doctorInDepartment = doctor.departments.some((dept) => dept.equals(department._id));
+    if (!doctorInDepartment) {
+      return res.status(400).json({ message: "Doctor is not assigned to the specified department." });
     }
 
     const newAppointment = new Appointment({
@@ -274,6 +267,7 @@ export const getFilteredAppointments = async (req, res) => {
   }
 };
 
+//get counts bye year month
 export const getAppointmentCounts = async (req, res) => {
   const { hospitalId } = req.session;
 
@@ -390,5 +384,55 @@ export const getAppointmentsByVisitType = async (req, res) => {
       message: 'Failed to fetch appointments.',
       error: error.message,
     });
+  }
+};
+
+export const assignTokenNumber = async (req, res) => {
+  const { appointmentId } = req.params;
+  const { hospitalId } = req.session;
+
+  if (!hospitalId) {
+    return res.status(403).json({ message: "Unauthorized access. No hospital context." });
+  }
+
+  try {
+    const appointment = await Appointment.findById(appointmentId).populate("doctor").populate("department");
+    if (!appointment) {
+      return res.status(404).json({ message: "Appointment not found." });
+    }
+
+    // Ensure the appointment belongs to the same hospital
+    if (appointment.hospital.toString() !== hospitalId) {
+      return res.status(403).json({ message: "Access denied for this hospital." });
+    }
+
+    // Get the latest token number for the same doctor in the same department for today
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23, 59, 59, 999);
+
+    const lastAppointment = await Appointment.findOne({
+      doctor: appointment.doctor._id,
+      department: appointment.department._id,
+      tokenDate: { $gte: todayStart, $lte: todayEnd },
+      tokenNumber: { $ne: null },
+    })
+      .sort({ tokenNumber: -1 }) // Get the highest token number assigned today
+      .select("tokenNumber");
+
+    let newTokenNumber = lastAppointment ? lastAppointment.tokenNumber + 1 : 1;
+
+    // Assign token number to the appointment
+    appointment.tokenNumber = newTokenNumber;
+    await appointment.save();
+
+    res.status(200).json({
+      message: "Token number assigned successfully.",
+      appointment,
+    });
+  } catch (error) {
+    console.error("Error assigning token number:", error);
+    res.status(500).json({ message: "Error assigning token number.", error: error.message });
   }
 };
