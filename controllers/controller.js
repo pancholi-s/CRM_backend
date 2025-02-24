@@ -12,9 +12,9 @@ const models = {
   receptionist: Receptionist,
   doctor: Doctor,
   patient: Patient,
-  Hospital:Hospital, 
-  Department:Department,
-  HospitalAdmin:HospitalAdmin
+  Hospital: Hospital, 
+  Department: Department,
+  HospitalAdmin: HospitalAdmin
 };
 
 export const registerUser = async (req, res) => {
@@ -107,7 +107,6 @@ export const registerUser = async (req, res) => {
         ...additionalData,
       });
 
-      // Save the new admin and update the hospital document
       await newUser.save();
       await Hospital.findByIdAndUpdate(hospital._id, {
         $push: { admins: newUser._id },
@@ -118,7 +117,6 @@ export const registerUser = async (req, res) => {
       });
     }
 
-    // Save the user
     await newUser.save();
 
     // Update the hospital document with the new user
@@ -129,16 +127,13 @@ export const registerUser = async (req, res) => {
         ? "receptionists"
         : "patients";
 
-    // Push the new user's _id into the appropriate array in the hospital document
     await Hospital.findByIdAndUpdate(
       hospital._id,
       { $push: { [updateField]: newUser._id } },
       { new: true }
     );
 
-    res.status(201).json({
-      message: `${role.charAt(0).toUpperCase() + role.slice(1)} registered successfully.`,
-    });
+    res.status(201).json({ message: `${role.charAt(0).toUpperCase() + role.slice(1)} registered successfully.`, newUser});
   } catch (error) {
     console.error("Error registering user:", error);
     res.status(500).json({ message: "Error registering user." });

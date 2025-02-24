@@ -1,13 +1,12 @@
 import express from 'express';
 import { authorizeRoles } from "../middleware/roleMiddleware.js";
-
-import { bookAppointment, completeAppointment, getAppointmentsByStatus, getFilteredAppointments, getAppointmentCounts, getRejectedAppointments, getCancelledAppointments, getAppointmentsByVisitType, assignTokenNumber } from '../controllers/bookAppointmentController.js';
 import { requireHospitalContext } from '../controllers/hospitalContext.js';
-import { requestAppointment, getRequestedAppointments, approveAppointment, rejectAppointment, cancelAppointment } from '../controllers/requestedAppointmentController.js';
 import { updateStatusesMiddleware } from '../middleware/statusMiddleware.js';
 
-const router = express.Router();
+import { bookAppointment, completeAppointment, getAppointmentsByStatus, getFilteredAppointments, getAppointmentCounts, getRejectedAppointments, getCancelledAppointments, getAppointmentsByVisitType, assignTokenNumber } from '../controllers/bookAppointmentController.js';
+import { requestAppointment, getRequestedAppointments, approveAppointment, rejectAppointment, cancelAppointment } from '../controllers/requestedAppointmentController.js';
 
+const router = express.Router();
 router.use(requireHospitalContext);
 
 router.post('/bookAppointment', authorizeRoles("receptionist"), bookAppointment); 

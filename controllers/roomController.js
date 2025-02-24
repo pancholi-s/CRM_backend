@@ -4,11 +4,9 @@ import Hospital from '../models/hospitalModel.js';
 import Department from '../models/departmentModel.js';
 import Doctor from '../models/doctorModel.js';
 
-// Add a new Room
 export const addRoom = async (req, res) => {
   const { roomID, name, doctorId, status } = req.body;
 
-  // Get hospitalId from session
   const hospitalId = req.session.hospitalId;
   if (!hospitalId) {
     return res.status(403).json({ message: 'Unauthorized access. Hospital ID not found in session.' });
@@ -18,13 +16,11 @@ export const addRoom = async (req, res) => {
   session.startTransaction();
 
   try {
-    // Validate hospital
     const hospital = await Hospital.findById(hospitalId);
     if (!hospital) {
       return res.status(404).json({ message: 'Hospital not found.' });
     }
 
-    // Validate doctor
     if (!doctorId) {
       return res.status(400).json({ message: 'Doctor ID is required to assign a room.' });
     }
@@ -47,7 +43,6 @@ export const addRoom = async (req, res) => {
       return res.status(404).json({ message: 'Department not found in the specified hospital.' });
     }
 
-    // Create Room
     const newRoom = new Room({
       roomID,
       name,
@@ -59,7 +54,6 @@ export const addRoom = async (req, res) => {
 
     await newRoom.save({ session });
 
-    // Update references
     await Hospital.findByIdAndUpdate(
       hospitalId,
       { $push: { rooms: newRoom._id } },
@@ -81,7 +75,15 @@ export const addRoom = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
-    res.status(201).json({ message: 'Room added successfully.', room: newRoom });
+    // Fetch the newly created room along with doctor, department, and hospital names
+    const populatedRoom = await Room.findById(newRoom._id)
+      .populate('hospital', 'name')
+      .populate('department', 'name')
+      .populate('assignedDoctor', 'name')
+      .lean();
+
+    res.status(201).json({ message: 'Room added successfully.', room: populatedRoom  });
+
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
@@ -89,9 +91,8 @@ export const addRoom = async (req, res) => {
   }
 };
 
-
 // Get all Rooms (Filter by department)
-export const getRooms = async (req, res) => {
+export const getRoomsByHospital = async (req, res) => {
   const { departmentId } = req.query;
 
   // Get hospitalId from session

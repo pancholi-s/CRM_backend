@@ -38,9 +38,14 @@ export const addService = async (req, res) => {
       existingService.lastUpdated = new Date();
       await existingService.save();
 
+      // Populate department name before sending response
+      const populatedService = await Service.findById(existingService._id)
+        .populate("department", "name")
+        .lean();
+
       return res.status(200).json({
         message: "Subcategory added successfully to the existing service.",
-        service: existingService,
+        service: populatedService,
       });
     }
 
@@ -61,9 +66,14 @@ export const addService = async (req, res) => {
       { $push: { services: newService._id } }
     );
 
+    // Fetch the newly created service along with the department name
+    const populatedNewService = await Service.findById(newService._id)
+      .populate("department", "name")
+      .lean();
+
     res.status(201).json({
       message: "Service added successfully and linked to departments.",
-      service: newService,
+      service: populatedNewService,
     });
   } catch (error) {
     res.status(500).json({ message: "Error adding service.", error: error.message });

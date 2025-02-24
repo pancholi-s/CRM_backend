@@ -267,7 +267,6 @@ export const getFilteredAppointments = async (req, res) => {
   }
 };
 
-//get counts bye year month
 export const getAppointmentCounts = async (req, res) => {
   const { hospitalId } = req.session;
 
@@ -276,15 +275,64 @@ export const getAppointmentCounts = async (req, res) => {
   }
 
   try {
-    const completedCount = await Appointment.countDocuments({ hospital: hospitalId, status: 'Completed' });
-    const cancelledCount = await RejectedAppointment.countDocuments({ hospital: hospitalId });
+    // Get all appointment dates for the hospital
+    const completedAppointments = await Appointment.find({ hospital: hospitalId, status: 'Completed' }).select('tokenDate');
+    const cancelledAppointments = await RejectedAppointment.find({ hospital: hospitalId, status: 'Cancelled' }).select('tokenDate');
 
-    const totalCount = completedCount + cancelledCount;
+    const monthNames = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+
+    const yearlyData = {};
+    let totalAppointments = 0;
+    let totalCompleted = 0;
+    let totalCancelled = 0;
+
+    const processAppointments = (appointments, status) => {
+      appointments.forEach(({ tokenDate }) => {
+        if (!tokenDate) return;
+
+        const year = tokenDate.getFullYear();
+        const month = tokenDate.getMonth(); // 0-based index
+
+        if (!yearlyData[year]) {
+          yearlyData[year] = {
+            total: 0,
+            completed: 0,
+            cancelled: 0,
+            months: Array(12).fill(null).map((_, i) => ({
+              name: monthNames[i],
+              total: 0,
+              completed: 0,
+              cancelled: 0,
+            })),
+          };
+        }
+
+        yearlyData[year].total++;
+        yearlyData[year][status]++;
+
+        yearlyData[year].months[month].total++;
+        yearlyData[year].months[month][status]++;
+
+        // Aggregate totals for all years
+        totalAppointments++;
+        if (status === 'completed') totalCompleted++;
+        if (status === 'cancelled') totalCancelled++;
+      });
+    };
+
+    processAppointments(completedAppointments, 'completed');
+    processAppointments(cancelledAppointments, 'cancelled');
 
     res.status(200).json({
-      completedCount,
-      cancelledCount,
-      totalCount,
+      Total: {
+        totalAppointments,
+        totalCompleted,
+        totalCancelled,
+      },
+      yearlyData,
     });
   } catch (error) {
     res.status(500).json({ message: 'Failed to get appointment counts.', error: error.message });
