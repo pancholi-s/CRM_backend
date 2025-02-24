@@ -34,7 +34,7 @@ export const addService = async (req, res) => {
       }
 
       // Add new subcategory to the existing service
-      existingService.categories.push({ subCategoryName, rateType, rate, effectiveDate, amenities });
+      existingService.categories.push({ subCategoryName, rateType, rate, effectiveDate, amenities,createdBy: hospitalId });
       existingService.lastUpdated = new Date();
       await existingService.save();
 
@@ -53,7 +53,7 @@ export const addService = async (req, res) => {
     const newService = new Service({
       name,
       description,
-      categories: [{ subCategoryName, rateType, rate, effectiveDate, amenities }],
+      categories: [{ subCategoryName, rateType, rate, effectiveDate, amenities,createdBy: hospitalId, }],
       createdBy: hospitalId,
       department: department._id,
     });
@@ -100,5 +100,113 @@ export const getServices = async (req, res) => {
     res.status(200).json({ services });
   } catch (error) {
     res.status(500).json({ message: "Error fetching services.", error: error.message });
+  }
+};
+
+export const editService = async (req, res) => {
+  const { serviceId, name, description, revenueType, categories } = req.body;
+  const hospitalId = req.session.hospitalId;
+
+  if (!hospitalId) {
+    return res.status(403).json({ message: "Unauthorized access. No hospital context." });
+  }
+
+  try {
+    const service = await Service.findOne({ _id: serviceId, createdBy: hospitalId });
+
+    if (!service) {
+      return res.status(404).json({ message: "Service not found or access denied." });
+    }
+
+    // Update service details
+    if (name) service.name = name;
+    if (description) service.description = description;
+    if (revenueType) service.revenueType = revenueType;
+
+    // Update existing categories or add new ones
+    if (categories && Array.isArray(categories)) {
+      categories.forEach((newCategory) => {
+        const existingCategory = service.categories.find(
+          (cat) => cat._id.toString() === newCategory._id
+        );
+
+        if (existingCategory) {
+          // Update existing category
+          Object.assign(existingCategory, newCategory);
+        } else {
+          // Add new category
+          service.categories.push({ ...newCategory, createdBy: hospitalId });
+        }
+      });
+    }
+
+    service.lastUpdated = new Date();
+    await service.save();
+
+    const updatedService = await Service.findById(serviceId).populate("department", "name");
+
+    res.status(200).json({ message: "Service updated successfully.", service: updatedService });
+  } catch (error) {
+    res.status(500).json({ message: "Error updating service.", error: error.message });
+  }
+};
+
+export const deleteService = async (req, res) => {
+  const { serviceId } = req.params;
+  const hospitalId = req.session.hospitalId;
+
+  if (!hospitalId) {
+    return res.status(403).json({ message: "Unauthorized access. No hospital context." });
+  }
+
+  try {
+    const service = await Service.findOneAndDelete({ _id: serviceId, createdBy: hospitalId });
+
+    if (!service) {
+      return res.status(404).json({ message: "Service not found or access denied." });
+    }
+
+    // Remove service reference from the department
+    await Department.findByIdAndUpdate(service.department, { $pull: { services: serviceId } });
+
+    res.status(200).json({ message: "Service deleted successfully." });
+  } catch (error) {
+    res.status(500).json({ message: "Error deleting service.", error: error.message });
+  }
+};
+
+export const deleteSubcategory = async (req, res) => {
+  const { serviceId, subcategoryId } = req.params;
+  const hospitalId = req.session.hospitalId; 
+
+  if (!hospitalId) {
+    return res.status(403).json({ message: "Unauthorized access. No hospital context." });
+  }
+
+  try {
+    // Find the service
+    const service = await Service.findOne({ _id: serviceId, createdBy: hospitalId });
+
+    if (!service) {
+      return res.status(404).json({ message: "Service not found or access denied." });
+    }
+
+    // Check if subcategory exists
+    const categoryIndex = service.categories.findIndex(
+      (cat) => cat._id.toString() === subcategoryId
+    );
+
+    if (categoryIndex === -1) {
+      return res.status(404).json({ message: "Subcategory not found." });
+    }
+
+    // Remove the subcategory
+    service.categories.splice(categoryIndex, 1);
+    service.lastUpdated = new Date();
+    await service.save();
+
+    res.status(200).json({ message: "Subcategory deleted successfully.", service });
+  } catch (error) {
+    res.status(500).json({ message: "Error deleting subcategory.", error: error.message });
   }
 };

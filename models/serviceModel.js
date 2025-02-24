@@ -10,7 +10,12 @@ const serviceSchema = new mongoose.Schema(
         rateType: { type: String, required: true },
         rate: { type: Number, required: true }, 
         effectiveDate: { type: Date, required: true }, 
-        amenities: { type: String, default: "N/A" }, 
+        amenities: { type: String, default: "N/A" },
+        createdBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Hospital",
+          required: true,
+        }, 
       }
     ],
     lastUpdated: { 
