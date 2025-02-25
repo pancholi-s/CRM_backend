@@ -157,9 +157,9 @@ export const getBillDetails = async (req, res) => {
       const categoryQuantity = item.quantity || 1;
 
       const filteredCategories = item.service.categories
-        ?.filter((cat) => cat.category === selectedCategory)
+        ?.filter((cat) => cat.subCategoryName === selectedCategory)  // ✅ Use subCategoryName
         .map((cat) => ({
-          category: cat.category,
+          subCategoryName: cat.subCategoryName,  // ✅ Include subCategoryName
           rateType: cat.rateType,
           rate: cat.rate,
           quantity: categoryQuantity,
