@@ -1,12 +1,13 @@
 import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
+
+import Hospital from "../models/hospitalModel.js";
+import Department from "../models/departmentModel.js";
+import Doctor from "../models/doctorModel.js";
+import Patient from "../models/patientModel.js";
 import Appointment from "../models/appointmentModel.js";
 import RejectedAppointment from '../models/rejectedAppointmentModel.js';
-import Patient from "../models/patientModel.js";
-import Doctor from "../models/doctorModel.js";
-import Department from "../models/departmentModel.js";
-import Hospital from "../models/hospitalModel.js";
 
-// direct booking of appointment withoput request and approval
 export const bookAppointment = async (req, res) => {
   const {
     patientName,
@@ -18,34 +19,54 @@ export const bookAppointment = async (req, res) => {
     date,
     note,
     status,
+    typeVisit,
+    
+    gender,       //optional
+    birthday,
+    age,
+    address,
   } = req.body;
 
   const { hospitalId } = req.session;
-
   if (!hospitalId) {
     return res.status(403).json({ message: "Access denied. No hospital context found." });
   }
 
-  if (
-    !patientName ||
-    !appointmentType ||
-    !departmentName ||
-    !doctorEmail ||
-    !mobileNumber ||
-    !email ||
-    !date
-  ) {
-    return res.status(400).json({ message: "All fields are required." });
+  if (!patientName || !appointmentType || !typeVisit || !departmentName || !doctorEmail || !mobileNumber || !email || !date) {
+    return res.status(400).json({ message: "All required fields must be provided." });
+  }
+
+  if (!["Walk in", "Referral", "Online"].includes(typeVisit)) {
+    return res.status(400).json({ message: "Invalid typeVisit. Use 'Walk in', 'Referral', or 'Online'." });
   }
 
   //to avoid differences in the last digit of object id stored as references in patient  
   const session = await mongoose.startSession();
   session.startTransaction();
 
-  try {   
-    const patient = await Patient.findOne({ email, hospital: hospitalId });
+  try {
+    let patient = await Patient.findOne({ email, hospital: hospitalId });
+
+    // If patient does not exist, create a new one
     if (!patient) {
-      return res.status(404).json({ message: "Patient not found in this hospital." });
+      const defaultPassword = "changeme";
+      const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+
+      patient = new Patient({
+        name: patientName,
+        gender: gender || "Not specified",
+        birthday: birthday || "Not specified",
+        age: age || 0,
+        address: address || "Not specified",
+        email,
+        password: hashedPassword,
+        phone: mobileNumber,
+        hospital: hospitalId,
+        status: "active",
+        registrationDate: new Date(),
+      });
+
+      await patient.save({ session });
     }
 
     // Validate doctor
@@ -70,6 +91,7 @@ export const bookAppointment = async (req, res) => {
       patient: patient._id,
       doctor: doctor._id,
       type: appointmentType,
+      typeVisit,
       department: department._id,
       tokenDate: date,
       status: status || "Scheduled",
@@ -77,24 +99,39 @@ export const bookAppointment = async (req, res) => {
       hospital: hospitalId,
     });
 
+    // If typeVisit is "Walk in", assign token number **before saving**
+    if (typeVisit === "Walk in") {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayEnd = new Date();
+      todayEnd.setHours(23, 59, 59, 999);
+
+      const lastAppointment = await Appointment.findOne({
+        doctor: doctor._id,
+        department: department._id,
+        tokenDate: { $gte: todayStart, $lte: todayEnd },
+        tokenNumber: { $ne: null },
+      })
+        .sort({ tokenNumber: -1 }) // Get the highest token number assigned today
+        .select("tokenNumber");
+
+      newAppointment.tokenNumber = lastAppointment ? lastAppointment.tokenNumber + 1 : 1;
+    }
+
     await newAppointment.save({ session });
 
-    // Log for debugging
-    console.log("New Appointment Created:", newAppointment);
-
-    // Update the patient's appointments array with the correct _id
-    // Update the patient's appointments array and ensure doctor is only added once
+    // Update patient's appointments array
     const updatedPatient = await Patient.findByIdAndUpdate(
       patient._id,
       {
-        $push: { appointments: { _id: newAppointment._id } }, // Push appointment ID
+        $push: { appointments: { _id: newAppointment._id } },
         $addToSet: { doctors: doctor._id }, // Add doctor ID only if not already present
       },
       { session, new: true }
     );
 
-    // Update the doctor's appointments and patients arrays
-    const updatedDoctor = await Doctor.findByIdAndUpdate(
+    // Update doctor's appointments and patients arrays
+    await Doctor.findByIdAndUpdate(
       doctor._id,
       {
         $push: { appointments: newAppointment._id },
@@ -103,10 +140,6 @@ export const bookAppointment = async (req, res) => {
       { session, new: true }
     );
 
-    // Log the updated patient appointments array
-    console.log("Updated Patient Appointments:", updatedPatient.appointments);
-    console.log("Updated Patient Doctors Array:", updatedPatient.doctors);
-
     // Update the hospital's appointments array
     await Hospital.findByIdAndUpdate(
       hospitalId,
@@ -114,10 +147,10 @@ export const bookAppointment = async (req, res) => {
       { session, new: true }
     );
 
-    // Optional: Update the department's appointments array (if maintained)
+    // Update the department's appointments and patients arrays
     await Department.findByIdAndUpdate(
       department._id,
-      { $push: { appointments: newAppointment._id },$addToSet: { patients: patient._id }, },
+      { $push: { appointments: newAppointment._id }, $addToSet: { patients: patient._id } },
       { session, new: true }
     );
 
@@ -432,55 +465,5 @@ export const getAppointmentsByVisitType = async (req, res) => {
       message: 'Failed to fetch appointments.',
       error: error.message,
     });
-  }
-};
-
-export const assignTokenNumber = async (req, res) => {
-  const { appointmentId } = req.params;
-  const { hospitalId } = req.session;
-
-  if (!hospitalId) {
-    return res.status(403).json({ message: "Unauthorized access. No hospital context." });
-  }
-
-  try {
-    const appointment = await Appointment.findById(appointmentId).populate("doctor").populate("department");
-    if (!appointment) {
-      return res.status(404).json({ message: "Appointment not found." });
-    }
-
-    // Ensure the appointment belongs to the same hospital
-    if (appointment.hospital.toString() !== hospitalId) {
-      return res.status(403).json({ message: "Access denied for this hospital." });
-    }
-
-    // Get the latest token number for the same doctor in the same department for today
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
-
-    const lastAppointment = await Appointment.findOne({
-      doctor: appointment.doctor._id,
-      department: appointment.department._id,
-      tokenDate: { $gte: todayStart, $lte: todayEnd },
-      tokenNumber: { $ne: null },
-    })
-      .sort({ tokenNumber: -1 }) // Get the highest token number assigned today
-      .select("tokenNumber");
-
-    let newTokenNumber = lastAppointment ? lastAppointment.tokenNumber + 1 : 1;
-
-    // Assign token number to the appointment
-    appointment.tokenNumber = newTokenNumber;
-    await appointment.save();
-
-    res.status(200).json({
-      message: "Token number assigned successfully.",
-      appointment,
-    });
-  } catch (error) {
-    console.error("Error assigning token number:", error);
-    res.status(500).json({ message: "Error assigning token number.", error: error.message });
   }
 };

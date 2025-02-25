@@ -7,20 +7,20 @@ const patientSchema = new mongoose.Schema({
   },
   gender: {
     type: String,
-    required: true,
+    //required: true,
   },
   birthday: {
     type: String,
-    required: true,
+    //required: true,
   },
   //automatically calculate age according to the date of birth
   age: {
     type: Number,
-    required: true,
+    //required: true,
   },
   address: {
     type: String,
-    required: true,
+    //required: true,
   },
   email: {
     type: String,
@@ -30,8 +30,8 @@ const patientSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: true,
     minlength: 8,
+    required: true,
   },
   phone: {
     type: String,
