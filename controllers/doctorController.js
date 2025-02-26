@@ -1,22 +1,19 @@
-import Doctor from '../models/doctorModel.js'; // Update the path as per your project structure
+import Doctor from '../models/doctorModel.js';
+import Department from '../models/departmentModel.js';
 
 export const getDoctorsByHospital = async (req, res) => {
   try {
-    // Retrieve hospitalId from the session
     const hospitalId = req.session.hospitalId;
 
     if (!hospitalId) {
       return res.status(400).json({ message: 'Hospital context not found in session.' });
     }
 
-    // Fetch doctors belonging to the hospital
     const doctors = await Doctor.find({ hospital: hospitalId })
-      .select('name email phone specialization status'); // Select only the required fields
+      .select('name email phone specialization status');
 
-    // Count of retrieved doctors
     const count = doctors.length;
 
-    // Send response
     res.status(200).json({
       message: 'Doctors retrieved successfully',
       count,
@@ -25,5 +22,33 @@ export const getDoctorsByHospital = async (req, res) => {
   } catch (error) {
     console.error('Error fetching doctors:', error);
     res.status(500).json({ message: 'Error fetching doctors' });
+  }
+};
+
+export const getDoctorsByDepartment = async (req, res) => {
+  try {
+    const { departmentId } = req.params;
+    const hospitalId = req.session.hospitalId;
+
+    if (!hospitalId) {
+      return res.status(400).json({ message: 'Hospital context not found in session.' });
+    }
+
+    const department = await Department.findOne({ _id: departmentId, hospital: hospitalId });
+    if (!department) {
+      return res.status(404).json({ message: 'Department not found in this hospital.' });
+    }
+
+    const doctors = await Doctor.find({ departments: departmentId, hospital: hospitalId })
+      .select('name email phone specialization status');
+
+    res.status(200).json({
+      message: `Doctors retrieved for department ${department.name}`,
+      count: doctors.length,
+      doctors,
+    });
+  } catch (error) {
+    console.error('Error fetching doctors by department:', error);
+    res.status(500).json({ message: 'Error fetching doctors by department' });
   }
 };
