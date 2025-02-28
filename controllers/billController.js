@@ -53,7 +53,7 @@ export const createBill = async (req, res) => {
       }
 
       const serviceDetails = service.categories.find(
-        (sub) => sub.category === serviceItem.category
+        (sub) => sub.subCategoryName === serviceItem.category
       );
 
       if (!serviceDetails) {

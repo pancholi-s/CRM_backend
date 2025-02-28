@@ -5,7 +5,10 @@ const appointmentSchema = new mongoose.Schema({
   caseId: {
     type: String,
     unique: true,
-    default: () => `CASE-${uuidv4()}`,
+    default: () => `CASE-${Array.from({ length: 6 }, () => 
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"[Math.floor(Math.random() * 36)]
+    ).join("")}`,
+    
   },
   patient: {
     type: mongoose.Schema.Types.ObjectId,
