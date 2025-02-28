@@ -36,15 +36,62 @@ const models = {
   Staff,
 };
 
+const updateParentReferences = async (modelName, resource, updates, session) => {
+  const schema = models[modelName].schema.obj;
+
+  for (const field in updates) {
+      const fieldSchema = schema[field];
+
+      if (fieldSchema && fieldSchema.ref) {
+          const oldParent = resource[field]?.toString();
+          const newParent = updates[field]?.toString();
+
+          if (oldParent !== newParent) {
+              const ParentModel = models[fieldSchema.ref];
+
+              if (oldParent) {
+                  await ParentModel.findByIdAndUpdate(
+                      oldParent,
+                      { $pull: { [modelName.toLowerCase() + 's']: resource._id } },
+                      { session }
+                  );
+              }
+
+              if (newParent) {
+                  await ParentModel.findByIdAndUpdate(
+                      newParent,
+                      { $push: { [modelName.toLowerCase() + 's']: resource._id } },
+                      { session }
+                  );
+              }
+          }
+      }
+  }
+};
+
 export const editResource = async (id, updates, hospitalId) => {
-  // Iterate over models to find the resource
   for (const [modelName, model] of Object.entries(models)) {
-    const resource = await model.findOne({ _id: id, hospital: hospitalId });
-    if (resource) {
-      Object.assign(resource, updates); // Apply updates
-      await resource.save();
-      return resource;
-    }
+      const resource = await model.findOne({ _id: id, hospital: hospitalId });
+
+      if (resource) {
+          const session = await mongoose.startSession();
+          session.startTransaction();
+
+          try {
+              await updateParentReferences(modelName, resource, updates, session);
+              Object.assign(resource, updates);
+              await resource.save({ session });
+
+              await session.commitTransaction();
+              session.endSession();
+
+              return resource;
+          } catch (error) {
+              await session.abortTransaction();
+              session.endSession();
+              throw error;
+          }
+      }
   }
 
   throw new Error(`Resource with id ${id} not found or access denied.`);
