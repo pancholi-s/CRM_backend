@@ -1,7 +1,7 @@
-import Department from '../models/departmentModel.js';
-import Patient from '../models/patientModel.js';
-import Doctor from '../models/doctorModel.js';
 import Hospital from '../models/hospitalModel.js';
+import Department from '../models/departmentModel.js';
+import Doctor from '../models/doctorModel.js';
+import Patient from '../models/patientModel.js';
 import bcrypt from 'bcryptjs';
 
 export const addDepartment = async (req, res) => {
@@ -134,7 +134,8 @@ export const getDepartments = async (req, res) => {
       .populate("doctors", "name")
       .populate("head.id", "name")
       .populate("services", "name")
-      .populate("specialistDoctors", "name");
+      .populate("specialistDoctors", "name")
+      .populate("staffs", "name");
 
     if (!department) {
       return res.status(404).json({ message: "Department not found for this hospital." });
@@ -157,6 +158,7 @@ export const getDepartments = async (req, res) => {
     const specializedProcedures = department.specializedProcedures || [];
     const equipmentMaintenance = department.equipmentMaintenance || [];
     const totalNurses = department.nurses ? department.nurses.length : 0;
+    const totalStaffs = department.staffs?.map((staff) => staff.name).filter(Boolean) || [];
 
     res.status(200).json({
       departmentName: department.name,
@@ -169,6 +171,7 @@ export const getDepartments = async (req, res) => {
       criticalEquipment,
       specializedProcedures,
       equipmentMaintenance,
+      totalStaffs,
     });
 
   } catch (error) {
