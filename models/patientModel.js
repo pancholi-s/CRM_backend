@@ -109,7 +109,7 @@ const patientSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: ["active", "inactive"],
-    default: ["active"],
+    default: "active",
   },
   files: [
     {
@@ -120,6 +120,14 @@ const patientSchema = new mongoose.Schema({
       description: { type: String, required: false },
     },
   ],
+  passwordResetToken: {
+    type: String,
+    default: null
+  },
+  passwordResetExpires: {
+      type: Date,
+      default: null
+  },
 });
 
 export default mongoose.model("Patient", patientSchema);

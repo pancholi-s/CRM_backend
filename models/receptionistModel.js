@@ -30,8 +30,14 @@ const receptionistSchema = new mongoose.Schema({
     ref: 'Hospital',
     required: true,
   },
-  
+  passwordResetToken: {
+    type: String,
+    default: null
+  },
+  passwordResetExpires: {
+      type: Date,
+      default: null
+  },
 });
 
-const Receptionist = mongoose.model('Receptionist', receptionistSchema);
-export default Receptionist;
+export default mongoose.model('Receptionist', receptionistSchema);

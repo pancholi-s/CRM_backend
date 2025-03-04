@@ -1,4 +1,5 @@
 import Appointment from "../models/appointmentModel.js";
+
 export const updateStatusesMiddleware = async (req, res, next) => {
     try {
       const currentDate = new Date();

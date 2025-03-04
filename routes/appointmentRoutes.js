@@ -1,6 +1,7 @@
-import express from 'express';
+import express from "express";
+
 import { authorizeRoles } from "../middleware/roleMiddleware.js";
-import { requireHospitalContext } from '../controllers/hospitalContext.js';
+import { requireHospitalContext } from '../middleware/hospitalContext.js';
 import { updateStatusesMiddleware } from '../middleware/statusMiddleware.js';
 
 import { bookAppointment, completeAppointment, getAppointmentsByStatus, getFilteredAppointments, getAppointmentCounts, getRejectedAppointments, getCancelledAppointments, getAppointmentsByVisitType } from '../controllers/bookAppointmentController.js';

@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import jwt from "jsonwebtoken";
 
 import Receptionist from "../models/receptionistModel.js";
@@ -8,17 +9,27 @@ import Hospital from "../models/hospitalModel.js";
 import Department from "../models/departmentModel.js";
 import HospitalAdmin from "../models/hospitalAdminModel.js";
 
+import { sendPasswordResetEmail } from "../utils/emailService.js";
+
 const models = {
   receptionist: Receptionist,
   doctor: Doctor,
   patient: Patient,
-  Hospital: Hospital, 
+  Hospital: Hospital,
   Department: Department,
-  HospitalAdmin: HospitalAdmin
+  HospitalAdmin: HospitalAdmin,
 };
 
 export const registerUser = async (req, res) => {
-  const { name, email, password, phone, role, hospitalName, ...additionalData } = req.body;
+  const {
+    name,
+    email,
+    password,
+    phone,
+    role,
+    hospitalName,
+    ...additionalData
+  } = req.body;
 
   if (!name || !email || !password || !phone || !role || !hospitalName) {
     return res.status(400).json({ message: "All fields are required." });
@@ -133,7 +144,7 @@ export const registerUser = async (req, res) => {
       { new: true }
     );
 
-    res.status(201).json({ message: `${role.charAt(0).toUpperCase() + role.slice(1)} registered successfully.`, newUser});
+    res.status(201).json({ message: `${role} registered successfully.`, newUser});
   } catch (error) {
     console.error("Error registering user:", error);
     res.status(500).json({ message: "Error registering user." });
@@ -148,7 +159,6 @@ export const loginUser = async (req, res) => {
   }
 
   try {
-    // Iterate over all roles to find the user
     let user = null;
     let role = null;
 
@@ -191,5 +201,88 @@ export const loginUser = async (req, res) => {
   } catch (error) {
     console.error("Error logging in:", error);
     res.status(500).json({ message: "Error logging in." });
+  }
+};
+
+export const forgotPassword = async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) { 
+    return res.status(400).json({ message: "Email is required." });
+  }
+
+  try {
+    let user = null;
+    let role = null;
+
+    for (const [key, Model] of Object.entries(models)) {
+      user = await Model.findOne({ email });
+      if (user) {
+        role = key;
+        break;
+      }
+    }
+
+    if (!user) {
+      return res.status(404).json({ message: "No account found with this email." });
+    }
+    
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    const hashedToken = await bcrypt.hash(resetToken, 10);
+
+    user.passwordResetToken = hashedToken;
+    user.passwordResetExpires = Date.now() + 15 * 60 * 1000; // 15 mins expiry
+    await user.save();
+
+    const resetLink = `${process.env.FRONTEND_BASE_URL}/reset-password?token=${resetToken}`;
+    await sendPasswordResetEmail(user.email, user.name, resetLink);
+
+    res.status(200).json({ message: "Password reset link sent to your email." });
+
+  } catch (error) {
+    console.error("Error in forgotPassword:", error);
+    res.status(500).json({ message: "Error processing password reset request." });
+  }
+};
+
+export const resetPassword = async (req, res) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  const { newPassword, role } = req.body;
+
+  if (!token || !newPassword || !role) {
+    return res.status(400).json({ message: "All fields are required." });
+  }
+
+  try {
+    const Model = models[role.toLowerCase()];
+    if (!Model) {
+      return res.status(400).json({ message: "Invalid role." });
+    }
+
+    const user = await Model.findOne({ passwordResetToken: { $ne: null } });
+    if (!user) {
+      return res.status(400).json({ message: "Invalid or expired token." });
+    }
+
+    if (user.passwordResetExpires < Date.now()) {
+      return res.status(400).json({ message: "Reset link has expired." });
+    }
+
+    const isMatch = await bcrypt.compare(token, user.passwordResetToken);
+    if (!isMatch) {
+      return res.status(400).json({ message: "Invalid token." });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+    user.passwordResetToken = null;
+    user.passwordResetExpires = null;
+    await user.save();
+
+    res.status(200).json({ message: "Password reset successfully. You can now login." });
+    
+  } catch (error) {
+    console.error("Error in resetPassword:", error);
+    res.status(500).json({ message: "Error resetting password." });
   }
 };

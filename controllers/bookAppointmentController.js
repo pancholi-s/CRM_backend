@@ -49,7 +49,7 @@ export const bookAppointment = async (req, res) => {
 
     // If patient does not exist, create a new one
     if (!patient) {
-      const defaultPassword = "changeme";
+      const defaultPassword = "changeme123";
       const hashedPassword = await bcrypt.hash(defaultPassword, 10);
 
       patient = new Patient({

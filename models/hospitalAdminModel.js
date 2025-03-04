@@ -35,6 +35,14 @@ const hospitalAdminSchema = new mongoose.Schema({
       receptionists: true,
     },
   },
+  passwordResetToken: {
+    type: String,
+    default: null
+  },
+  passwordResetExpires: {
+      type: Date,
+      default: null
+  },
 });
 
 export default mongoose.model("HospitalAdmin", hospitalAdminSchema);

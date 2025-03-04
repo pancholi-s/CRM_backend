@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
+
 import HospitalAdmin from "../models/hospitalAdminModel.js";
 import Doctor from "../models/doctorModel.js";
 import Receptionist from "../models/receptionistModel.js";

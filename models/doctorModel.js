@@ -73,6 +73,14 @@ const doctorSchema = new mongoose.Schema({
       ref: "Room",
     },
   ],
+  passwordResetToken: {
+    type: String,
+    default: null
+  },
+  passwordResetExpires: {
+      type: Date,
+      default: null
+  },
 });
 
 export default mongoose.model("Doctor", doctorSchema);

@@ -1,13 +1,17 @@
-import express from 'express';
-import { requireHospitalContext } from '../controllers/hospitalContext.js';
+import express from "express";
 
-import { loginUser, registerUser } from '../controllers/controller.js';
+import { requireHospitalContext } from '../middleware/hospitalContext.js';
+
+import { loginUser, registerUser, forgotPassword, resetPassword } from '../controllers/authController.js';
 import { registerHospital } from '../controllers/hospitalController.js';
 
 const router = express.Router();
 
 router.post('/register', registerUser);
 router.post('/login', loginUser);
+
+router.post("/forgotPassword", forgotPassword);
+router.post("/resetPassword", resetPassword);
 
 router.post('/registerHospital', registerHospital);
 
