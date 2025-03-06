@@ -15,9 +15,9 @@ const models = {
   receptionist: Receptionist,
   doctor: Doctor,
   patient: Patient,
-  Hospital: Hospital,
-  Department: Department,
-  HospitalAdmin: HospitalAdmin,
+  hospital: Hospital,
+  department: Department,
+  hospitalAdmin: HospitalAdmin,
 };
 
 export const registerUser = async (req, res) => {
@@ -35,7 +35,7 @@ export const registerUser = async (req, res) => {
     return res.status(400).json({ message: "All fields are required." });
   }
 
-  if (!["receptionist", "doctor", "patient", "HospitalAdmin"].includes(role)) {
+  if (!["receptionist", "doctor", "patient", "hospitalAdmin"].includes(role)) {
     return res.status(400).json({ message: "Invalid role specified." });
   }
 
@@ -53,7 +53,6 @@ export const registerUser = async (req, res) => {
       return res.status(400).json({ message: "Hospital not found." });
     }
 
-    // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
     let newUser;
@@ -79,14 +78,13 @@ export const registerUser = async (req, res) => {
 
       await newUser.save();
 
-      // Update the department document to include the new doctor
       await Department.findByIdAndUpdate(
         departmentDoc._id,
         { $push: { doctors: newUser._id } },
         { new: true }
       );
     } else if (role === "patient") {
-      const patientStatus = additionalData.status || ["active"];
+      const patientStatus = additionalData.status || "active";
       newUser = new Patient({
         name,
         email,
@@ -108,12 +106,13 @@ export const registerUser = async (req, res) => {
         hospital: hospital._id,
         ...additionalData,
       });
-    } else if (role === "HospitalAdmin") {
+    } else if (role === "hospitalAdmin") {
       newUser = new HospitalAdmin({
         name,
         email,
         password: hashedPassword,
         phone,
+        role,
         hospital: hospital._id,
         ...additionalData,
       });
@@ -121,10 +120,6 @@ export const registerUser = async (req, res) => {
       await newUser.save();
       await Hospital.findByIdAndUpdate(hospital._id, {
         $push: { admins: newUser._id },
-      });
-
-      return res.status(201).json({
-        message: "Hospital Admin registered successfully.",
       });
     }
 
@@ -234,7 +229,6 @@ export const forgotPassword = async (req, res) => {
     user.passwordResetExpires = Date.now() + 15 * 60 * 1000; // 15 mins expiry
     await user.save();
 
-    // const resetLink = `${process.env.FRONTEND_BASE_URL}/reset-password?token=${resetToken}`;
     const resetLink = `${process.env.FRONTEND_BASE_URL}/reset-password?token=${resetToken}&role=${role}`;
 
     await sendPasswordResetEmail(user.email, user.name, resetLink);
@@ -256,7 +250,7 @@ export const resetPassword = async (req, res) => {
   }
 
   try {
-    const Model = models[role.toLowerCase()];
+    const Model = models[role];
     if (!Model) {
       return res.status(400).json({ message: "Invalid role." });
     }

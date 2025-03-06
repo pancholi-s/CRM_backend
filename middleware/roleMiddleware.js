@@ -1,11 +1,11 @@
 import jwt from "jsonwebtoken";
 import dotenv from "dotenv";
 
+import MainAdmin from "../models/mainAdminModel.js";
 import HospitalAdmin from "../models/hospitalAdminModel.js";
 import Doctor from "../models/doctorModel.js";
 import Receptionist from "../models/receptionistModel.js";
 import Patient from "../models/patientModel.js";
-import MainAdmin from "../models/mainAdminModel.js";
 
 dotenv.config();
 
@@ -22,11 +22,11 @@ export const authorizeRoles = (...allowedRoles) => {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
       let user;
-      switch (decoded.role.toLowerCase()) {
-        case "mainadmin":
+      switch (decoded.role) {
+        case "mainAdmin":
           user = await MainAdmin.findById(decoded.userId);
           break;
-        case "hospitaladmin":
+        case "hospitalAdmin":
           user = await HospitalAdmin.findById(decoded.userId);
           break;
         case "doctor":
@@ -46,11 +46,8 @@ export const authorizeRoles = (...allowedRoles) => {
         return res.status(403).json({ message: "User not found. Access denied." });
       }
 
-      // Convert all roles to lowercase before comparison
-      const normalizedAllowedRoles = allowedRoles.map(role => role.toLowerCase());
-
-      if (!normalizedAllowedRoles.includes(decoded.role.toLowerCase())) {
-        console.log(`Access denied. Role ${decoded.role} not in ${allowedRoles}`);
+      if (!allowedRoles.includes(decoded.role)) {
+        console.log(`Access denied.`);
         return res.status(403).json({ message: "Access denied. Insufficient permissions." });
       }
 
