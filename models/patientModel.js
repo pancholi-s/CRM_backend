@@ -128,6 +128,7 @@ const patientSchema = new mongoose.Schema({
       type: Date,
       default: null
   },
+  bills: [{ type: mongoose.Schema.Types.ObjectId, ref: "Bill" }],
 });
 
 export default mongoose.model("Patient", patientSchema);

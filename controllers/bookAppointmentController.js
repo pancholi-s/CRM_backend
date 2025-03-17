@@ -198,73 +198,89 @@ export const completeAppointment = async (req, res) => {
   }
 };
 
-//get info about patients's appointment (active/inactive filtering) 
+//added date wise filtering
 export const getAppointmentsByStatus = async (req, res) => {
-  const { status } = req.query;
+  const { status, date } = req.query;
 
   try {
-    // Retrieve hospitalId from the session
     const hospitalId = req.session.hospitalId;
 
     if (!hospitalId) {
-      return res.status(400).json({ message: 'Hospital context not found in session.' });
+      return res.status(400).json({ message: "Hospital context not found in session." });
+    }
+
+    let filter = { hospital: hospitalId };
+
+    if (status) {
+      filter.status = status;
+    } else {
+      return res.status(400).json({ message: "Status query parameter is required." });
+    }
+
+    // If date is provided, filter appointments for that specific day
+    if (date) {
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      filter.tokenDate = { $gte: startOfDay, $lte: endOfDay };
     }
 
     let appointments;
 
-    // If status is 'Scheduled', fetch all appointments regardless of status
-    if (status === 'Scheduled') {
-      appointments = await Appointment.find({ hospital: hospitalId })
-        .populate('patient', 'name email')
-        .populate('doctor', 'name email')
-        .populate('department', 'name')
-        .populate('hospital', 'name address');
-    } else if (status) {
-      // Otherwise, filter by the provided status and hospitalId
-      appointments = await Appointment.find({ status, hospital: hospitalId })
-        .populate('patient', 'name email')
-        .populate('doctor', 'name email')
-        .populate('department', 'name')
-        .populate('hospital', 'name address');
+    // Fetch all appointments regardless of status
+    if (status === "Scheduled") {
+      appointments = await Appointment.find(filter)
+        .populate("patient", "name email")
+        .populate("doctor", "name email")
+        .populate("department", "name")
+        .populate("hospital", "name address");
     } else {
-      return res.status(400).json({ message: 'Status query parameter is required.' });
+      // Filter by the provided status and hospitalId
+      appointments = await Appointment.find(filter)
+        .populate("patient", "name email")
+        .populate("doctor", "name email")
+        .populate("department", "name")
+        .populate("hospital", "name address");
     }
 
-    // Count of retrieved appointments
     const count = appointments.length;
 
     res.status(200).json({
-      message: `${status || 'All'} appointments retrieved successfully`,
+      message: `${status || "All"} appointments retrieved successfully`,
       count,
       appointments,
     });
   } catch (error) {
-    console.error(`Error fetching appointments:`, error);
-    res.status(500).json({ message: 'Error fetching appointments' });
+    console.error("Error fetching appointments:", error);
+    res.status(500).json({ message: "Error fetching appointments" });
   }
 };
 
+//added date wise filtering
 export const getFilteredAppointments = async (req, res) => {
-  const { departmentId, status } = req.query;
+  const { departmentId, status, date } = req.query;
 
   try {
     // Retrieve hospitalId from the session
     const hospitalId = req.session.hospitalId;
 
     if (!hospitalId) {
-      return res.status(400).json({ message: 'Hospital context not found in session.' });
+      return res.status(400).json({ message: "Hospital context not found in session." });
     }
 
     // Validate the status
-    const validStatuses = Appointment.schema.path('status').enumValues;
+    const validStatuses = Appointment.schema.path("status").enumValues;
     if (!status || !validStatuses.includes(status)) {
-      return res.status(400).json({ message: 'Invalid or missing appointment status.' });
+      return res.status(400).json({ message: "Invalid or missing appointment status." });
     }
 
     // Retrieve the hospital and populate departments
-    const hospital = await Hospital.findById(hospitalId).populate('departments');
+    const hospital = await Hospital.findById(hospitalId).populate("departments");
     if (!hospital) {
-      return res.status(404).json({ message: 'Hospital not found.' });
+      return res.status(404).json({ message: "Hospital not found." });
     }
 
     // Ensure departmentId is a valid ObjectId
@@ -275,35 +291,48 @@ export const getFilteredAppointments = async (req, res) => {
       (dep) => dep._id.toString() === departmentObjectId.toString()
     );
     if (!isDepartmentValid) {
-      return res
-        .status(404)
-        .json({ message: 'Department does not belong to the specified hospital.' });
+      return res.status(404).json({ message: "Department does not belong to the specified hospital." });
     }
 
-    // Fetch appointments filtered by departmentId, status, and hospitalId
-    const appointments = await Appointment.find({
+    // Prepare the filter object
+    const filter = {
       department: departmentObjectId,
       status: status,
       hospital: hospitalId,
-    })
-      .populate('patient', 'name email')
-      .populate('doctor', 'name email')
-      .populate('department', 'name')
-      .populate('hospital', 'name address');
+    };
+
+    // If date is provided, filter appointments for that specific day
+    if (date) {
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      filter.tokenDate = { $gte: startOfDay, $lte: endOfDay };
+    }
+
+    // Fetch appointments based on the filter
+    const appointments = await Appointment.find(filter)
+      .populate("patient", "name email")
+      .populate("doctor", "name email")
+      .populate("department", "name")
+      .populate("hospital", "name address");
 
     // Count of filtered appointments
     const count = appointments.length;
 
     res.status(200).json({
-      message: 'Filtered appointments retrieved successfully',
+      message: "Filtered appointments retrieved successfully",
       count,
       appointments,
     });
   } catch (error) {
-    console.error('Error fetching filtered appointments:', error);
-    res.status(500).json({ message: 'Error fetching filtered appointments' });
+    console.error("Error fetching filtered appointments:", error);
+    res.status(500).json({ message: "Error fetching filtered appointments" });
   }
 };
+
 
 export const getAppointmentCounts = async (req, res) => {
   const { hospitalId } = req.session;
@@ -431,13 +460,14 @@ export const getCancelledAppointments = async (req, res) => {
   }
 };
 
+//added date wise filtering
 export const getAppointmentsByVisitType = async (req, res) => {
   try {
-    const { typeVisit } = req.query;
+    const { typeVisit, date } = req.query;
     const hospitalId = req.session.hospitalId;
 
     // Validate typeVisit
-    const validVisitTypes = ['Walk in', 'Referral', 'Online'];
+    const validVisitTypes = ["Walk in", "Referral", "Online"];
     if (!typeVisit || !validVisitTypes.includes(typeVisit)) {
       return res.status(400).json({
         message: "Invalid visit type. Use 'Walk in', 'Referral', or 'Online'.",
@@ -445,18 +475,28 @@ export const getAppointmentsByVisitType = async (req, res) => {
     }
 
     if (!hospitalId) {
-      return res.status(403).json({ message: 'Access denied. No hospital context found.' });
+      return res.status(403).json({ message: "Access denied. No hospital context found." });
     }
 
-    // Fetch appointments based on visit type and hospital context
-    const appointments = await Appointment.find({
-      typeVisit: typeVisit,
-      hospital: hospitalId,
-    })
-      .populate('patient', 'name email phone')
-      .populate('doctor', 'name specialization')
-      .populate('department', 'name')
-      .select('-__v');
+    let filter = { typeVisit, hospital: hospitalId };
+
+    // If date is provided, filter appointments for that specific day
+    if (date) {
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      filter.tokenDate = { $gte: startOfDay, $lte: endOfDay };
+    }
+
+    // Fetch appointments based on visit type, hospital, and date (if provided)
+    const appointments = await Appointment.find(filter)
+      .populate("patient", "name email phone")
+      .populate("doctor", "name specialization")
+      .populate("department", "name")
+      .select("-__v");
 
     res.status(200).json({
       hospitalId: hospitalId,
@@ -465,10 +505,11 @@ export const getAppointmentsByVisitType = async (req, res) => {
       appointments,
     });
   } catch (error) {
-    console.error('Error fetching appointments by visit type:', error);
+    console.error("Error fetching appointments by visit type:", error);
     res.status(500).json({
-      message: 'Failed to fetch appointments.',
+      message: "Failed to fetch appointments.",
       error: error.message,
     });
   }
 };
+
