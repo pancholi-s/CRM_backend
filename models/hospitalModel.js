@@ -43,6 +43,27 @@ const hospitalSchema = new mongoose.Schema({
     type: String,
     required: false,
   },
+  establishedDate: {
+    type: Date,
+  },
+  administrativeDetails: {
+    name: { type: String, required: true },
+    contact: { type: String, required: true },
+    email: { type: String, required: true }
+  },
+  licenses: [
+    {
+      name: { type: String, required: true }, 
+      file: { type: String, required: true }  
+    }
+  ],
+  nabhAccreditation: { 
+    type: Boolean, 
+    default: false 
+  },
+  description :{
+    type: String,
+  },
   departments: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Department',
@@ -67,10 +88,6 @@ const hospitalSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Patient',
   }],
-  establishedDate: {
-    type: Date,
-    required: true,
-  },
   mainAdmin: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'MainAdmin',

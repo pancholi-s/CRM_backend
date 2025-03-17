@@ -9,18 +9,15 @@ export const registerHospital = async (req, res) => {
     website,
     establishedDate,
     departments,
-
+    administrativeDetails,
+    licenses,
+    nabhAccreditation,
+    description
   } = req.body;
 
-  // Check for missing fields
-  if (
-    !name ||
-    !address ||
-    !phone ||
-    !email ||
-    !establishedDate
-  ) {
-    return res.status(400).json({ message: "All fields are required." });
+  // Check for required fields
+  if (!name || !address || !phone || !email ) {
+    return res.status(400).json({ message: "Required fields are missing." });
   }
 
   try {
@@ -39,6 +36,10 @@ export const registerHospital = async (req, res) => {
       website,
       establishedDate,
       departments,
+      administrativeDetails,  // Optional
+      licenses,  // Optional
+      nabhAccreditation,  // Optional
+      description  // Optional
     });
 
     // Save the hospital to the database
