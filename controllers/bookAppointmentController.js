@@ -40,6 +40,11 @@ export const bookAppointment = async (req, res) => {
     return res.status(400).json({ message: "Invalid typeVisit. Use 'Walk in', 'Referral', or 'Online'." });
   }
 
+  const selectedDate = new Date(date);  // Convert input string to Date object
+  if (selectedDate < new Date()) {
+      return res.status(400).json({ message: "Date is invalid" });
+  }
+
   //to avoid differences in the last digit of object id stored as references in patient  
   const session = await mongoose.startSession();
   session.startTransaction();

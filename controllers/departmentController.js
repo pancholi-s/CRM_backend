@@ -194,9 +194,9 @@ export const getAllDepartments = async (req, res) => {
       .populate({
         path: "departments",
         populate: [
-          { path: "head", populate: { path: "id" } },
-          { path: "specialistDoctors" },
-          { path: "doctors" },
+          { path: "head.id", select: "name email phone" },
+          { path: "specialistDoctors", select: "name email phone" },
+          { path: "doctors", select: "name email phone" },
           { path: "patients" },
           { path: "services", select: "name" },
         ],
@@ -212,22 +212,37 @@ export const getAllDepartments = async (req, res) => {
     }
 
     // Map departments to extract required details
-    const response = hospital.departments.map(department => ({
+    const response = hospital.departments.map((department) => ({
       departmentId: department._id,
       departmentName: department.name,
-      departmentHead: department.head?.id?.name || "Not Assigned",
+      departmentHead: department.head?.id
+        ? {
+            name: department.head.id.name,
+            email: department.head.id.email,
+            phone: department.head.id.phone,
+          }
+        : "Not Assigned",
       totalPatients: department.patients.length,
-      specialistDocs: department.specialistDoctors.length,
-      Docs: department.doctors.length,
+      specialistDocs: department.specialistDoctors.map((doc) => ({
+        id: doc._id,
+        name: doc.name,
+        email: doc.email,
+        phone: doc.phone,
+      })),
+      doctors: department.doctors.map((doc) => ({
+        id: doc._id,
+        name: doc.name,
+        email: doc.email,
+        phone: doc.phone,
+      })),
       totalNurses: department.nurses.length,
-      activeServices: department.services.map(service => service.name), // Extract service names
+      activeServices: department.services.map((service) => service.name),
       facilities: department.facilities || [],
       criticalEquipment: department.criticalEquipment || [],
       equipmentMaintenance: department.equipmentMaintenance || [],
     }));
 
     res.status(200).json(response);
-
   } catch (error) {
     console.error("Error fetching departments:", error);
     res.status(500).json({ message: "Error fetching departments." });
