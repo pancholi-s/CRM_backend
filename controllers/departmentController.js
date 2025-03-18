@@ -131,46 +131,60 @@ export const getDepartments = async (req, res) => {
       _id: departmentId,
       hospital: hospitalId,
     })
-      .populate("doctors", "name")
-      .populate("head.id", "name")
+      .populate("doctors", "name phone email")
+      .populate("head.id", "name phone email")
       .populate("services", "name")
-      .populate("specialistDoctors", "name")
+      .populate("specialistDoctors", "name phone email")
       .populate("staffs", "name");
 
     if (!department) {
       return res.status(404).json({ message: "Department not found for this hospital." });
     }
 
-    // Extract department data, ensuring all fields return valid arrays
-    const totalDoctors = department.doctors?.map((doctor) => doctor.name).filter(Boolean) || [];
-    const departmentHead = department.head?.id?.name || "Not assigned";
+    // Extracting doctor details
+    const totalDoctors = department.doctors?.map((doc) => ({
+      id: doc._id,
+      name: doc.name,
+      email: doc.email,
+      phone: doc.phone,  // Added phone
+    })) || [];
 
-    if (department.head?.id && !totalDoctors.includes(departmentHead)) {
+    // Extracting department head details
+    const departmentHead = department.head?.id
+      ? {
+          id: department.head.id._id,
+          name: department.head.id.name,
+          email: department.head.id.email,
+          phone: department.head.id.phone, // Added phone
+        }
+      : { id: null, name: "Not assigned", email: null, phone: null };
+
+    // Ensure department head is included in total doctors if not already present
+    if (department.head?.id && !totalDoctors.some((doc) => doc.id.equals(department.head.id._id))) {
       totalDoctors.push(departmentHead);
     }
 
-    const availableServices = department.services?.map((service) => service.name).filter(Boolean) || [];
-    const specialistDoctors = department.specialistDoctors?.map((doc) => doc.name).filter(Boolean) || [];
-
-    // Now directly accessing fields instead of populating
-    const facilities = department.facilities || [];
-    const criticalEquipment = department.criticalEquipments || [];
-    const specializedProcedures = department.specializedProcedures || [];
-    const equipmentMaintenance = department.equipmentMaintenance || [];
-    const totalNurses = department.nurses ? department.nurses.length : 0;
-    const totalStaffs = department.staffs?.map((staff) => staff.name).filter(Boolean) || [];
+    // Extracting other department data
+    const availableServices = department.services?.map((service) => service.name) || [];
+    const specialistDoctors = department.specialistDoctors?.map((doc) => ({
+      id: doc._id,
+      name: doc.name,
+      email: doc.email,
+      phone: doc.phone, // Added phone
+    })) || [];
+    const totalStaffs = department.staffs?.map((staff) => staff.name) || [];
 
     res.status(200).json({
       departmentName: department.name,
       totalDoctors,
       departmentHead,
-      totalNurses,
+      totalNurses: department.nurses ? department.nurses.length : 0,
       specialistDoctors,
       availableServices,
-      facilities,
-      criticalEquipment,
-      specializedProcedures,
-      equipmentMaintenance,
+      facilities: department.facilities || [],
+      criticalEquipment: department.criticalEquipments || [],
+      specializedProcedures: department.specializedProcedures || [],
+      equipmentMaintenance: department.equipmentMaintenance || [],
       totalStaffs,
     });
 
@@ -179,6 +193,7 @@ export const getDepartments = async (req, res) => {
     res.status(500).json({ message: "Error fetching department details." });
   }
 };
+
 
 export const getAllDepartments = async (req, res) => {
   try {

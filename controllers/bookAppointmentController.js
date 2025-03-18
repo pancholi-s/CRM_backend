@@ -40,11 +40,6 @@ export const bookAppointment = async (req, res) => {
     return res.status(400).json({ message: "Invalid typeVisit. Use 'Walk in', 'Referral', or 'Online'." });
   }
 
-  const selectedDate = new Date(date);  // Convert input string to Date object
-  if (selectedDate < new Date()) {
-      return res.status(400).json({ message: "Date is invalid" });
-  }
-
   //to avoid differences in the last digit of object id stored as references in patient  
   const session = await mongoose.startSession();
   session.startTransaction();
@@ -201,6 +196,8 @@ export const completeAppointment = async (req, res) => {
 //added date wise filtering
 export const getAppointmentsByStatus = async (req, res) => {
   const { status, date } = req.query;
+  const { page = 1, limit = 10 } = req.query; // Get pagination from request
+  const skip = (page - 1) * limit; // Calculate how many records to skip
 
   try {
     const hospitalId = req.session.hospitalId;
@@ -236,21 +233,30 @@ export const getAppointmentsByStatus = async (req, res) => {
         .populate("patient", "name email")
         .populate("doctor", "name email")
         .populate("department", "name")
-        .populate("hospital", "name address");
+        .populate("hospital", "name address")
+        .skip(skip)
+        .limit(limit);
     } else {
       // Filter by the provided status and hospitalId
       appointments = await Appointment.find(filter)
         .populate("patient", "name email")
         .populate("doctor", "name email")
         .populate("department", "name")
-        .populate("hospital", "name address");
+        .populate("hospital", "name address")
+        .skip(skip)
+        .limit(limit);
     }
 
-    const count = appointments.length;
+    // Fetch total count for pagination metadata
+    const totalAppointments = await Appointment.countDocuments(filter);
+    const totalPages = Math.ceil(totalAppointments / limit);
+
 
     res.status(200).json({
       message: `${status || "All"} appointments retrieved successfully`,
-      count,
+      totalAppointments,
+      totalPages,
+      currentPage: page,
       appointments,
     });
   } catch (error) {
@@ -261,7 +267,7 @@ export const getAppointmentsByStatus = async (req, res) => {
 
 //added date wise filtering
 export const getFilteredAppointments = async (req, res) => {
-  const { departmentId, status, date } = req.query;
+  const { departmentId, status, date, page = 1, limit = 10 } = req.query; // Default page=1, limit=10
 
   try {
     // Retrieve hospitalId from the session
@@ -312,19 +318,29 @@ export const getFilteredAppointments = async (req, res) => {
       filter.tokenDate = { $gte: startOfDay, $lte: endOfDay };
     }
 
-    // Fetch appointments based on the filter
+    // Convert page and limit to numbers for pagination
+    const pageNumber = parseInt(page, 10);
+    const limitNumber = parseInt(limit, 10);
+    const skip = (pageNumber - 1) * limitNumber;
+
+    // Fetch paginated appointments based on the filter
     const appointments = await Appointment.find(filter)
       .populate("patient", "name email")
       .populate("doctor", "name email")
       .populate("department", "name")
-      .populate("hospital", "name address");
+      .populate("hospital", "name address")
+      .skip(skip)
+      .limit(limitNumber);
 
-    // Count of filtered appointments
-    const count = appointments.length;
+    // Total count of filtered appointments (without pagination)
+    const totalAppointments = await Appointment.countDocuments(filter);
 
     res.status(200).json({
       message: "Filtered appointments retrieved successfully",
-      count,
+      count: appointments.length,
+      total: totalAppointments, // Total count before pagination
+      totalPages: Math.ceil(totalAppointments / limitNumber), // Total pages available
+      currentPage: pageNumber,
       appointments,
     });
   } catch (error) {
@@ -332,7 +348,6 @@ export const getFilteredAppointments = async (req, res) => {
     res.status(500).json({ message: "Error fetching filtered appointments" });
   }
 };
-
 
 export const getAppointmentCounts = async (req, res) => {
   const { hospitalId } = req.session;
@@ -463,7 +478,7 @@ export const getCancelledAppointments = async (req, res) => {
 //added date wise filtering
 export const getAppointmentsByVisitType = async (req, res) => {
   try {
-    const { typeVisit, date } = req.query;
+    const { typeVisit, date, page = 1, limit = 10 } = req.query;
     const hospitalId = req.session.hospitalId;
 
     // Validate typeVisit
@@ -491,17 +506,30 @@ export const getAppointmentsByVisitType = async (req, res) => {
       filter.tokenDate = { $gte: startOfDay, $lte: endOfDay };
     }
 
-    // Fetch appointments based on visit type, hospital, and date (if provided)
+    // Convert page and limit to numbers for pagination
+    const pageNumber = parseInt(page, 10);
+    const limitNumber = parseInt(limit, 10);
+    const skip = (pageNumber - 1) * limitNumber;
+
+    // Fetch paginated appointments
     const appointments = await Appointment.find(filter)
       .populate("patient", "name email phone")
       .populate("doctor", "name specialization")
       .populate("department", "name")
-      .select("-__v");
+      .select("-__v")
+      .skip(skip)
+      .limit(limitNumber);
+
+    // Get total count of filtered appointments
+    const totalAppointments = await Appointment.countDocuments(filter);
 
     res.status(200).json({
-      hospitalId: hospitalId,
-      typeVisit: typeVisit,
+      hospitalId,
+      typeVisit,
       count: appointments.length,
+      total: totalAppointments, // Total count before pagination
+      totalPages: Math.ceil(totalAppointments / limitNumber), // Total pages available
+      currentPage: pageNumber,
       appointments,
     });
   } catch (error) {
@@ -512,4 +540,3 @@ export const getAppointmentsByVisitType = async (req, res) => {
     });
   }
 };
-

@@ -1,4 +1,5 @@
-import Patient from '../models/patientModel.js';
+import Patient from "../models/patientModel.js";
+import Bill from "../models/billModel.js";
 
 export const getPatientsByHospital = async (req, res) => {
   try {
@@ -7,17 +8,26 @@ export const getPatientsByHospital = async (req, res) => {
       return res.status(400).json({ message: "Hospital ID is required" });
     }
 
-    // Fetch patients with populated appointments and nested doctor/department fields
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // Fetch total count of patients
+    const totalPatients = await Patient.countDocuments({ hospital: hospitalId });
+
+    // Fetch patients with pagination, populated appointments and nested doctor/department fields
     const patients = await Patient.find({ hospital: hospitalId })
-      .select('-password') // Exclude password field
+      .select("-password") // Exclude password field
       .populate({
-        path: 'appointments',
+        path: "appointments",
         populate: [
-          { path: 'doctor', select: 'name _id' },
-          { path: 'department', select: 'name' },
+          { path: "doctor", select: "name _id" },
+          { path: "department", select: "name" },
         ],
       })
-      .populate({ path: 'doctors', select: 'name _id' }); // Populate the doctors array
+      .populate({ path: "doctors", select: "name _id" }) // Populate the doctors array
+      .skip(skip)
+      .limit(limit);
 
     if (!patients || patients.length === 0) {
       return res.status(404).json({ message: "No patients found for this hospital" });
@@ -25,46 +35,48 @@ export const getPatientsByHospital = async (req, res) => {
 
     console.log("Fetched Patients:", JSON.stringify(patients, null, 2));
 
-    // Process patient data and filter/transform appointments
-    const patientData = patients.map((patient) => {
-      const appointments = Array.isArray(patient.appointments)
-        ? patient.appointments.map((appointment) => ({
-            caseId: appointment.caseId || "N/A",
-            typeVisit: appointment.type || "N/A",
-            branch: appointment.department?.name || "N/A",
-            date: appointment.tokenDate
-              ? new Date(appointment.tokenDate).toLocaleDateString('en-GB')
-              : "N/A",
-            status: appointment.status || "N/A",
-            doctorName: appointment.doctor?.name || "N/A",
-          }))
-        : [];
+    // Process patient data and fetch corresponding bills
+    const patientData = await Promise.all(
+      patients.map(async (patient) => {
+        // Fetch bills associated with the patient
+        const bills = await Bill.find({ patient: patient._id })
+          .select("caseId totalAmount paidAmount outstanding status invoiceNumber invoiceDate mode")
+          .populate("doctor", "name _id");
 
-      // Extract doctor names from the populated doctors array
-      const doctorNames = patient.doctors.map((doctor) => ({
-        id: doctor._id,
-        name: doctor.name,
-      }));
+        const appointments = Array.isArray(patient.appointments)
+          ? patient.appointments.map((appointment) => ({
+              caseId: appointment.caseId || "N/A",
+              typeVisit: appointment.type || "N/A",
+              branch: appointment.department?.name || "N/A",
+              date: appointment.tokenDate
+                ? new Date(appointment.tokenDate).toLocaleDateString("en-GB")
+                : "N/A",
+              status: appointment.status || "N/A",
+              doctorName: appointment.doctor?.name || "N/A",
+            }))
+          : [];
 
-      // Return all patient attributes except excluded fields
-      return {
-        ...patient.toObject(), // Include all patient fields
-        appointments, // Add transformed appointments data
-        doctors: doctorNames,
-      };
-    });
+        // Extract doctor names from the populated doctors array
+        const doctorNames = patient.doctors.map((doctor) => ({
+          id: doctor._id,
+          name: doctor.name,
+        }));
 
-    // Check if any valid patients with appointments exist
-    if (patientData.length === 0) {
-      console.warn("No valid appointments found across all patients.");
-      return res.status(404).json({
-        message: "No valid appointments found for patients in this hospital",
-      });
-    }
+        return {
+          ...patient.toObject(), // Include all patient fields
+          appointments, // Add transformed appointments data
+          doctors: doctorNames,
+          bills, // Add the corresponding bills
+        };
+      })
+    );
 
     return res.status(200).json({
       message: "Patients retrieved successfully",
       count: patientData.length,
+      totalPatients,
+      totalPages: Math.ceil(totalPatients / limit),
+      currentPage: page,
       patients: patientData,
     });
   } catch (error) {
@@ -73,12 +85,12 @@ export const getPatientsByHospital = async (req, res) => {
   }
 };
 
+
 export const getPatientsByStatus = async (req, res) => {
   try {
     const { status } = req.query;
     const hospitalId = req.session.hospitalId;
 
-    // Validate status
     if (!['active', 'inactive'].includes(status)) {
       return res.status(400).json({ message: "Invalid status. Use 'active' or 'inactive'." });
     }
@@ -87,16 +99,29 @@ export const getPatientsByStatus = async (req, res) => {
       return res.status(403).json({ message: "Access denied. No hospital context found." });
     }
 
-    // Fetch patients based on status and hospital context
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    // Fetch total count of patients with the given status
+    const totalPatients = await Patient.countDocuments({ status: status, hospital: hospitalId });
+
+    // Fetch patients based on status and hospital context with pagination
     const patients = await Patient.find({ status: status, hospital: hospitalId })
       .populate('appointments', 'caseId tokenDate status') // Populate appointment details
       .populate('doctors', 'name specialization') // Populate doctor details
-      .select('-password -medicalHistory -socialHistory'); // Exclude sensitive fields
+      .select('-password -medicalHistory -socialHistory') // Exclude sensitive fields
+      .skip(skip)
+      .limit(limit);
 
-    res.status(200).json({
-      hospitalId: hospitalId,
-      status: status,
+    return res.status(200).json({
+      message: "Patients retrieved successfully",
+      hospitalId,
+      status,
       count: patients.length,
+      totalPatients,
+      totalPages: Math.ceil(totalPatients / limit),
+      currentPage: page,
       patients,
     });
   } catch (error) {
