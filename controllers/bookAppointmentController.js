@@ -229,7 +229,7 @@ export const getAppointmentsByStatus = async (req, res) => {
 
     // Fetch all appointments regardless of status
     if (status === "Scheduled") {
-      appointments = await Appointment.find(filter)
+      appointments = await Appointment.find()
         .populate("patient", "name email")
         .populate("doctor", "name email")
         .populate("department", "name")
