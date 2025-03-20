@@ -146,7 +146,7 @@ export const getDepartments = async (req, res) => {
       id: doc._id,
       name: doc.name,
       email: doc.email,
-      phone: doc.phone,  // Added phone
+      phone: doc.phone,
     })) || [];
 
     // Extracting department head details
@@ -155,7 +155,7 @@ export const getDepartments = async (req, res) => {
           id: department.head.id._id,
           name: department.head.id.name,
           email: department.head.id.email,
-          phone: department.head.id.phone, // Added phone
+          phone: department.head.id.phone,
         }
       : { id: null, name: "Not assigned", email: null, phone: null };
 
@@ -164,20 +164,25 @@ export const getDepartments = async (req, res) => {
       totalDoctors.push(departmentHead);
     }
 
-    // Extracting other department data
-    const availableServices = department.services?.map((service) => service.name) || [];
     const specialistDoctors = department.specialistDoctors?.map((doc) => ({
       id: doc._id,
       name: doc.name,
       email: doc.email,
-      phone: doc.phone, // Added phone
+      phone: doc.phone,
     })) || [];
-    const totalStaffs = department.staffs?.map((staff) => staff.name) || [];
+
+    const totalStaffs = department.staffs?.map((staff) => ({
+      id: staff._id,
+      name: staff.name,
+    })) || [];
+
+    // Extracting other department data
+    const availableServices = department.services?.map((service) => service.name) || [];
 
     res.status(200).json({
       departmentName: department.name,
-      totalDoctors,
       departmentHead,
+      totalDoctors,
       totalNurses: department.nurses ? department.nurses.length : 0,
       specialistDoctors,
       availableServices,
@@ -193,7 +198,6 @@ export const getDepartments = async (req, res) => {
     res.status(500).json({ message: "Error fetching department details." });
   }
 };
-
 
 export const getAllDepartments = async (req, res) => {
   try {
