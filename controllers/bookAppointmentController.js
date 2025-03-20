@@ -337,7 +337,7 @@ export const getFilteredAppointments = async (req, res) => {
     const totalAppointments = await Appointment.countDocuments(filter);
 
     res.status(200).json({
-      message: "Filtered appointments retrieved successfully",
+      message: `${status || "All"} appointments retrieved successfully`,
       count: appointments.length,
       total: totalAppointments, // Total count before pagination
       totalPages: Math.ceil(totalAppointments / limitNumber), // Total pages available
