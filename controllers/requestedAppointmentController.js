@@ -56,6 +56,7 @@ export const requestAppointment = async (req, res) => {
       department: department._id,
       tokenDate: date,
       status: status || 'Pending',
+      typeVisit: 'Online',
       note,
       hospital: hospitalId,
     });

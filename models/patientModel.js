@@ -80,6 +80,11 @@ const patientSchema = new mongoose.Schema({
     type: String,
     required: false,
   },
+  typeVisit: {
+    type: String,
+    required: false,
+    default: "Walk in",
+  },
   appointments: [
     {
       type: mongoose.Schema.Types.ObjectId,

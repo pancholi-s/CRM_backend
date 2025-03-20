@@ -63,6 +63,7 @@ export const bookAppointment = async (req, res) => {
         phone: mobileNumber,
         hospital: hospitalId,
         status: "active",
+        typeVisit:"Walk in",
         registrationDate: new Date(),
       });
 

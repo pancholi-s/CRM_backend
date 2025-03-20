@@ -1,6 +1,7 @@
 import Patient from "../models/patientModel.js";
 import Bill from "../models/billModel.js";
 
+//combine 
 export const getPatientsByHospital = async (req, res) => {
   try {
     const hospitalId = req.session.hospitalId;
@@ -85,29 +86,38 @@ export const getPatientsByHospital = async (req, res) => {
   }
 };
 
-
 export const getPatientsByStatus = async (req, res) => {
   try {
-    const { status } = req.query;
+    const { status, typeVisit } = req.query;
     const hospitalId = req.session.hospitalId;
-
-    if (!['active', 'inactive'].includes(status)) {
-      return res.status(400).json({ message: "Invalid status. Use 'active' or 'inactive'." });
-    }
 
     if (!hospitalId) {
       return res.status(403).json({ message: "Access denied. No hospital context found." });
+    }
+
+    // Construct dynamic filter
+    const filter = { hospital: hospitalId };
+    
+    if (status) {
+      if (!['active', 'inactive'].includes(status)) {
+        return res.status(400).json({ message: "Invalid status. Use 'active' or 'inactive'." });
+      }
+      filter.status = status;
+    }
+    
+    if (typeVisit) {
+      filter.typeVisit = typeVisit;  // No predefined values, just filter whatever exists
     }
 
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    // Fetch total count of patients with the given status
-    const totalPatients = await Patient.countDocuments({ status: status, hospital: hospitalId });
+    // Fetch total count of patients with the applied filters
+    const totalPatients = await Patient.countDocuments(filter);
 
-    // Fetch patients based on status and hospital context with pagination
-    const patients = await Patient.find({ status: status, hospital: hospitalId })
+    // Fetch patients with pagination and filters
+    const patients = await Patient.find(filter)
       .populate('appointments', 'caseId tokenDate status') // Populate appointment details
       .populate('doctors', 'name specialization') // Populate doctor details
       .select('-password -medicalHistory -socialHistory') // Exclude sensitive fields
@@ -117,7 +127,7 @@ export const getPatientsByStatus = async (req, res) => {
     return res.status(200).json({
       message: "Patients retrieved successfully",
       hospitalId,
-      status,
+      appliedFilters: { status, typeVisit },
       count: patients.length,
       totalPatients,
       totalPages: Math.ceil(totalPatients / limit),
