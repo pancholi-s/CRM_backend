@@ -83,7 +83,6 @@ const patientSchema = new mongoose.Schema({
   typeVisit: {
     type: String,
     required: false,
-    default: "Walk in",
   },
   appointments: [
     {

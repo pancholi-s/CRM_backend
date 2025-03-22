@@ -278,22 +278,19 @@ export const getFilteredAppointments = async (req, res) => {
       return res.status(400).json({ message: "Hospital context not found in session." });
     }
 
-    // Validate the status
-    const validStatuses = Appointment.schema.path("status").enumValues;
-    if (!status || !validStatuses.includes(status)) {
-      return res.status(400).json({ message: "Invalid or missing appointment status." });
+    // Validate departmentId
+    if (!mongoose.Types.ObjectId.isValid(departmentId)) {
+      return res.status(400).json({ message: "Invalid department ID." });
     }
 
-    // Retrieve the hospital and populate departments
+    const departmentObjectId = new mongoose.Types.ObjectId(departmentId);
+
+    // Check if the department belongs to the hospital
     const hospital = await Hospital.findById(hospitalId).populate("departments");
     if (!hospital) {
       return res.status(404).json({ message: "Hospital not found." });
     }
 
-    // Ensure departmentId is a valid ObjectId
-    const departmentObjectId = new mongoose.Types.ObjectId(departmentId);
-
-    // Check if the department belongs to the hospital
     const isDepartmentValid = hospital.departments.some(
       (dep) => dep._id.toString() === departmentObjectId.toString()
     );
@@ -304,9 +301,17 @@ export const getFilteredAppointments = async (req, res) => {
     // Prepare the filter object
     const filter = {
       department: departmentObjectId,
-      status: status,
       hospital: hospitalId,
     };
+
+    // If status is not "Scheduled", apply the status filter
+    if (status !== "Scheduled") {
+      const validStatuses = Appointment.schema.path("status").enumValues;
+      if (!status || !validStatuses.includes(status)) {
+        return res.status(400).json({ message: "Invalid or missing appointment status." });
+      }
+      filter.status = status;
+    }
 
     // If date is provided, filter appointments for that specific day
     if (date) {
@@ -324,7 +329,7 @@ export const getFilteredAppointments = async (req, res) => {
     const limitNumber = parseInt(limit, 10);
     const skip = (pageNumber - 1) * limitNumber;
 
-    // Fetch paginated appointments based on the filter
+    // Fetch filtered and paginated appointments
     const appointments = await Appointment.find(filter)
       .populate("patient", "name email")
       .populate("doctor", "name email")
@@ -333,7 +338,7 @@ export const getFilteredAppointments = async (req, res) => {
       .skip(skip)
       .limit(limitNumber);
 
-    // Total count of filtered appointments (without pagination)
+    // Total count of filtered appointments
     const totalAppointments = await Appointment.countDocuments(filter);
 
     res.status(200).json({
@@ -349,6 +354,7 @@ export const getFilteredAppointments = async (req, res) => {
     res.status(500).json({ message: "Error fetching filtered appointments" });
   }
 };
+
 
 export const getAppointmentCounts = async (req, res) => {
   const { hospitalId } = req.session;

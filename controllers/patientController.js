@@ -41,8 +41,10 @@ export const getPatientsByHospital = async (req, res) => {
       patients.map(async (patient) => {
         // Fetch bills associated with the patient
         const bills = await Bill.find({ patient: patient._id })
-          .select("caseId totalAmount paidAmount outstanding status invoiceNumber invoiceDate mode")
-          .populate("doctor", "name _id");
+        .populate("doctor", "name _id") // Populate doctor details inside bills
+        .populate("createdBy", "name _id") // Populate user who created the bill
+        .populate("services.service") // Populate service details
+        .lean(); 
 
         const appointments = Array.isArray(patient.appointments)
           ? patient.appointments.map((appointment) => ({
@@ -118,9 +120,14 @@ export const getPatientsByStatus = async (req, res) => {
 
     // Fetch patients with pagination and filters
     const patients = await Patient.find(filter)
-      .populate('appointments', 'caseId tokenDate status') // Populate appointment details
+    
+    .populate({
+      path: 'appointments',
+      select: 'caseId tokenDate status department',
+      populate: { path: 'department', select: 'name' }, // ✅ Populate department name
+    }) // Populate appointment details
       .populate('doctors', 'name specialization') // Populate doctor details
-      .select('-password -medicalHistory -socialHistory') // Exclude sensitive fields
+      .select('-password') // Exclude sensitive fields
       .skip(skip)
       .limit(limit);
 
