@@ -40,7 +40,6 @@ export const bookAppointment = async (req, res) => {
     return res.status(400).json({ message: "Invalid typeVisit. Use 'Walk in', 'Referral', or 'Online'." });
   }
 
-  //to avoid differences in the last digit of object id stored as references in patient  
   const session = await mongoose.startSession();
   session.startTransaction();
 
@@ -63,26 +62,23 @@ export const bookAppointment = async (req, res) => {
         phone: mobileNumber,
         hospital: hospitalId,
         status: "active",
-        typeVisit:"Walk in",
+        typeVisit: "Walk in",
         registrationDate: new Date(),
       });
 
       await patient.save({ session });
     }
 
-    // Validate doctor
     const doctor = await Doctor.findOne({ email: doctorEmail, hospital: hospitalId }).populate("departments");
     if (!doctor) {
       return res.status(404).json({ message: "Doctor not found in this hospital." });
     }
 
-    // Validate department within hospital
     const department = await Department.findOne({ name: departmentName, hospital: hospitalId });
     if (!department) {
       return res.status(404).json({ message: "Department not found in this hospital." });
     }
 
-    // Ensure doctor belongs to the department
     const doctorInDepartment = doctor.departments.some((dept) => dept.equals(department._id));
     if (!doctorInDepartment) {
       return res.status(400).json({ message: "Doctor is not assigned to the specified department." });
@@ -122,11 +118,11 @@ export const bookAppointment = async (req, res) => {
     await newAppointment.save({ session });
 
     // Update patient's appointments array
-    const updatedPatient = await Patient.findByIdAndUpdate(
+    await Patient.findByIdAndUpdate(
       patient._id,
       {
         $push: { appointments: { _id: newAppointment._id } },
-        $addToSet: { doctors: doctor._id }, // Add doctor ID only if not already present
+        $addToSet: { doctors: doctor._id },
       },
       { session, new: true }
     );
@@ -151,17 +147,26 @@ export const bookAppointment = async (req, res) => {
     // Update the department's appointments and patients arrays
     await Department.findByIdAndUpdate(
       department._id,
-      { $push: { appointments: newAppointment._id }, $addToSet: { patients: patient._id } },
+      {
+        $push: { appointments: newAppointment._id },
+        $addToSet: { patients: patient._id },
+      },
       { session, new: true }
     );
 
     await session.commitTransaction();
     session.endSession();
 
-    res.status(201).json({
+    // Populate appointment data
+    const populatedAppointment = await Appointment.findById(newAppointment._id)
+      .populate("patient", "name email phone")
+      .populate("doctor", "name specialization email")
+      .populate("department", "name")
+      .populate("hospital", "name address");
+
+    return res.status(201).json({
       message: "Appointment booked successfully.",
-      appointment: newAppointment,
-      updatedPatientAppointments: updatedPatient.appointments,
+      appointment: populatedAppointment,
     });
   } catch (error) {
     await session.abortTransaction();
