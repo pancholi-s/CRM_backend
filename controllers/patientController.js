@@ -120,26 +120,42 @@ export const getPatientsByStatus = async (req, res) => {
 
     // Fetch patients with pagination and filters
     const patients = await Patient.find(filter)
-    
-    .populate({
-      path: 'appointments',
-      select: 'caseId tokenDate status department',
-      populate: { path: 'department', select: 'name' }, // ✅ Populate department name
-    }) // Populate appointment details
+      .populate({
+        path: 'appointments',
+        select: 'caseId tokenDate status department',
+        populate: { path: 'department', select: 'name' }, // ✅ Populate department name
+      }) // Populate appointment details
       .populate('doctors', 'name specialization') // Populate doctor details
       .select('-password') // Exclude sensitive fields
       .skip(skip)
       .limit(limit);
 
+    // Process patient data and fetch corresponding bills
+    const patientData = await Promise.all(
+      patients.map(async (patient) => {
+        // Fetch all bills associated with the patient
+        const bills = await Bill.find({ patient: patient._id })
+          .populate("doctor", "name _id") // Populate doctor details inside bills
+          .populate("createdBy", "name _id") // Populate user who created the bill
+          .populate("services.service") // Populate service details
+          .lean(); // Convert Mongoose objects to plain JSON
+
+        return {
+          ...patient.toObject(), // Include all patient fields
+          bills, // ✅ Add bills data
+        };
+      })
+    );
+
     return res.status(200).json({
       message: "Patients retrieved successfully",
       hospitalId,
       appliedFilters: { status, typeVisit },
-      count: patients.length,
+      count: patientData.length,
       totalPatients,
       totalPages: Math.ceil(totalPatients / limit),
       currentPage: page,
-      patients,
+      patients: patientData, // ✅ Updated to return patients with bills
     });
   } catch (error) {
     console.error('Error fetching patients by status:', error);
