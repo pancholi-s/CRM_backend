@@ -355,7 +355,6 @@ export const getFilteredAppointments = async (req, res) => {
   }
 };
 
-
 export const getAppointmentCounts = async (req, res) => {
   const { hospitalId } = req.session;
 
@@ -545,5 +544,116 @@ export const getAppointmentsByVisitType = async (req, res) => {
       message: "Failed to fetch appointments.",
       error: error.message,
     });
+  }
+};
+
+export const getAppointments = async (req, res) => {
+  const {
+    start,
+    end,
+    status,
+    departmentId,
+    typeVisit,
+    page = 1,
+    limit = 10,
+  } = req.query;
+
+  const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
+
+  try {
+    const hospitalId = req.session.hospitalId;
+    if (!hospitalId) {
+      return res.status(403).json({ message: "No hospital context found." });
+    }
+
+    // Validate required date filters
+    if (!start || !end) {
+      return res.status(400).json({ message: "Start and end datetime are required." });
+    }
+
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+
+    if (isNaN(startDate) || isNaN(endDate)) {
+      return res.status(400).json({ message: "Invalid datetime format." });
+    }
+
+    // Build base filter
+    const filter = {
+      hospital: hospitalId,
+      tokenDate: { $gte: startDate, $lte: endDate },
+    };
+
+    // Optional: departmentId
+    if (departmentId) {
+      if (!mongoose.Types.ObjectId.isValid(departmentId)) {
+        return res.status(400).json({ message: "Invalid department ID." });
+      }
+
+      const hospital = await Hospital.findById(hospitalId).populate("departments");
+      if (!hospital) {
+        return res.status(404).json({ message: "Hospital not found." });
+      }
+
+      const isDepartmentValid = hospital?.departments.some(
+        (dep) => dep._id.toString() === departmentId
+      );
+
+      if (!isDepartmentValid) {
+        return res.status(404).json({ message: "Department does not belong to the hospital." });
+      }
+
+      filter.department = departmentId;
+    }
+
+    // Optional: typeVisit
+    if (typeVisit) {
+      const validVisitTypes = ["Walk in", "Referral", "Online"];
+      if (!validVisitTypes.includes(typeVisit)) {
+        return res.status(400).json({ message: "Invalid typeVisit" });
+      }
+      filter.typeVisit = typeVisit;
+    }
+
+    // Optional: status (default = Scheduled = fetch all)
+    const validStatuses = Appointment.schema.path("status").enumValues;
+    const effectiveStatus = status || "Scheduled";
+
+    if (effectiveStatus !== "Scheduled") {
+      if (!validStatuses.includes(effectiveStatus)) {
+        return res.status(400).json({ message: "Invalid status provided." });
+      }
+      filter.status = effectiveStatus;
+    }
+
+    // Fetch paginated appointments
+    const appointments = await Appointment.find(filter)
+      .populate("patient", "name email phone")
+      .populate("doctor", "name specialization email")
+      .populate("department", "name")
+      .populate("hospital", "name address")
+      .skip(skip)
+      .limit(parseInt(limit, 10));
+
+    // Fetch total count for the time range and filters (excluding pagination)
+    const totalAppointments = await Appointment.countDocuments(filter);
+
+    res.status(200).json({
+      message: `${status || "All"} appointments retrieved successfully`,
+      filtersApplied: {
+        dateRange: { start, end },
+        status: effectiveStatus,
+        departmentId,
+        typeVisit,
+      },
+      count: appointments.length,
+      totalAppointments,
+      totalPages: Math.ceil(totalAppointments / limit),
+      currentPage: parseInt(page, 10),
+      appointments,
+    });
+  } catch (error) {
+    console.error("Error fetching appointments:", error);
+    res.status(500).json({ message: "Error fetching appointments", error: error.message });
   }
 };
