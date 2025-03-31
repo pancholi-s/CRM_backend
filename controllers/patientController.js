@@ -1,7 +1,7 @@
 import Patient from "../models/patientModel.js";
 import Bill from "../models/billModel.js";
 
-//combine 
+// Get Patients by Hospital with Sorting
 export const getPatientsByHospital = async (req, res) => {
   try {
     const hospitalId = req.session.hospitalId;
@@ -12,11 +12,12 @@ export const getPatientsByHospital = async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
+    const sortOrder = req.query.sort === "asc" ? 1 : -1; // Default: Newest first (desc)
 
     // Fetch total count of patients
     const totalPatients = await Patient.countDocuments({ hospital: hospitalId });
 
-    // Fetch patients with pagination, populated appointments and nested doctor/department fields
+    // Fetch and sort patients before pagination
     const patients = await Patient.find({ hospital: hospitalId })
       .select("-password") // Exclude password field
       .populate({
@@ -27,6 +28,7 @@ export const getPatientsByHospital = async (req, res) => {
         ],
       })
       .populate({ path: "doctors", select: "name _id" }) // Populate the doctors array
+      .sort({ registrationDate: sortOrder }) // ✅ Sort patients before pagination
       .skip(skip)
       .limit(limit);
 
@@ -39,12 +41,11 @@ export const getPatientsByHospital = async (req, res) => {
     // Process patient data and fetch corresponding bills
     const patientData = await Promise.all(
       patients.map(async (patient) => {
-        // Fetch bills associated with the patient
         const bills = await Bill.find({ patient: patient._id })
-        .populate("doctor", "name _id") // Populate doctor details inside bills
-        .populate("createdBy", "name _id") // Populate user who created the bill
-        .populate("services.service") // Populate service details
-        .lean(); 
+          .populate("doctor", "name _id") // Populate doctor details inside bills
+          .populate("createdBy", "name _id") // Populate user who created the bill
+          .populate("services.service") // Populate service details
+          .lean();
 
         const appointments = Array.isArray(patient.appointments)
           ? patient.appointments.map((appointment) => ({
@@ -59,17 +60,16 @@ export const getPatientsByHospital = async (req, res) => {
             }))
           : [];
 
-        // Extract doctor names from the populated doctors array
         const doctorNames = patient.doctors.map((doctor) => ({
           id: doctor._id,
           name: doctor.name,
         }));
 
         return {
-          ...patient.toObject(), // Include all patient fields
-          appointments, // Add transformed appointments data
+          ...patient.toObject(),
+          appointments,
           doctors: doctorNames,
-          bills, // Add the corresponding bills
+          bills,
         };
       })
     );
@@ -88,6 +88,7 @@ export const getPatientsByHospital = async (req, res) => {
   }
 };
 
+// Get Patients by Status with Sorting
 export const getPatientsByStatus = async (req, res) => {
   try {
     const { status, typeVisit } = req.query;
@@ -108,41 +109,42 @@ export const getPatientsByStatus = async (req, res) => {
     }
     
     if (typeVisit) {
-      filter.typeVisit = typeVisit;  // No predefined values, just filter whatever exists
+      filter.typeVisit = typeVisit;
     }
 
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
+    const sortOrder = req.query.sort === "asc" ? 1 : -1; // Default: Newest first (desc)
 
-    // Fetch total count of patients with the applied filters
+    // Fetch total count of patients
     const totalPatients = await Patient.countDocuments(filter);
 
-    // Fetch patients with pagination and filters
+    // Fetch and sort patients before pagination
     const patients = await Patient.find(filter)
       .populate({
-        path: 'appointments',
-        select: 'caseId tokenDate status department',
-        populate: { path: 'department', select: 'name' }, // ✅ Populate department name
-      }) // Populate appointment details
-      .populate('doctors', 'name specialization') // Populate doctor details
-      .select('-password') // Exclude sensitive fields
+        path: "appointments",
+        select: "caseId tokenDate status department",
+        populate: { path: "department", select: "name" },
+      })
+      .populate("doctors", "name specialization")
+      .select("-password")
+      .sort({ registrationDate: sortOrder }) // ✅ Sort patients before pagination
       .skip(skip)
       .limit(limit);
 
     // Process patient data and fetch corresponding bills
     const patientData = await Promise.all(
       patients.map(async (patient) => {
-        // Fetch all bills associated with the patient
         const bills = await Bill.find({ patient: patient._id })
-          .populate("doctor", "name _id") // Populate doctor details inside bills
-          .populate("createdBy", "name _id") // Populate user who created the bill
-          .populate("services.service") // Populate service details
-          .lean(); // Convert Mongoose objects to plain JSON
+          .populate("doctor", "name _id")
+          .populate("createdBy", "name _id")
+          .populate("services.service")
+          .lean();
 
         return {
-          ...patient.toObject(), // Include all patient fields
-          bills, // ✅ Add bills data
+          ...patient.toObject(),
+          bills,
         };
       })
     );
@@ -155,10 +157,10 @@ export const getPatientsByStatus = async (req, res) => {
       totalPatients,
       totalPages: Math.ceil(totalPatients / limit),
       currentPage: page,
-      patients: patientData, // ✅ Updated to return patients with bills
+      patients: patientData,
     });
   } catch (error) {
-    console.error('Error fetching patients by status:', error);
-    res.status(500).json({ message: 'Failed to fetch patients.', error: error.message });
+    console.error("Error fetching patients by status:", error);
+    res.status(500).json({ message: "Failed to fetch patients.", error: error.message });
   }
 };
