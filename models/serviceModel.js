@@ -11,7 +11,7 @@ const serviceSchema = new mongoose.Schema(
         rate: { type: Number, required: true }, 
         effectiveDate: { type: Date, required: true }, 
         amenities: { type: String, default: "N/A" },
-        createdBy: {
+        hospital: {
           type: mongoose.Schema.Types.ObjectId,
           ref: "Hospital",
           required: true,
@@ -22,7 +22,7 @@ const serviceSchema = new mongoose.Schema(
       type: Date,
       default: Date.now
     }, 
-    createdBy: {
+    hospital: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Hospital",
       required: true,

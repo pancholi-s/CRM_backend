@@ -1,3 +1,5 @@
+import mongoose from "mongoose";
+
 import Appointment from "../models/appointmentModel.js";
 import Bill from "../models/billModel.js";
 import Patient from "../models/patientModel.js";
@@ -43,7 +45,7 @@ export const createBill = async (req, res) => {
     for (const serviceItem of services) {
       const service = await Service.findOne({
         _id: serviceItem.serviceId,
-        createdBy: hospitalId,
+        hospital: hospitalId,
       });
 
       if (!service) {
@@ -85,7 +87,7 @@ export const createBill = async (req, res) => {
       outstanding,
       status: outstanding === 0 ? "Paid" : "Pending",
       mode,
-      createdBy: hospitalId,
+      hospital: hospitalId,
       invoiceNumber: `INV${Date.now().toString().slice(-6)}`,
     });
 
@@ -97,29 +99,22 @@ export const createBill = async (req, res) => {
       { $inc: { revenue: paidAmount } }
     );
 
-    res
-      .status(201)
-      .json({ message: "Bill generated successfully.", bill: newBill });
+    res.status(201).json({ message: "Bill generated successfully.", bill: newBill });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Error generating bill.", error: error.message });
+    res.status(500).json({ message: "Error generating bill.", error: error.message });
   }
 };
-
 
 // Get All Bills
 export const getAllBills = async (req, res) => {
   const { hospitalId } = req.session;
 
   if (!hospitalId) {
-    return res
-      .status(403)
-      .json({ message: "Access denied. No hospital context found." });
+    return res.status(403).json({ message: "Access denied. No hospital context found." });
   }
 
   try {
-    const bills = await Bill.find({ createdBy: hospitalId })
+    const bills = await Bill.find({ hospital: hospitalId })
       .populate("patient", "name phone")
       .populate("doctor", "name specialization")
       .populate("services.service", "name")
@@ -127,9 +122,7 @@ export const getAllBills = async (req, res) => {
 
     res.status(200).json({ count: bills.length, bills });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Error fetching bills.", error: error.message });
+    res.status(500).json({ message: "Error fetching bills.", error: error.message });
   }
 };
 
@@ -200,8 +193,60 @@ export const getBillDetails = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching bill details:", error);
-    res
-      .status(500)
-      .json({ message: "Error fetching bill details.", error: error.message });
+    res.status(500).json({ message: "Error fetching bill details.", error: error.message });
+  }
+};
+
+export const getRevenueByYear = async (req, res) => {
+  const { year } = req.query;
+  const hospitalId = req.session.hospitalId;
+
+  if (!hospitalId) {
+    return res.status(403).json({ message: "No hospital context found." });
+  }
+
+  const targetYear = parseInt(year) || new Date().getFullYear();
+  const startOfYear = new Date(`${targetYear}-01-01T00:00:00.000Z`);
+  const endOfYear = new Date(`${targetYear}-12-31T23:59:59.999Z`);
+
+  try {
+    const revenue = await Bill.aggregate([
+      {
+        $match: {
+          hospital: new mongoose.Types.ObjectId(hospitalId),
+          invoiceDate: { $gte: startOfYear, $lte: endOfYear }
+        }
+      },
+      {
+        $group: {
+          _id: { month: { $month: "$invoiceDate" } },
+          totalRevenue: { $sum: "$totalAmount" },
+          count: { $sum: 1 }
+        }
+      },
+      {
+        $sort: { "_id.month": 1 }
+      }
+    ]);
+
+    const formatted = Array.from({ length: 12 }, (_, i) => {
+      const found = revenue.find(r => r._id.month === i + 1);
+      return {
+        month: i + 1,
+        revenue: found ? found.totalRevenue : 0,
+        billCount: found ? found.count : 0
+      };
+    });
+
+    res.status(200).json({
+      year: targetYear,
+      monthlyRevenue: formatted,
+      totalRevenue: formatted.reduce((sum, m) => sum + m.revenue, 0),
+      totalBills: formatted.reduce((sum, m) => sum + m.billCount, 0)
+    });
+
+  } catch (error) {
+    console.error("Error calculating revenue:", error);
+    res.status(500).json({ message: "Error calculating revenue", error: error.message });
   }
 };

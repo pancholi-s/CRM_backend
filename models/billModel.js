@@ -49,9 +49,9 @@ const billSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
-    createdBy: {
+    hospital: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Receptionist",
+      ref: "Hospital",
       required: true,
     },
     mode: {

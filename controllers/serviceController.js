@@ -34,7 +34,7 @@ export const addService = async (req, res) => {
       }
 
       // Add new subcategory to the existing service
-      existingService.categories.push({ subCategoryName, rateType, rate, effectiveDate, amenities,createdBy: hospitalId });
+      existingService.categories.push({ subCategoryName, rateType, rate, effectiveDate, amenities, hospital: hospitalId });
       existingService.lastUpdated = new Date();
       await existingService.save();
 
@@ -53,8 +53,8 @@ export const addService = async (req, res) => {
     const newService = new Service({
       name,
       description,
-      categories: [{ subCategoryName, rateType, rate, effectiveDate, amenities,createdBy: hospitalId, }],
-      createdBy: hospitalId,
+      categories: [{ subCategoryName, rateType, rate, effectiveDate, amenities, hospital: hospitalId, }],
+      hospital: hospitalId,
       department: department._id,
     });
 
@@ -80,20 +80,21 @@ export const addService = async (req, res) => {
   }
 };
 
-// Get Services
 export const getServices = async (req, res) => {
   try {
-    const { departmentId } = req.query;   //optional query parameter
+    const { departmentId, name } = req.query;
 
     const hospitalId = req.session.hospitalId;
-
     if (!hospitalId) {
       return res.status(403).json({ message: "Unauthorized access. No hospital context." });
     }
 
-    // Build query filter (optional)
-    const filter = { createdBy: hospitalId };
+    // Build query filter
+    const filter = { hospital: hospitalId };
+
     if (departmentId) filter.department = departmentId;
+
+    if (name) filter.name = name;
 
     const services = await Service.find(filter).populate("department", "name");
 
@@ -112,7 +113,7 @@ export const editService = async (req, res) => {
   }
 
   try {
-    const service = await Service.findOne({ _id: serviceId, createdBy: hospitalId });
+    const service = await Service.findOne({ _id: serviceId, hospital: hospitalId });
 
     if (!service) {
       return res.status(404).json({ message: "Service not found or access denied." });
@@ -135,7 +136,7 @@ export const editService = async (req, res) => {
           Object.assign(existingCategory, newCategory);
         } else {
           // Add new category
-          service.categories.push({ ...newCategory, createdBy: hospitalId });
+          service.categories.push({ ...newCategory, hospital: hospitalId });
         }
       });
     }
@@ -160,7 +161,7 @@ export const deleteService = async (req, res) => {
   }
 
   try {
-    const service = await Service.findOneAndDelete({ _id: serviceId, createdBy: hospitalId });
+    const service = await Service.findOneAndDelete({ _id: serviceId, hospital: hospitalId });
 
     if (!service) {
       return res.status(404).json({ message: "Service not found or access denied." });
@@ -185,7 +186,7 @@ export const deleteSubcategory = async (req, res) => {
 
   try {
     // Find the service
-    const service = await Service.findOne({ _id: serviceId, createdBy: hospitalId });
+    const service = await Service.findOne({ _id: serviceId, hospital: hospitalId });
 
     if (!service) {
       return res.status(404).json({ message: "Service not found or access denied." });

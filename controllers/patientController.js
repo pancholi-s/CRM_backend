@@ -42,9 +42,9 @@ export const getPatientsByHospital = async (req, res) => {
     const patientData = await Promise.all(
       patients.map(async (patient) => {
         const bills = await Bill.find({ patient: patient._id })
-          .populate("doctor", "name _id") // Populate doctor details inside bills
-          .populate("createdBy", "name _id") // Populate user who created the bill
-          .populate("services.service") // Populate service details
+          .populate("doctor", "name _id")
+          .populate("hospital", "name _id")
+          .populate("services.service")
           .lean();
 
         const appointments = Array.isArray(patient.appointments)
@@ -138,7 +138,7 @@ export const getPatientsByStatus = async (req, res) => {
       patients.map(async (patient) => {
         const bills = await Bill.find({ patient: patient._id })
           .populate("doctor", "name _id")
-          .populate("createdBy", "name _id")
+          .populate("hospital", "name _id")
           .populate("services.service")
           .lean();
 
