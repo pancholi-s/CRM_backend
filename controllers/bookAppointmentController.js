@@ -368,7 +368,6 @@ export const getAppointmentCounts = async (req, res) => {
   }
 
   try {
-    // Get all appointment dates for the hospital
     const completedAppointments = await Appointment.find({ hospital: hospitalId, status: 'Completed' }).select('tokenDate');
     const cancelledAppointments = await RejectedAppointment.find({ hospital: hospitalId, status: 'Cancelled' }).select('tokenDate');
 
@@ -387,18 +386,21 @@ export const getAppointmentCounts = async (req, res) => {
         if (!tokenDate) return;
 
         const year = tokenDate.getFullYear();
-        const month = tokenDate.getMonth(); // 0-based index
+        const month = tokenDate.getMonth(); // 0-indexed
+        const dayKey = tokenDate.toISOString().slice(0, 10); // YYYY-MM-DD
 
+        // Initialize year if not present
         if (!yearlyData[year]) {
           yearlyData[year] = {
             total: 0,
             completed: 0,
             cancelled: 0,
-            months: Array(12).fill(null).map((_, i) => ({
+            months: Array.from({ length: 12 }, (_, i) => ({
               name: monthNames[i],
               total: 0,
               completed: 0,
               cancelled: 0,
+              days: [],
             })),
           };
         }
@@ -406,10 +408,24 @@ export const getAppointmentCounts = async (req, res) => {
         yearlyData[year].total++;
         yearlyData[year][status]++;
 
-        yearlyData[year].months[month].total++;
-        yearlyData[year].months[month][status]++;
+        const monthObj = yearlyData[year].months[month];
+        monthObj.total++;
+        monthObj[status]++;
 
-        // Aggregate totals for all years
+        // Process day-level
+        const existingDay = monthObj.days.find(d => d.date === dayKey);
+        if (existingDay) {
+          existingDay.total++;
+          existingDay[status]++;
+        } else {
+          monthObj.days.push({
+            date: dayKey,
+            total: 1,
+            completed: status === 'completed' ? 1 : 0,
+            cancelled: status === 'cancelled' ? 1 : 0
+          });
+        }
+
         totalAppointments++;
         if (status === 'completed') totalCompleted++;
         if (status === 'cancelled') totalCancelled++;
@@ -662,3 +678,5 @@ export const getAppointments = async (req, res) => {
     res.status(500).json({ message: "Error fetching appointments", error: error.message });
   }
 };
+
+//add "edit appointment" functionality

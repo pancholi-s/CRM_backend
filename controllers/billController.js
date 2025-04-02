@@ -209,6 +209,11 @@ export const getRevenueByYear = async (req, res) => {
   const startOfYear = new Date(`${targetYear}-01-01T00:00:00.000Z`);
   const endOfYear = new Date(`${targetYear}-12-31T23:59:59.999Z`);
 
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+
   try {
     const revenue = await Bill.aggregate([
       {
@@ -232,7 +237,7 @@ export const getRevenueByYear = async (req, res) => {
     const formatted = Array.from({ length: 12 }, (_, i) => {
       const found = revenue.find(r => r._id.month === i + 1);
       return {
-        month: i + 1,
+        month: monthNames[i],
         revenue: found ? found.totalRevenue : 0,
         billCount: found ? found.count : 0
       };
