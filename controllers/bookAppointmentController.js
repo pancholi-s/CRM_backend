@@ -7,6 +7,7 @@ import Doctor from "../models/doctorModel.js";
 import Patient from "../models/patientModel.js";
 import Appointment from "../models/appointmentModel.js";
 import RejectedAppointment from '../models/rejectedAppointmentModel.js';
+import moment from "moment";
 
 export const bookAppointment = async (req, res) => {
   const {
@@ -381,13 +382,27 @@ export const getAppointmentCounts = async (req, res) => {
     let totalCompleted = 0;
     let totalCancelled = 0;
 
+    // Weekly Data (Current Week)
+    const startOfWeek = moment().startOf('isoWeek'); // Monday start
+    const endOfWeek = moment().endOf('isoWeek'); // Sunday end
+    let weeklyAppointments = 0;
+    let weeklyCompleted = 0;
+    let weeklyCancelled = 0;
+
     const processAppointments = (appointments, status) => {
       appointments.forEach(({ tokenDate }) => {
         if (!tokenDate) return;
 
         const year = tokenDate.getFullYear();
-        const month = tokenDate.getMonth(); // 0-indexed
+        const month = tokenDate.getMonth();
         const dayKey = tokenDate.toISOString().slice(0, 10); // YYYY-MM-DD
+
+        // Weekly Tracking
+        if (moment(tokenDate).isBetween(startOfWeek, endOfWeek, 'day', '[]')) {
+          weeklyAppointments++;
+          if (status === 'completed') weeklyCompleted++;
+          if (status === 'cancelled') weeklyCancelled++;
+        }
 
         // Initialize year if not present
         if (!yearlyData[year]) {
@@ -441,12 +456,20 @@ export const getAppointmentCounts = async (req, res) => {
         totalCompleted,
         totalCancelled,
       },
+      Weekly: {
+        startOfWeek: startOfWeek.format("YYYY-MM-DD"),
+        endOfWeek: endOfWeek.format("YYYY-MM-DD"),
+        weeklyAppointments,
+        weeklyCompleted,
+        weeklyCancelled,
+      },
       yearlyData,
     });
   } catch (error) {
     res.status(500).json({ message: 'Failed to get appointment counts.', error: error.message });
   }
 };
+
 
 export const getRejectedAppointments = async (req, res) => {
   const { hospitalId } = req.session;
