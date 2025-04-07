@@ -363,14 +363,24 @@ export const getFilteredAppointments = async (req, res) => {
 
 export const getAppointmentCounts = async (req, res) => {
   const { hospitalId } = req.session;
+  const { department } = req.query;
 
   if (!hospitalId) {
     return res.status(403).json({ message: 'Unauthorized access. Hospital ID not found in session.' });
   }
 
   try {
-    const completedAppointments = await Appointment.find({ hospital: hospitalId, status: 'Completed' }).select('tokenDate');
-    const cancelledAppointments = await RejectedAppointment.find({ hospital: hospitalId, status: 'Cancelled' }).select('tokenDate');
+    const baseFilter = { hospital: hospitalId };
+    if (department) {
+      if (mongoose.Types.ObjectId.isValid(department)) {
+        baseFilter.department = new mongoose.Types.ObjectId(department);
+      } else {
+        return res.status(400).json({ message: 'Invalid department ID.' });
+      }
+    }
+    
+    const completedAppointments = await Appointment.find({ ...baseFilter, status: 'Completed' }).select('tokenDate department');
+    const cancelledAppointments = await RejectedAppointment.find({ ...baseFilter, status: 'Cancelled' }).select('tokenDate department');
 
     const monthNames = [
       "January", "February", "March", "April", "May", "June",
@@ -378,33 +388,34 @@ export const getAppointmentCounts = async (req, res) => {
     ];
 
     const yearlyData = {};
+    const departmentWiseData = {};
+
     let totalAppointments = 0;
     let totalCompleted = 0;
     let totalCancelled = 0;
 
-    // Weekly Data (Current Week)
-    const startOfWeek = moment().startOf('isoWeek'); // Monday start
-    const endOfWeek = moment().endOf('isoWeek'); // Sunday end
+    const startOfWeek = moment().startOf('isoWeek');
+    const endOfWeek = moment().endOf('isoWeek');
     let weeklyAppointments = 0;
     let weeklyCompleted = 0;
     let weeklyCancelled = 0;
 
     const processAppointments = (appointments, status) => {
-      appointments.forEach(({ tokenDate }) => {
+      appointments.forEach(({ tokenDate, department }) => {
         if (!tokenDate) return;
 
         const year = tokenDate.getFullYear();
         const month = tokenDate.getMonth();
-        const dayKey = tokenDate.toISOString().slice(0, 10); // YYYY-MM-DD
+        const dayKey = tokenDate.toISOString().slice(0, 10);
 
-        // Weekly Tracking
+        // Weekly
         if (moment(tokenDate).isBetween(startOfWeek, endOfWeek, 'day', '[]')) {
           weeklyAppointments++;
           if (status === 'completed') weeklyCompleted++;
           if (status === 'cancelled') weeklyCancelled++;
         }
 
-        // Initialize year if not present
+        // Yearly breakdown
         if (!yearlyData[year]) {
           yearlyData[year] = {
             total: 0,
@@ -427,7 +438,6 @@ export const getAppointmentCounts = async (req, res) => {
         monthObj.total++;
         monthObj[status]++;
 
-        // Process day-level
         const existingDay = monthObj.days.find(d => d.date === dayKey);
         if (existingDay) {
           existingDay.total++;
@@ -444,6 +454,51 @@ export const getAppointmentCounts = async (req, res) => {
         totalAppointments++;
         if (status === 'completed') totalCompleted++;
         if (status === 'cancelled') totalCancelled++;
+
+        // Department-wise breakdown
+        if (!departmentWiseData[department]) {
+          departmentWiseData[department] = {
+            total: 0,
+            completed: 0,
+            cancelled: 0,
+            weekly: {
+              weeklyAppointments: 0,
+              weeklyCompleted: 0,
+              weeklyCancelled: 0
+            },
+            yearly: {}
+          };
+        }
+
+        const deptData = departmentWiseData[department];
+
+        deptData.total++;
+        deptData[status]++;
+
+        if (moment(tokenDate).isBetween(startOfWeek, endOfWeek, 'day', '[]')) {
+          deptData.weekly.weeklyAppointments++;
+          if (status === 'completed') deptData.weekly.weeklyCompleted++;
+          if (status === 'cancelled') deptData.weekly.weeklyCancelled++;
+        }
+
+        if (!deptData.yearly[year]) {
+          deptData.yearly[year] = {
+            total: 0,
+            completed: 0,
+            cancelled: 0,
+            months: Array.from({ length: 12 }, (_, i) => ({
+              name: monthNames[i],
+              total: 0,
+              completed: 0,
+              cancelled: 0,
+            }))
+          };
+        }
+
+        deptData.yearly[year].total++;
+        deptData.yearly[year][status]++;
+        deptData.yearly[year].months[month].total++;
+        deptData.yearly[year].months[month][status]++;
       });
     };
 
@@ -464,11 +519,13 @@ export const getAppointmentCounts = async (req, res) => {
         weeklyCancelled,
       },
       yearlyData,
+      departmentWiseData,
     });
   } catch (error) {
     res.status(500).json({ message: 'Failed to get appointment counts.', error: error.message });
   }
 };
+
 
 
 export const getRejectedAppointments = async (req, res) => {
