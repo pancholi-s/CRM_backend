@@ -216,6 +216,7 @@ export const rejectAppointment = async (req, res) => {
       patient: request.patient,
       doctor: request.doctor,
       tokenDate: request.tokenDate,
+      department: request.department, // ✅ Add this line
       status: 'Rejected',
     });
 
@@ -229,7 +230,7 @@ export const rejectAppointment = async (req, res) => {
 
     res.status(201).json({ message: 'Appointment rejected.', rejectedAppointment });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to reject appointment.' });
+    res.status(500).json({ message: 'Failed to reject appointment.', error: error.message });
   }
 };
 
@@ -251,6 +252,7 @@ export const cancelAppointment = async (req, res) => {
       patient: appointment.patient,
       doctor: appointment.doctor,
       tokenDate: appointment.tokenDate,
+      department: appointment.department,
       status: 'Cancelled',
     });
 
