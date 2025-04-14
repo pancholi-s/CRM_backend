@@ -753,7 +753,7 @@ export const getAppointments = async (req, res) => {
       const isDepartmentValid = hospital?.departments.some(
         (dep) => dep._id.toString() === departmentId
       );
-      if (!isValid) {
+      if (!isDepartmentValid) {
         return res.status(404).json({ message: "Department not found in this hospital." });
       }
       filter.department = departmentId;
