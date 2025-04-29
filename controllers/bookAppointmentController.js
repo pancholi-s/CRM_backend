@@ -21,11 +21,11 @@ export const bookAppointment = async (req, res) => {
     note,
     status,
     typeVisit,
-    
-    gender,       //optional
+    gender,
     birthday,
     age,
     address,
+    rescheduledFrom, // 👈 NEW FIELD for rescheduling
   } = req.body;
 
   const { hospitalId } = req.session;
@@ -41,13 +41,20 @@ export const bookAppointment = async (req, res) => {
     return res.status(400).json({ message: "Invalid typeVisit. Use 'Walk in', 'Referral', or 'Online'." });
   }
 
+  // ✅ Prevent booking past appointments
+  const appointmentDate = new Date(date);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (appointmentDate < today) {
+    return res.status(400).json({ message: "Cannot book appointments for past dates." });
+  }
+
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
     let patient = await Patient.findOne({ email, hospital: hospitalId });
 
-    // If patient does not exist, create a new one
     if (!patient) {
       const defaultPassword = "changeme123";
       const hashedPassword = await bcrypt.hash(defaultPassword, 10);
@@ -85,6 +92,18 @@ export const bookAppointment = async (req, res) => {
       return res.status(400).json({ message: "Doctor is not assigned to the specified department." });
     }
 
+    // 💡 Check if rescheduledFrom is provided and valid
+    if (rescheduledFrom) {
+      const oldAppointment = await Appointment.findById(rescheduledFrom);
+      if (!oldAppointment) {
+        return res.status(404).json({ message: "Old appointment not found." });
+      }
+
+      if (oldAppointment.status === "RescheduledOld") {
+        return res.status(400).json({ message: "This appointment has already been rescheduled." });
+      }
+    }
+
     const newAppointment = new Appointment({
       patient: patient._id,
       doctor: doctor._id,
@@ -95,30 +114,37 @@ export const bookAppointment = async (req, res) => {
       status: status || "Scheduled",
       note,
       hospital: hospitalId,
+      rescheduledFrom: rescheduledFrom || null, // 👈 store reference
     });
 
-    // If typeVisit is "Walk in", assign token number **before saving**
     if (typeVisit === "Walk in") {
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      const todayEnd = new Date();
-      todayEnd.setHours(23, 59, 59, 999);
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
 
       const lastAppointment = await Appointment.findOne({
         doctor: doctor._id,
         department: department._id,
-        tokenDate: { $gte: todayStart, $lte: todayEnd },
+        tokenDate: { $gte: startOfDay, $lte: endOfDay },
         tokenNumber: { $ne: null },
-      })
-        .sort({ tokenNumber: -1 }) // Get the highest token number assigned today
-        .select("tokenNumber");
+      }).sort({ tokenNumber: -1 });
 
       newAppointment.tokenNumber = lastAppointment ? lastAppointment.tokenNumber + 1 : 1;
+
     }
 
     await newAppointment.save({ session });
 
-    // Update patient's appointments array
+    // 👇 If it's a reschedule, update the old appointment's status and reference
+    if (rescheduledFrom) {
+      await Appointment.findByIdAndUpdate(rescheduledFrom, {
+        status: "RescheduledOld",
+        rescheduledTo: newAppointment._id,
+      }, { session });
+    }
+
     await Patient.findByIdAndUpdate(
       patient._id,
       {
@@ -128,7 +154,6 @@ export const bookAppointment = async (req, res) => {
       { session, new: true }
     );
 
-    // Update doctor's appointments and patients arrays
     await Doctor.findByIdAndUpdate(
       doctor._id,
       {
@@ -138,14 +163,12 @@ export const bookAppointment = async (req, res) => {
       { session, new: true }
     );
 
-    // Update the hospital's appointments array
     await Hospital.findByIdAndUpdate(
       hospitalId,
       { $push: { appointments: newAppointment._id } },
       { session, new: true }
     );
 
-    // Update the department's appointments and patients arrays
     await Department.findByIdAndUpdate(
       department._id,
       {
@@ -158,15 +181,18 @@ export const bookAppointment = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
-    // Populate appointment data
     const populatedAppointment = await Appointment.findById(newAppointment._id)
       .populate("patient", "name email phone")
       .populate("doctor", "name specialization email")
       .populate("department", "name")
-      .populate("hospital", "name address");
+      .populate("hospital", "name address")
+      .populate("rescheduledFrom", "caseId")
+      .populate("rescheduledTo", "caseId");
 
     return res.status(201).json({
-      message: "Appointment booked successfully.",
+      message: rescheduledFrom
+        ? "Appointment rescheduled successfully."
+        : "Appointment booked successfully.",
       appointment: populatedAppointment,
     });
   } catch (error) {
@@ -176,6 +202,7 @@ export const bookAppointment = async (req, res) => {
     res.status(500).json({ message: "Error booking appointment.", error: error.message });
   }
 };
+
 
 export const completeAppointment = async (req, res) => {
   const { appointmentId, note } = req.body;

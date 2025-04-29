@@ -54,6 +54,16 @@ const appointmentSchema = new mongoose.Schema({
     enum: ["Scheduled", "Ongoing", "Waiting", "Completed"],
     default: "Scheduled",
   },
+  rescheduledFrom: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Appointment",
+    default: null,
+  },
+  rescheduledTo: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Appointment",
+    default: null,
+  },  
   note: {
     type: String,
   },
