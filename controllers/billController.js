@@ -105,22 +105,32 @@ export const createBill = async (req, res) => {
   }
 };
 
-// Get All Bills
 export const getAllBills = async (req, res) => {
   const { hospitalId } = req.session;
+  const { page = 1, limit = 10 } = req.query;
+  const skip = (page - 1) * limit;
 
   if (!hospitalId) {
     return res.status(403).json({ message: "Access denied. No hospital context found." });
   }
 
   try {
+    const total = await Bill.countDocuments({ hospital: hospitalId });
     const bills = await Bill.find({ hospital: hospitalId })
       .populate("patient", "name phone")
       .populate("doctor", "name specialization")
       .populate("services.service", "name")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
 
-    res.status(200).json({ count: bills.length, bills });
+    res.status(200).json({
+      count: bills.length,
+      totalBills: total,
+      totalPages: Math.ceil(total / limit),
+      currentPage: parseInt(page),
+      bills
+    });
   } catch (error) {
     res.status(500).json({ message: "Error fetching bills.", error: error.message });
   }

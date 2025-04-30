@@ -6,7 +6,7 @@ import Department from "../models/departmentModel.js";
 import Doctor from "../models/doctorModel.js";
 import Patient from "../models/patientModel.js";
 import Appointment from "../models/appointmentModel.js";
-import RejectedAppointment from '../models/rejectedAppointmentModel.js';
+import RejectedAppointment from "../models/rejectedAppointmentModel.js";
 import moment from "moment";
 
 export const bookAppointment = async (req, res) => {
@@ -202,7 +202,6 @@ export const bookAppointment = async (req, res) => {
     res.status(500).json({ message: "Error booking appointment.", error: error.message });
   }
 };
-
 
 export const completeAppointment = async (req, res) => {
   const { appointmentId, note } = req.body;
@@ -610,24 +609,31 @@ export const getAppointmentCounts = async (req, res) => {
 
 export const getRejectedAppointments = async (req, res) => {
   const { hospitalId } = req.session;
+  const { page = 1, limit = 10 } = req.query;
+  const skip = (page - 1) * limit;
 
   if (!hospitalId) {
     return res.status(403).json({ message: "Access denied. No hospital context found." });
   }
 
   try {
+    const total = await RejectedAppointment.countDocuments({ hospital: hospitalId, status: 'Rejected' });
     const rejectedAppointments = await RejectedAppointment.find({ hospital: hospitalId, status: 'Rejected' })
       .populate('patient', 'name email phone')
       .populate('doctor', 'name email specialization')
-      .sort({ dateActioned: -1 });
+      .sort({ dateActioned: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
 
     res.status(200).json({
       message: "Rejected appointments retrieved successfully.",
       count: rejectedAppointments.length,
+      totalRejected: total,
+      totalPages: Math.ceil(total / limit),
+      currentPage: parseInt(page),
       rejectedAppointments,
     });
   } catch (error) {
-    console.error('Error fetching rejected appointments:', error);
     res.status(500).json({
       message: "Error fetching rejected appointments.",
       error: error.message,
@@ -637,24 +643,31 @@ export const getRejectedAppointments = async (req, res) => {
 
 export const getCancelledAppointments = async (req, res) => {
   const { hospitalId } = req.session;
+  const { page = 1, limit = 10 } = req.query;
+  const skip = (page - 1) * limit;
 
   if (!hospitalId) {
     return res.status(403).json({ message: "Access denied. No hospital context found." });
   }
 
   try {
+    const total = await RejectedAppointment.countDocuments({ hospital: hospitalId, status: 'Cancelled' });
     const cancelledAppointments = await RejectedAppointment.find({ hospital: hospitalId, status: 'Cancelled' })
       .populate('patient', 'name email phone')
       .populate('doctor', 'name email specialization')
-      .sort({ dateActioned: -1 });
+      .sort({ dateActioned: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
 
     res.status(200).json({
       message: "Cancelled appointments retrieved successfully.",
       count: cancelledAppointments.length,
+      totalCancelled: total,
+      totalPages: Math.ceil(total / limit),
+      currentPage: parseInt(page),
       cancelledAppointments,
     });
   } catch (error) {
-    console.error('Error fetching cancelled appointments:', error);
     res.status(500).json({
       message: "Error fetching cancelled appointments.",
       error: error.message,

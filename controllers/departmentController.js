@@ -5,10 +5,10 @@ import Patient from '../models/patientModel.js';
 import bcrypt from 'bcryptjs';
 
 export const addDepartment = async (req, res) => {
-  const { name, head, nurses, services } = req.body;
+  const { name, head, nurses, services, doctors = [] } = req.body;
 
-  if (!name || !head || !head.name) {
-    return res.status(400).json({ message: "Department name and head details are required." });
+  if (!name || !head?.id) {
+    return res.status(400).json({ message: "Department name and head doctor ID are required." });
   }
 
   try {
@@ -23,49 +23,31 @@ export const addDepartment = async (req, res) => {
     }
 
     // Check if the head doctor already exists in the database
-    let headDoctor = await Doctor.findOne({ name: head.name });
-
-    // change password, ph_no when add dept page is created
-
-    // If head doctor doesn't exist, create a new one
+    const headDoctor = await Doctor.findOne({ _id: head.id, hospital: hospitalId });
     if (!headDoctor) {
-      const { email, password, phone, specialization } = head;
-      if (!email || !phone) {
-        return res.status(400).json({ message: "Email, and phone are required to create a new head doctor." });
-      }
-
-      const defaultPassword = "changeme123";
-      const hashedPassword = await bcrypt.hash(defaultPassword, 10);
-
-      // Create the new head doctor
-      headDoctor = new Doctor({
-        name: head.name,
-        email,
-        password: hashedPassword,
-        phone,
-        role: 'Doctor',
-        specialization,
-        hospital: hospitalId,
-      });
-      await headDoctor.save();
+      return res.status(404).json({ message: "Head doctor not found in this hospital." });
     }
 
-    // // Fetch all patient IDs (for future assignment)
-    // const allPatients = await Patient.find().select('_id');
-    // const patientIds = allPatients.map(patient => patient._id);
+    // Validate other doctors (optional)
+    const validDoctorIds = [];
+    for (const docId of doctors) {
+      const doctor = await Doctor.findOne({ _id: docId, hospital: hospitalId });
+      if (doctor) validDoctorIds.push(doctor._id);
+    }
 
-    // // Fetch doctor IDs for the department (excluding the head doctor)
-    // const doctorIds = await Doctor.find({ _id: { $ne: headDoctor._id }, hospital: hospitalId }).select('_id');
-
+    // Add head doctor to the doctor list if not already present
+    if (!validDoctorIds.includes(headDoctor._id)) {
+      validDoctorIds.push(headDoctor._id);
+    }
 
     const newDepartment = new Department({
       name,
       head: { id: headDoctor._id, name: headDoctor.name },
-      patients: req.body.patients || [],    // Only add patients if provided
-      doctors: [...(req.body.doctors || []), headDoctor._id],
+      doctors: validDoctorIds,
       nurses: nurses || [],
       services: services || [],
       hospital: hospitalId,
+      patients: req.body.patients || [],
       facilities: req.body.facilities || [],
       specializedProcedures: req.body.specializedProcedures || [],
       criticalEquipments: req.body.criticalEquipments || [],
@@ -73,11 +55,9 @@ export const addDepartment = async (req, res) => {
       appointments: [],
       specialistDoctors: [],
       rooms: [],
-      staffs: []                     
+      staffs: []
     });
-    
 
-    // Save the department
     await newDepartment.save();
 
     // Update the hospital document to include the new department
@@ -90,24 +70,35 @@ export const addDepartment = async (req, res) => {
         },
       },
       { new: true }
-    ).populate('departments'); // Ensure the hospital is populated with departments
-
-    
+    ).populate('departments');    
     if (!updatedHospital) {
       return res.status(404).json({ message: "Hospital not found or failed to update." });
     }
 
-    // Update the head doctor's document to reference the new department
+    // Update head doctor to reference the department and set as head
     await Doctor.findByIdAndUpdate(
       headDoctor._id,
-      { $push: { departments: newDepartment._id }, $set: { head: newDepartment._id }  },
+      {
+        $push: { departments: newDepartment._id },
+        $set: { head: newDepartment._id },
+      },
       { new: true }
     );
- 
+
+    // Update other doctors with department (except head if already updated)
+    for (const docId of validDoctorIds) {
+      if (docId.toString() !== headDoctor._id.toString()) {
+        await Doctor.findByIdAndUpdate(
+          docId,
+          { $addToSet: { departments: newDepartment._id } },
+          { new: true }
+        );
+      }
+    }
+
     res.status(201).json({
-      message: "Department created and hospital updated successfully.",
+      message: "Department created and linked with existing doctors.",
       department: newDepartment,
-      hospital: updatedHospital,
     });
 
   } catch (error) {
