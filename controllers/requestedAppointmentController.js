@@ -216,22 +216,31 @@ export const rejectAppointment = async (req, res) => {
       patient: request.patient,
       doctor: request.doctor,
       tokenDate: request.tokenDate,
+      department: request.department,
       status: 'Rejected',
     });
 
     await rejectedAppointment.save();
 
+    // Push into hospital's RejectedAppointment array
     await Hospital.findByIdAndUpdate(hospitalId, {
       $push: { RejectedAppointment: rejectedAppointment._id }
     });
 
+    // Push into department's rejectedAppointments array
+    await Department.findByIdAndUpdate(request.department, {
+      $push: { rejectedAppointments: rejectedAppointment._id }
+    });
+
+    // Remove from requested appointments
     await RequestedAppointment.findByIdAndDelete(requestId);
 
     res.status(201).json({ message: 'Appointment rejected.', rejectedAppointment });
   } catch (error) {
-    res.status(500).json({ message: 'Failed to reject appointment.' });
+    res.status(500).json({ message: 'Failed to reject appointment.', error: error.message });
   }
 };
+
 
 export const cancelAppointment = async (req, res) => {
   const { appointmentId } = req.params;
@@ -251,15 +260,23 @@ export const cancelAppointment = async (req, res) => {
       patient: appointment.patient,
       doctor: appointment.doctor,
       tokenDate: appointment.tokenDate,
+      department: appointment.department,
       status: 'Cancelled',
     });
 
     await cancelledAppointment.save();
 
+    // Push into hospital's RejectedAppointment array
     await Hospital.findByIdAndUpdate(hospitalId, {
       $push: { RejectedAppointment: cancelledAppointment._id }
     });
 
+    // Push into department's rejectedAppointments array
+    await Department.findByIdAndUpdate(appointment.department, {
+      $push: { rejectedAppointments: cancelledAppointment._id }
+    });
+
+    // Remove the original appointment
     await Appointment.findByIdAndDelete(appointmentId);
 
     res.status(201).json({ message: 'Appointment cancelled.', cancelledAppointment });

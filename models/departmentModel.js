@@ -34,6 +34,10 @@ const departmentSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Appointment',
   }],
+  rejectedAppointments: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'RejectedAppointment',
+  }],
   specialistDoctors: [
     {
       type: mongoose.Schema.Types.ObjectId,

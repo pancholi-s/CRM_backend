@@ -37,7 +37,6 @@ export const getDoctorsByHospital = async (req, res) => {
   }
 };
 
-
 export const getDoctorsByDepartment = async (req, res) => {
   try {
     const { departmentId } = req.params;

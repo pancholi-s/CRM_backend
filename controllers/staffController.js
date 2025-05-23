@@ -77,16 +77,29 @@ export const addStaff = async (req, res) => {
 
 export const getStaff = async (req, res) => {
   const hospitalId = req.session.hospitalId;
+  const { page = 1, limit = 10 } = req.query;
+  const skip = (page - 1) * limit;
 
   if (!hospitalId) {
     return res.status(403).json({ message: "Unauthorized access." });
   }
 
   try {
+    const total = await Staff.countDocuments({ hospital: hospitalId });
     const staff = await Staff.find({ hospital: hospitalId })
       .populate("department", "name")
-      .populate("hospital", "name");
-    res.status(200).json(staff);
+      .populate("hospital", "name")
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    res.status(200).json({
+      message: "Staff retrieved successfully.",
+      count: staff.length,
+      totalStaff: total,
+      totalPages: Math.ceil(total / limit),
+      currentPage: parseInt(page),
+      staff,
+    });
   } catch (error) {
     res.status(500).json({ message: "Error fetching staff.", error: error.message });
   }

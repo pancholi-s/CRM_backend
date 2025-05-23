@@ -6,7 +6,8 @@ import Department from "../models/departmentModel.js";
 import Doctor from "../models/doctorModel.js";
 import Patient from "../models/patientModel.js";
 import Appointment from "../models/appointmentModel.js";
-import RejectedAppointment from '../models/rejectedAppointmentModel.js';
+import RejectedAppointment from "../models/rejectedAppointmentModel.js";
+import moment from "moment";
 
 export const bookAppointment = async (req, res) => {
   const {
@@ -20,11 +21,11 @@ export const bookAppointment = async (req, res) => {
     note,
     status,
     typeVisit,
-    
-    gender,       //optional
+    gender,
     birthday,
     age,
     address,
+    rescheduledFrom, // 👈 NEW FIELD for rescheduling
   } = req.body;
 
   const { hospitalId } = req.session;
@@ -40,13 +41,20 @@ export const bookAppointment = async (req, res) => {
     return res.status(400).json({ message: "Invalid typeVisit. Use 'Walk in', 'Referral', or 'Online'." });
   }
 
+  // ✅ Prevent booking past appointments
+  const appointmentDate = new Date(date);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (appointmentDate < today) {
+    return res.status(400).json({ message: "Cannot book appointments for past dates." });
+  }
+
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
     let patient = await Patient.findOne({ email, hospital: hospitalId });
 
-    // If patient does not exist, create a new one
     if (!patient) {
       const defaultPassword = "changeme123";
       const hashedPassword = await bcrypt.hash(defaultPassword, 10);
@@ -84,6 +92,18 @@ export const bookAppointment = async (req, res) => {
       return res.status(400).json({ message: "Doctor is not assigned to the specified department." });
     }
 
+    // 💡 Check if rescheduledFrom is provided and valid
+    if (rescheduledFrom) {
+      const oldAppointment = await Appointment.findById(rescheduledFrom);
+      if (!oldAppointment) {
+        return res.status(404).json({ message: "Old appointment not found." });
+      }
+
+      if (oldAppointment.status === "RescheduledOld") {
+        return res.status(400).json({ message: "This appointment has already been rescheduled." });
+      }
+    }
+
     const newAppointment = new Appointment({
       patient: patient._id,
       doctor: doctor._id,
@@ -94,30 +114,37 @@ export const bookAppointment = async (req, res) => {
       status: status || "Scheduled",
       note,
       hospital: hospitalId,
+      rescheduledFrom: rescheduledFrom || null, // 👈 store reference
     });
 
-    // If typeVisit is "Walk in", assign token number **before saving**
     if (typeVisit === "Walk in") {
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      const todayEnd = new Date();
-      todayEnd.setHours(23, 59, 59, 999);
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
 
       const lastAppointment = await Appointment.findOne({
         doctor: doctor._id,
         department: department._id,
-        tokenDate: { $gte: todayStart, $lte: todayEnd },
+        tokenDate: { $gte: startOfDay, $lte: endOfDay },
         tokenNumber: { $ne: null },
-      })
-        .sort({ tokenNumber: -1 }) // Get the highest token number assigned today
-        .select("tokenNumber");
+      }).sort({ tokenNumber: -1 });
 
       newAppointment.tokenNumber = lastAppointment ? lastAppointment.tokenNumber + 1 : 1;
+
     }
 
     await newAppointment.save({ session });
 
-    // Update patient's appointments array
+    // 👇 If it's a reschedule, update the old appointment's status and reference
+    if (rescheduledFrom) {
+      await Appointment.findByIdAndUpdate(rescheduledFrom, {
+        status: "RescheduledOld",
+        rescheduledTo: newAppointment._id,
+      }, { session });
+    }
+
     await Patient.findByIdAndUpdate(
       patient._id,
       {
@@ -127,7 +154,6 @@ export const bookAppointment = async (req, res) => {
       { session, new: true }
     );
 
-    // Update doctor's appointments and patients arrays
     await Doctor.findByIdAndUpdate(
       doctor._id,
       {
@@ -137,14 +163,12 @@ export const bookAppointment = async (req, res) => {
       { session, new: true }
     );
 
-    // Update the hospital's appointments array
     await Hospital.findByIdAndUpdate(
       hospitalId,
       { $push: { appointments: newAppointment._id } },
       { session, new: true }
     );
 
-    // Update the department's appointments and patients arrays
     await Department.findByIdAndUpdate(
       department._id,
       {
@@ -157,15 +181,18 @@ export const bookAppointment = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
-    // Populate appointment data
     const populatedAppointment = await Appointment.findById(newAppointment._id)
       .populate("patient", "name email phone")
       .populate("doctor", "name specialization email")
       .populate("department", "name")
-      .populate("hospital", "name address");
+      .populate("hospital", "name address")
+      .populate("rescheduledFrom", "caseId")
+      .populate("rescheduledTo", "caseId");
 
     return res.status(201).json({
-      message: "Appointment booked successfully.",
+      message: rescheduledFrom
+        ? "Appointment rescheduled successfully."
+        : "Appointment booked successfully.",
       appointment: populatedAppointment,
     });
   } catch (error) {
@@ -362,43 +389,98 @@ export const getFilteredAppointments = async (req, res) => {
 
 export const getAppointmentCounts = async (req, res) => {
   const { hospitalId } = req.session;
+  const { department } = req.query;
 
   if (!hospitalId) {
     return res.status(403).json({ message: 'Unauthorized access. Hospital ID not found in session.' });
   }
 
   try {
-    // Get all appointment dates for the hospital
-    const completedAppointments = await Appointment.find({ hospital: hospitalId, status: 'Completed' }).select('tokenDate');
-    const cancelledAppointments = await RejectedAppointment.find({ hospital: hospitalId, status: 'Cancelled' }).select('tokenDate');
+    const baseFilter = { hospital: hospitalId };
+    if (department) {
+      if (mongoose.Types.ObjectId.isValid(department)) {
+        baseFilter.department = new mongoose.Types.ObjectId(department);
+      } else {
+        return res.status(400).json({ message: 'Invalid department ID.' });
+      }
+    }
+
+    const completedAppointments = await Appointment.find({ ...baseFilter, status: 'Completed' }).select('tokenDate department');
+    const cancelledAppointments = await RejectedAppointment.find({ ...baseFilter, status: 'Cancelled' }).select('tokenDate department');
 
     const monthNames = [
       "January", "February", "March", "April", "May", "June",
       "July", "August", "September", "October", "November", "December"
     ];
 
+    const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
     const yearlyData = {};
+    const departmentWiseData = {};
+
     let totalAppointments = 0;
     let totalCompleted = 0;
     let totalCancelled = 0;
 
+    const startOfWeek = moment().startOf('isoWeek');
+    const endOfWeek = moment().endOf('isoWeek');
+    let weeklyAppointments = 0;
+    let weeklyCompleted = 0;
+    let weeklyCancelled = 0;
+
+    const weeklyBreakdown = weekdays.map(name => ({
+      name,
+      total: 0,
+      completed: 0,
+      cancelled: 0,
+      days: []
+    }));
+
     const processAppointments = (appointments, status) => {
-      appointments.forEach(({ tokenDate }) => {
+      appointments.forEach(({ tokenDate, department }) => {
         if (!tokenDate) return;
 
         const year = tokenDate.getFullYear();
-        const month = tokenDate.getMonth(); // 0-based index
+        const month = tokenDate.getMonth();
+        const dayKey = tokenDate.toISOString().slice(0, 10);
+        const weekdayIndex = tokenDate.getDay();
 
+        // Weekly (global)
+        if (moment(tokenDate).isBetween(startOfWeek, endOfWeek, 'day', '[]')) {
+          weeklyAppointments++;
+          if (status === 'completed') weeklyCompleted++;
+          if (status === 'cancelled') weeklyCancelled++;
+
+          const day = weeklyBreakdown[weekdayIndex];
+          day.total++;
+          day[status]++;
+
+          const existingDay = day.days.find(d => d.date === dayKey);
+          if (existingDay) {
+            existingDay.total++;
+            existingDay[status]++;
+          } else {
+            day.days.push({
+              date: dayKey,
+              total: 1,
+              completed: status === 'completed' ? 1 : 0,
+              cancelled: status === 'cancelled' ? 1 : 0
+            });
+          }
+        }
+
+        // Yearly (global)
         if (!yearlyData[year]) {
           yearlyData[year] = {
             total: 0,
             completed: 0,
             cancelled: 0,
-            months: Array(12).fill(null).map((_, i) => ({
+            months: Array.from({ length: 12 }, (_, i) => ({
               name: monthNames[i],
               total: 0,
               completed: 0,
               cancelled: 0,
+              days: [],
             })),
           };
         }
@@ -406,13 +488,97 @@ export const getAppointmentCounts = async (req, res) => {
         yearlyData[year].total++;
         yearlyData[year][status]++;
 
-        yearlyData[year].months[month].total++;
-        yearlyData[year].months[month][status]++;
+        const monthObj = yearlyData[year].months[month];
+        monthObj.total++;
+        monthObj[status]++;
 
-        // Aggregate totals for all years
+        const existingDay = monthObj.days.find(d => d.date === dayKey);
+        if (existingDay) {
+          existingDay.total++;
+          existingDay[status]++;
+        } else {
+          monthObj.days.push({
+            date: dayKey,
+            total: 1,
+            completed: status === 'completed' ? 1 : 0,
+            cancelled: status === 'cancelled' ? 1 : 0
+          });
+        }
+
         totalAppointments++;
         if (status === 'completed') totalCompleted++;
         if (status === 'cancelled') totalCancelled++;
+
+        // Department-wise
+        if (!departmentWiseData[department]) {
+          departmentWiseData[department] = {
+            total: 0,
+            completed: 0,
+            cancelled: 0,
+            weekly: {
+              weeklyAppointments: 0,
+              weeklyCompleted: 0,
+              weeklyCancelled: 0,
+              daily: weekdays.map(name => ({
+                name,
+                total: 0,
+                completed: 0,
+                cancelled: 0,
+                days: []
+              }))
+            },
+            yearly: {}
+          };
+        }
+
+        const deptData = departmentWiseData[department];
+
+        deptData.total++;
+        deptData[status]++;
+
+        // Weekly (department)
+        if (moment(tokenDate).isBetween(startOfWeek, endOfWeek, 'day', '[]')) {
+          deptData.weekly.weeklyAppointments++;
+          if (status === 'completed') deptData.weekly.weeklyCompleted++;
+          if (status === 'cancelled') deptData.weekly.weeklyCancelled++;
+
+          const deptDay = deptData.weekly.daily[weekdayIndex];
+          deptDay.total++;
+          deptDay[status]++;
+
+          const deptExistingDay = deptDay.days.find(d => d.date === dayKey);
+          if (deptExistingDay) {
+            deptExistingDay.total++;
+            deptExistingDay[status]++;
+          } else {
+            deptDay.days.push({
+              date: dayKey,
+              total: 1,
+              completed: status === 'completed' ? 1 : 0,
+              cancelled: status === 'cancelled' ? 1 : 0
+            });
+          }
+        }
+
+        // Yearly (department)
+        if (!deptData.yearly[year]) {
+          deptData.yearly[year] = {
+            total: 0,
+            completed: 0,
+            cancelled: 0,
+            months: Array.from({ length: 12 }, (_, i) => ({
+              name: monthNames[i],
+              total: 0,
+              completed: 0,
+              cancelled: 0,
+            }))
+          };
+        }
+
+        deptData.yearly[year].total++;
+        deptData.yearly[year][status]++;
+        deptData.yearly[year].months[month].total++;
+        deptData.yearly[year].months[month][status]++;
       });
     };
 
@@ -425,7 +591,16 @@ export const getAppointmentCounts = async (req, res) => {
         totalCompleted,
         totalCancelled,
       },
+      Weekly: {
+        startOfWeek: startOfWeek.format("YYYY-MM-DD"),
+        endOfWeek: endOfWeek.format("YYYY-MM-DD"),
+        weeklyAppointments,
+        weeklyCompleted,
+        weeklyCancelled,
+        daily: weeklyBreakdown
+      },
       yearlyData,
+      departmentWiseData,
     });
   } catch (error) {
     res.status(500).json({ message: 'Failed to get appointment counts.', error: error.message });
@@ -434,24 +609,31 @@ export const getAppointmentCounts = async (req, res) => {
 
 export const getRejectedAppointments = async (req, res) => {
   const { hospitalId } = req.session;
+  const { page = 1, limit = 10 } = req.query;
+  const skip = (page - 1) * limit;
 
   if (!hospitalId) {
     return res.status(403).json({ message: "Access denied. No hospital context found." });
   }
 
   try {
+    const total = await RejectedAppointment.countDocuments({ hospital: hospitalId, status: 'Rejected' });
     const rejectedAppointments = await RejectedAppointment.find({ hospital: hospitalId, status: 'Rejected' })
       .populate('patient', 'name email phone')
       .populate('doctor', 'name email specialization')
-      .sort({ dateActioned: -1 });
+      .sort({ dateActioned: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
 
     res.status(200).json({
       message: "Rejected appointments retrieved successfully.",
       count: rejectedAppointments.length,
+      totalRejected: total,
+      totalPages: Math.ceil(total / limit),
+      currentPage: parseInt(page),
       rejectedAppointments,
     });
   } catch (error) {
-    console.error('Error fetching rejected appointments:', error);
     res.status(500).json({
       message: "Error fetching rejected appointments.",
       error: error.message,
@@ -461,24 +643,31 @@ export const getRejectedAppointments = async (req, res) => {
 
 export const getCancelledAppointments = async (req, res) => {
   const { hospitalId } = req.session;
+  const { page = 1, limit = 10 } = req.query;
+  const skip = (page - 1) * limit;
 
   if (!hospitalId) {
     return res.status(403).json({ message: "Access denied. No hospital context found." });
   }
 
   try {
+    const total = await RejectedAppointment.countDocuments({ hospital: hospitalId, status: 'Cancelled' });
     const cancelledAppointments = await RejectedAppointment.find({ hospital: hospitalId, status: 'Cancelled' })
       .populate('patient', 'name email phone')
       .populate('doctor', 'name email specialization')
-      .sort({ dateActioned: -1 });
+      .sort({ dateActioned: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
 
     res.status(200).json({
       message: "Cancelled appointments retrieved successfully.",
       count: cancelledAppointments.length,
+      totalCancelled: total,
+      totalPages: Math.ceil(total / limit),
+      currentPage: parseInt(page),
       cancelledAppointments,
     });
   } catch (error) {
-    console.error('Error fetching cancelled appointments:', error);
     res.status(500).json({
       message: "Error fetching cancelled appointments.",
       error: error.message,
@@ -571,25 +760,26 @@ export const getAppointments = async (req, res) => {
       return res.status(403).json({ message: "No hospital context found." });
     }
 
-    // Validate required date filters
     if (!start || !end) {
       return res.status(400).json({ message: "Start and end datetime are required." });
     }
 
     const startDate = new Date(start);
     const endDate = new Date(end);
-
     if (isNaN(startDate) || isNaN(endDate)) {
       return res.status(400).json({ message: "Invalid datetime format." });
     }
 
-    // Build base filter
+    if (departmentId && !mongoose.Types.ObjectId.isValid(departmentId)) {
+      return res.status(400).json({ message: "Invalid department ID." });
+    }
+
     const filter = {
       hospital: hospitalId,
       tokenDate: { $gte: startDate, $lte: endDate },
     };
 
-    // Optional: departmentId
+    // Apply department filter early, for both Rejected and normal appointments
     if (departmentId) {
       if (!mongoose.Types.ObjectId.isValid(departmentId)) {
         return res.status(400).json({ message: "Invalid department ID." });
@@ -603,57 +793,84 @@ export const getAppointments = async (req, res) => {
       const isDepartmentValid = hospital?.departments.some(
         (dep) => dep._id.toString() === departmentId
       );
-
       if (!isDepartmentValid) {
-        return res.status(404).json({ message: "Department does not belong to the hospital." });
+        return res.status(404).json({ message: "Department not found in this hospital." });
       }
-
       filter.department = departmentId;
     }
 
-    // Optional: typeVisit
     if (typeVisit) {
-      const validVisitTypes = ["Walk in", "Referral", "Online"];
-      if (!validVisitTypes.includes(typeVisit)) {
+      const validTypes = ["Walk in", "Referral", "Online"];
+      if (!validTypes.includes(typeVisit)) {
         return res.status(400).json({ message: "Invalid typeVisit" });
       }
       filter.typeVisit = typeVisit;
     }
 
-    // Optional: status (default = Scheduled = fetch all)
-    const validStatuses = Appointment.schema.path("status").enumValues;
     const effectiveStatus = status || "Scheduled";
 
-    if (effectiveStatus !== "Scheduled") {
-      if (!validStatuses.includes(effectiveStatus)) {
-        return res.status(400).json({ message: "Invalid status provided." });
-      }
+    // Handle Rejected/Cancelled
+    if (["Rejected", "Cancelled"].includes(effectiveStatus)) {
       filter.status = effectiveStatus;
+
+      const total = await RejectedAppointment.countDocuments(filter);
+      const appointments = await RejectedAppointment.find(filter)
+        .populate("patient", "name email phone")
+        .populate("doctor", "name specialization email")
+        .populate("department", "name")
+        .populate("hospital", "name address")
+        .sort({ tokenDate: -1 })
+        .skip(skip)
+        .limit(parseInt(limit));
+
+      return res.status(200).json({
+        message: `${effectiveStatus} appointments retrieved successfully`,
+        filtersApplied: {
+          start,
+          end,
+          status: effectiveStatus,
+          departmentId,
+          typeVisit,
+        },
+        count: appointments.length,
+        totalAppointments: total,
+        totalPages: Math.ceil(total / limit),
+        currentPage: parseInt(page, 10),
+        appointments,
+      });
     }
 
-    // Fetch paginated appointments
+    // Handle Scheduled/Completed/Other statuses
+    if (status && status !== "Scheduled") {
+      const validStatuses = Appointment.schema.path("status").enumValues;
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ message: "Invalid status provided." });
+      }
+      filter.status = status;
+    }
+
+    const total = await Appointment.countDocuments(filter);
     const appointments = await Appointment.find(filter)
       .populate("patient", "name email phone")
       .populate("doctor", "name specialization email")
       .populate("department", "name")
       .populate("hospital", "name address")
+      .sort({ tokenDate: -1 })
       .skip(skip)
-      .limit(parseInt(limit, 10));
+      .limit(parseInt(limit));
 
-    // Fetch total count for the time range and filters (excluding pagination)
-    const totalAppointments = await Appointment.countDocuments(filter);
-
-    res.status(200).json({
-      message: `${status || "All"} appointments retrieved successfully`,
+    return res.status(200).json({
+      message: `${status || "Scheduled"} appointments retrieved successfully`,
       filtersApplied: {
-        dateRange: { start, end },
-        status: effectiveStatus,
+        start,
+        end,
+        status: status || "Scheduled",
         departmentId,
         typeVisit,
       },
       count: appointments.length,
-      totalAppointments,
-      totalPages: Math.ceil(totalAppointments / limit),
+      totalAppointments: total,
+      totalPages: Math.ceil(total / limit),
       currentPage: parseInt(page, 10),
       appointments,
     });
@@ -662,3 +879,5 @@ export const getAppointments = async (req, res) => {
     res.status(500).json({ message: "Error fetching appointments", error: error.message });
   }
 };
+
+//add "edit appointment" functionality
