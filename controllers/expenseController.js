@@ -65,6 +65,8 @@ export const addExpense = async (req, res) => {
 export const getExpenses = async (req, res) => {
   try {
     const hospitalId = req.session.hospitalId; // Get hospitalId from session
+    const { page = 1, limit = 10 } = req.query;
+    const skip = (page - 1) * limit;
 
     // Validate hospital context
     if (!hospitalId) {
@@ -74,13 +76,20 @@ export const getExpenses = async (req, res) => {
     }
 
     // Fetch expenses based on hospital context
+    const total = await Expense.countDocuments({ hospital: hospitalId });
     const expenses = await Expense.find({ hospital: hospitalId })
       .sort({ date: -1 }) // Sort by latest first
-      .select("-__v"); // Exclude version field
+      .select("-__v") // Exclude version field
+      .skip(skip)
+      .limit(parseInt(limit));
 
     res.status(200).json({
+      message: "Expenses retrieved successfully.",
       hospitalId: hospitalId,
       count: expenses.length,
+      totalExpenses: total,
+      totalPages: Math.ceil(total / limit),
+      currentPage: parseInt(page),
       expenses,
     });
   } catch (error) {
