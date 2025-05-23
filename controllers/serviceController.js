@@ -3,11 +3,22 @@ import Hospital from "../models/hospitalModel.js";
 import Department from "../models/departmentModel.js";
 
 export const addService = async (req, res) => {
-  const { name, description, subCategoryName, rateType, rate, effectiveDate, amenities, departmentName } = req.body;
+  const {
+    name,
+    description,
+    subCategoryName,
+    rateType,
+    rate,
+    effectiveDate,
+    amenities,
+    departmentName,
+  } = req.body;
   const hospitalId = req.session.hospitalId;
 
   if (!hospitalId) {
-    return res.status(403).json({ message: "Unauthorized access. No hospital context." });
+    return res
+      .status(403)
+      .json({ message: "Unauthorized access. No hospital context." });
   }
 
   try {
@@ -18,10 +29,15 @@ export const addService = async (req, res) => {
     });
 
     if (!department) {
-      return res.status(404).json({ message: "No matching departments found." });
+      return res
+        .status(404)
+        .json({ message: "No matching departments found." });
     }
 
-    const existingService = await Service.findOne({ name, department: department._id });
+    const existingService = await Service.findOne({
+      name,
+      department: department._id,
+    });
 
     if (existingService) {
       // Check if the subcategory already exists in the service
@@ -30,11 +46,20 @@ export const addService = async (req, res) => {
       );
 
       if (subCategoryExists) {
-        return res.status(400).json({ message: "Subcategory already exists in this service." });
+        return res
+          .status(400)
+          .json({ message: "Subcategory already exists in this service." });
       }
 
       // Add new subcategory to the existing service
-      existingService.categories.push({ subCategoryName, rateType, rate, effectiveDate, amenities, hospital: hospitalId });
+      existingService.categories.push({
+        subCategoryName,
+        rateType,
+        rate,
+        effectiveDate,
+        amenities,
+        hospital: hospitalId,
+      });
       existingService.lastUpdated = new Date();
       await existingService.save();
 
@@ -53,7 +78,16 @@ export const addService = async (req, res) => {
     const newService = new Service({
       name,
       description,
-      categories: [{ subCategoryName, rateType, rate, effectiveDate, amenities, hospital: hospitalId, }],
+      categories: [
+        {
+          subCategoryName,
+          rateType,
+          rate,
+          effectiveDate,
+          amenities,
+          hospital: hospitalId,
+        },
+      ],
       hospital: hospitalId,
       department: department._id,
     });
@@ -61,10 +95,9 @@ export const addService = async (req, res) => {
     await newService.save();
 
     // Push the new service ID into the specified departments' services array
-    await Department.findByIdAndUpdate(
-      department._id,
-      { $push: { services: newService._id } }
-    );
+    await Department.findByIdAndUpdate(department._id, {
+      $push: { services: newService._id },
+    });
 
     // Fetch the newly created service along with the department name
     const populatedNewService = await Service.findById(newService._id)
@@ -76,17 +109,22 @@ export const addService = async (req, res) => {
       service: populatedNewService,
     });
   } catch (error) {
-    res.status(500).json({ message: "Error adding service.", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Error adding service.", error: error.message });
   }
 };
 
 export const getServices = async (req, res) => {
   try {
-    const { departmentId, name } = req.query;
+    const { departmentId, name, page = 1, limit = 10 } = req.query;
+    const skip = (page - 1) * limit;
 
     const hospitalId = req.session.hospitalId;
     if (!hospitalId) {
-      return res.status(403).json({ message: "Unauthorized access. No hospital context." });
+      return res
+        .status(403)
+        .json({ message: "Unauthorized access. No hospital context." });
     }
 
     // Build query filter
@@ -96,11 +134,25 @@ export const getServices = async (req, res) => {
 
     if (name) filter.name = name;
 
-    const services = await Service.find(filter).populate("department", "name");
+    const total = await Service.countDocuments(filter);
 
-    res.status(200).json({ services });
+    const services = await Service.find(filter)
+      .populate("department", "name")
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    res.status(200).json({
+      message: "Services retrieved successfully .",
+      count: services.length,
+      totalServices: total,
+      totalPages: Math.ceil(total / limit),
+      currentPage: parseInt(page),
+      services,
+    });
   } catch (error) {
-    res.status(500).json({ message: "Error fetching services.", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Error fetching services.", error: error.message });
   }
 };
 
@@ -109,14 +161,21 @@ export const editService = async (req, res) => {
   const hospitalId = req.session.hospitalId;
 
   if (!hospitalId) {
-    return res.status(403).json({ message: "Unauthorized access. No hospital context." });
+    return res
+      .status(403)
+      .json({ message: "Unauthorized access. No hospital context." });
   }
 
   try {
-    const service = await Service.findOne({ _id: serviceId, hospital: hospitalId });
+    const service = await Service.findOne({
+      _id: serviceId,
+      hospital: hospitalId,
+    });
 
     if (!service) {
-      return res.status(404).json({ message: "Service not found or access denied." });
+      return res
+        .status(404)
+        .json({ message: "Service not found or access denied." });
     }
 
     // Update service details
@@ -144,11 +203,21 @@ export const editService = async (req, res) => {
     service.lastUpdated = new Date();
     await service.save();
 
-    const updatedService = await Service.findById(serviceId).populate("department", "name");
+    const updatedService = await Service.findById(serviceId).populate(
+      "department",
+      "name"
+    );
 
-    res.status(200).json({ message: "Service updated successfully.", service: updatedService });
+    res
+      .status(200)
+      .json({
+        message: "Service updated successfully.",
+        service: updatedService,
+      });
   } catch (error) {
-    res.status(500).json({ message: "Error updating service.", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Error updating service.", error: error.message });
   }
 };
 
@@ -157,39 +226,57 @@ export const deleteService = async (req, res) => {
   const hospitalId = req.session.hospitalId;
 
   if (!hospitalId) {
-    return res.status(403).json({ message: "Unauthorized access. No hospital context." });
+    return res
+      .status(403)
+      .json({ message: "Unauthorized access. No hospital context." });
   }
 
   try {
-    const service = await Service.findOneAndDelete({ _id: serviceId, hospital: hospitalId });
+    const service = await Service.findOneAndDelete({
+      _id: serviceId,
+      hospital: hospitalId,
+    });
 
     if (!service) {
-      return res.status(404).json({ message: "Service not found or access denied." });
+      return res
+        .status(404)
+        .json({ message: "Service not found or access denied." });
     }
 
     // Remove service reference from the department
-    await Department.findByIdAndUpdate(service.department, { $pull: { services: serviceId } });
+    await Department.findByIdAndUpdate(service.department, {
+      $pull: { services: serviceId },
+    });
 
     res.status(200).json({ message: "Service deleted successfully." });
   } catch (error) {
-    res.status(500).json({ message: "Error deleting service.", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Error deleting service.", error: error.message });
   }
 };
 
 export const deleteSubcategory = async (req, res) => {
   const { serviceId, subcategoryId } = req.params;
-  const hospitalId = req.session.hospitalId; 
+  const hospitalId = req.session.hospitalId;
 
   if (!hospitalId) {
-    return res.status(403).json({ message: "Unauthorized access. No hospital context." });
+    return res
+      .status(403)
+      .json({ message: "Unauthorized access. No hospital context." });
   }
 
   try {
     // Find the service
-    const service = await Service.findOne({ _id: serviceId, hospital: hospitalId });
+    const service = await Service.findOne({
+      _id: serviceId,
+      hospital: hospitalId,
+    });
 
     if (!service) {
-      return res.status(404).json({ message: "Service not found or access denied." });
+      return res
+        .status(404)
+        .json({ message: "Service not found or access denied." });
     }
 
     // Check if subcategory exists
@@ -206,8 +293,12 @@ export const deleteSubcategory = async (req, res) => {
     service.lastUpdated = new Date();
     await service.save();
 
-    res.status(200).json({ message: "Subcategory deleted successfully.", service });
+    res
+      .status(200)
+      .json({ message: "Subcategory deleted successfully.", service });
   } catch (error) {
-    res.status(500).json({ message: "Error deleting subcategory.", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Error deleting subcategory.", error: error.message });
   }
 };
