@@ -2,13 +2,12 @@ import Hospital from '../models/hospitalModel.js';
 import Department from '../models/departmentModel.js';
 import Doctor from '../models/doctorModel.js';
 import Patient from '../models/patientModel.js';
-import bcrypt from 'bcryptjs';
 
 export const addDepartment = async (req, res) => {
   const { name, head, nurses, services, doctors = [] } = req.body;
 
-  if (!name || !head?.id) {
-    return res.status(400).json({ message: "Department name and head doctor ID are required." });
+  if (!name || !head?.name || !head?.email) {
+    return res.status(400).json({ message: "Department name and head doctor details are required." });
   }
 
   try {
@@ -22,10 +21,19 @@ export const addDepartment = async (req, res) => {
       return res.status(404).json({ message: "Hospital not found." });
     }
 
-    // Check if the head doctor already exists in the database
-    const headDoctor = await Doctor.findOne({ _id: head.id, hospital: hospitalId });
+    // Find or create head doctor
+    let headDoctor = await Doctor.findOne({ email: head.email, hospital: hospitalId });
     if (!headDoctor) {
-      return res.status(404).json({ message: "Head doctor not found in this hospital." });
+      headDoctor = new Doctor({
+        name: head.name,
+        email: head.email,
+        phone: head.phone || '',
+        specialization: head.specialization || '',
+        hospital: hospitalId,
+        password: head.password,
+        departments: [],
+      });
+      await headDoctor.save();
     }
 
     // Validate other doctors (optional)
@@ -60,17 +68,18 @@ export const addDepartment = async (req, res) => {
 
     await newDepartment.save();
 
-    // Update the hospital document to include the new department
+    // Update the hospital document to include the new department and head doctor
     const updatedHospital = await Hospital.findByIdAndUpdate(
       hospitalId,
       {
-        $push: {
+        $addToSet: {
           departments: newDepartment._id,
           doctors: headDoctor._id,
         },
       },
       { new: true }
-    ).populate('departments');    
+    ).populate('departments');
+
     if (!updatedHospital) {
       return res.status(404).json({ message: "Hospital not found or failed to update." });
     }
@@ -79,7 +88,7 @@ export const addDepartment = async (req, res) => {
     await Doctor.findByIdAndUpdate(
       headDoctor._id,
       {
-        $push: { departments: newDepartment._id },
+        $addToSet: { departments: newDepartment._id },
         $set: { head: newDepartment._id },
       },
       { new: true }
@@ -97,7 +106,7 @@ export const addDepartment = async (req, res) => {
     }
 
     res.status(201).json({
-      message: "Department created and linked with existing doctors.",
+      message: "Department created and linked with doctors.",
       department: newDepartment,
     });
 
@@ -106,6 +115,7 @@ export const addDepartment = async (req, res) => {
     res.status(500).json({ message: "Error creating department." });
   }
 };
+
 
 export const getDepartments = async (req, res) => {
   const { departmentId } = req.params;
