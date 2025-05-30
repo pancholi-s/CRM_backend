@@ -1,7 +1,8 @@
+import bcrypt from "bcryptjs";
+
 import Hospital from '../models/hospitalModel.js';
 import Department from '../models/departmentModel.js';
 import Doctor from '../models/doctorModel.js';
-import Patient from '../models/patientModel.js';
 
 export const addDepartment = async (req, res) => {
   const { name, head, nurses, services, doctors = [] } = req.body;
@@ -24,13 +25,16 @@ export const addDepartment = async (req, res) => {
     // Find or create head doctor
     let headDoctor = await Doctor.findOne({ email: head.email, hospital: hospitalId });
     if (!headDoctor) {
+      const password = head.password || "changeme";
+      const hashedPassword = await bcrypt.hash(password, 10);
+
       headDoctor = new Doctor({
         name: head.name,
         email: head.email,
         phone: head.phone || '',
         specialization: head.specialization || '',
         hospital: hospitalId,
-        password: head.password,
+        password: hashedPassword,
         departments: [],
       });
       await headDoctor.save();
