@@ -57,7 +57,7 @@ app.use('/', billRoutes);
 app.use('/', serviceRoutes);
 app.use('/', expenseRoutes);
 app.use('/', resourceRoutes);
-app.use('/', eventRoutes);
+app.use('/events', eventRoutes);
 
 // Base route
 app.get('/', (req, res) => {

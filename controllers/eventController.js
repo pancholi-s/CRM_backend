@@ -1,4 +1,4 @@
-import Event from '../models/Event.js';
+import Event from "../models/eventModel.js";
 
 export const createEvent = async (req, res) => {
   try {
@@ -10,14 +10,12 @@ export const createEvent = async (req, res) => {
       endTime,
       participantsName,
       eventType,
+      labelTag,
       note,
-      labelTag
     } = req.body;
 
-    const allowedLabels = ['High', 'Medium', 'Low'];
-    if (!allowedLabels.includes(labelTag)) {
-      return res.status(400).json({ success: false, message: "Invalid label tag" });
-    }
+    const { user } = req;
+    const hospitalId = user.hospital;
 
     const newEvent = new Event({
       title,
@@ -27,26 +25,38 @@ export const createEvent = async (req, res) => {
       endTime,
       participantsName,
       eventType,
-      note,
       labelTag,
+      note,
+      hospital: hospitalId,
+      createdBy: {
+        userId: user._id,
+        role: user.role,
+      },
     });
 
     await newEvent.save();
 
-    res.status(201).json({ success: true, message: "Event created successfully", event: newEvent });
+    res.status(201).json({
+      message: "Event created successfully",
+      event: newEvent,
+    });
   } catch (error) {
     console.error("Error creating event:", error);
-    res.status(500).json({ success: false, message: "Internal server error" });
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 
-
-export const getAllEvents = async (req, res) => {
+export const getEvents = async (req, res) => {
   try {
-    const events = await Event.find().sort({ date: 1 }); 
-    res.status(200).json({ success: true, events });
+    const hospitalId = req.user.hospital;
+
+    const events = await Event.find({ hospital: hospitalId }).sort({
+      date: -1,
+    });
+
+    res.status(200).json(events);
   } catch (error) {
     console.error("Error fetching events:", error);
-    res.status(500).json({ success: false, message: "Internal server error" });
+    res.status(500).json({ message: "Internal server error" });
   }
 };
