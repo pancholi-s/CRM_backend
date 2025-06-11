@@ -17,7 +17,7 @@ import expenseRoutes from './routes/expenseRoutes.js';
 import resourceRoutes from './routes/resourceRoutes.js';
 import eventRoutes from './routes/eventRoutes.js';
 import doctorNoteRoutes from './routes/doctorNoteRoutes.js';
-
+import requestRoutes from './routes/requestRoutes.js';
 dotenv.config();
 
 const app = express();
@@ -60,6 +60,8 @@ app.use('/', expenseRoutes);
 app.use('/', resourceRoutes);
 app.use('/events', eventRoutes);
 app.use('/',doctorNoteRoutes);
+app.use('/', requestRoutes);
+
 // Base route
 app.get('/', (req, res) => {
   res.send('Welcome to the CRM Backend API with MongoDB');
