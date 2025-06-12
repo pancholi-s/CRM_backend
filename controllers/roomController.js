@@ -93,7 +93,7 @@ export const addRoom = async (req, res) => {
 
 // Get all Rooms (Filter by department)
 export const getRoomsByHospital = async (req, res) => {
-  const { departmentId } = req.query;
+  const { departmentId, sort } = req.query;
 
   // Get hospitalId from session
   const hospitalId = req.session.hospitalId;
@@ -106,12 +106,35 @@ export const getRoomsByHospital = async (req, res) => {
     let filter = { hospital: hospitalId };
     if (departmentId) filter.department = departmentId;
 
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const sortOrder = sort === 'asc' ? 1 : -1;
+
+    const totalRooms = await Room.countDocuments(filter);
+
     const rooms = await Room.find(filter)
       .populate('hospital', 'name')
       .populate('department', 'name')
-      .populate('assignedDoctor', 'name');
+      .populate('assignedDoctor', 'name')
+      .sort({ createdAt: sortOrder }) 
+      .skip(skip)
+      .limit(limit)
+      .lean();
 
-    res.status(200).json({ rooms });
+      if (!rooms || rooms.length === 0) {
+      return res.status(404).json({ message: 'No rooms found for this hospital.' });
+    }
+
+    return res.status(200).json({
+      message: 'Rooms retrieved successfully.',
+      count: rooms.length,
+      totalRooms,
+      totalPages: Math.ceil(totalRooms / limit),
+      currentPage: page,
+      rooms,
+    });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching rooms.', error: error.message });
   }

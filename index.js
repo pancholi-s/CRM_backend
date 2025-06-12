@@ -15,6 +15,9 @@ import serviceRoutes from './routes/serviceRoutes.js';
 import billRoutes from './routes/billRoutes.js';
 import expenseRoutes from './routes/expenseRoutes.js';
 import resourceRoutes from './routes/resourceRoutes.js';
+import eventRoutes from './routes/eventRoutes.js';
+import doctorNoteRoutes from './routes/doctorNoteRoutes.js';
+import requestRoutes from './routes/requestRoutes.js';
 import consultationRoutes from './routes/consultationRoutes.js';
 
 dotenv.config();
@@ -57,6 +60,9 @@ app.use('/', billRoutes);
 app.use('/', serviceRoutes);
 app.use('/', expenseRoutes);
 app.use('/', resourceRoutes);
+app.use('/events', eventRoutes);
+app.use('/',doctorNoteRoutes);
+app.use('/', requestRoutes);
 app.use('/', consultationRoutes);
 
 
