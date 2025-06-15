@@ -8,14 +8,12 @@ const assignmentSchema = new mongoose.Schema(
         ref: "Doctor",
       },
     ],
-
     staff: [
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Staff",
       },
     ],
-
     patients: [
       {
         type: mongoose.Schema.Types.ObjectId,
@@ -23,58 +21,49 @@ const assignmentSchema = new mongoose.Schema(
         required: true,
       },
     ],
-
     hospital: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Hospital",
       required: true,
     },
-
     department: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Department",
       required: true,
     },
-
     assignmentType: {
       type: String,
       enum: ["doctor", "staff"],
       required: true,
     },
-
     role: {
       type: String,
       required: true,
     },
-
     shift: {
       type: String,
       enum: ["Morning", "Evening", "Night"],
       required: true,
     },
-
     duration: {
       type: String,
       enum: ["One Time Visit", "Till Discharge"],
       required: true,
     },
-
     status: {
       type: String,
       enum: ["Active", "Completed", "Cancelled"],
       default: "Active",
     },
-
     assignedBy: {
       type: mongoose.Schema.Types.ObjectId,
       refPath: "assignedByModel",
       required: true,
     },
-
     assignedByModel: {
       type: String,
       required: true,
-      enum: ["HospitalAdmin", "Receptionist", "Doctor", "Staff"], 
+      enum: ["HospitalAdmin", "Receptionist", "Doctor", "Staff"],
     },
   },
   {
