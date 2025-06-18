@@ -21,6 +21,9 @@ import requestRoutes from './routes/requestRoutes.js';
 import consultationRoutes from './routes/consultationRoutes.js';
 import consultationFormRoutes from "./routes/consultationFormRoutes.js";
 import assignmentRoutes from './routes/assignmentRoutes.js';
+import procedurerRoutes from './routes/procedureRoutes.js';
+import patientOverviewRoutes from './routes/patientOverviewRoutes.js';
+
 dotenv.config();
 
 const app = express();
@@ -67,6 +70,8 @@ app.use('/', requestRoutes);
 app.use('/', consultationRoutes);
 app.use("/", consultationFormRoutes);
 app.use('/', assignmentRoutes);
+app.use('/', procedurerRoutes);
+app.use('/', patientOverviewRoutes);
 
 // Base route
 app.get('/', (req, res) => {
