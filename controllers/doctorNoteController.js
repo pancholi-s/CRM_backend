@@ -1,4 +1,4 @@
-import DoctorNote from '../models/DoctorNoteModel.js';
+import DoctorNote from "../models/DoctorNoteModel.js";
 
 export const createDoctorNote = async (req, res) => {
   try {
@@ -8,7 +8,7 @@ export const createDoctorNote = async (req, res) => {
     const hospitalId = req.session.hospitalId;
 
     if (!note) {
-      return res.status(400).json({ message: 'Note content is required.' });
+      return res.status(400).json({ message: "Note content is required." });
     }
 
     const newNote = new DoctorNote({
@@ -21,12 +21,12 @@ export const createDoctorNote = async (req, res) => {
     await newNote.save();
 
     res.status(201).json({
-      message: 'Doctor note created successfully.',
+      message: "Doctor note created successfully.",
       data: newNote,
     });
   } catch (error) {
-    console.error('Error creating doctor note:', error);
-    res.status(500).json({ message: 'Internal server error.' });
+    console.error("Error creating doctor note:", error);
+    res.status(500).json({ message: "Internal server error." });
   }
 };
 
@@ -34,20 +34,39 @@ export const getDoctorNotes = async (req, res) => {
   try {
     const notes = await DoctorNote.find()
       .populate({
-        path: 'doctor',
-        select: 'name email specialization phone'
+        path: "doctor",
+        select: "name email phone",
       })
+
       .populate({
-        path: 'patient',
-        select: 'name email phone age'
-      })
-      .populate({
-        path: 'hospital',
-        select: 'name phone email address'
+        path: "patient",
+        select: "name email phone age",
       });
 
-    res.status(200).json(notes);
+    const simplifiedNotes = notes.map((note) => ({
+      _id: note._id,
+      note: note.note,
+      date: note.date,
+      doctor: note.doctor
+        ? {
+            name: note.doctor.name,
+            email: note.doctor.email,
+            phone: note.doctor.phone,
+          }
+        : null,
+      patient: note.patient
+        ? {
+            name: note.patient.name,
+            email: note.patient.email,
+            phone: note.patient.phone,
+            age: note.patient.age,
+          }
+        : null,
+    }));
+
+    res.status(200).json(simplifiedNotes);
   } catch (error) {
-    res.status(500).json({ message: 'Failed to fetch notes' });
+    console.error("Error fetching doctor notes:", error);
+    res.status(500).json({ message: "Failed to fetch notes" });
   }
 };

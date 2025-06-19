@@ -140,3 +140,67 @@ export const getPatientConsultationHistory = async (req, res) => {
     res.status(500).json({ message: 'Error fetching consultation history.' });
   }
 };
+
+export const getMostCommonDiagnoses = async (req, res) => {
+  const hospitalId = req.session.hospitalId;
+
+  if (!hospitalId) {
+    return res.status(403).json({ message: 'No hospital context found.' });
+  }
+
+  const thisMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+
+  try {
+    const result = await Consultation.aggregate([
+      {
+        $match: {
+          department: { $exists: true },
+          date: { $gte: thisMonthStart },
+          'consultationData.diagnosis': { $exists: true, $ne: null }
+        }
+      },
+      {
+        $facet: {
+          topDiagnoses: [
+            {
+              $group: {
+                _id: '$consultationData.diagnosis',
+                count: { $sum: 1 }
+              }
+            },
+            { $sort: { count: -1 } },
+            { $limit: 5 }
+          ],
+          totalCount: [
+            {
+              $group: {
+                _id: '$consultationData.diagnosis'
+              }
+            },
+            {
+              $count: 'total'
+            }
+          ]
+        }
+      }
+    ]);
+
+    const topDiagnoses = result[0].topDiagnoses.map(item => ({
+      diagnosis: item._id,
+      count: item.count
+    }));
+
+    const total = result[0].totalCount[0]?.total || 0;
+
+    res.status(200).json({
+      success: true,
+      totalDiagnoses: total,
+      data: topDiagnoses
+    });
+
+  } catch (error) {
+    console.error('Error fetching most common diagnoses:', error);
+    res.status(500).json({ message: 'Server error.', error });
+  }
+};
+

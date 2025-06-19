@@ -25,7 +25,8 @@ export const bookAppointment = async (req, res) => {
     birthday,
     age,
     address,
-    rescheduledFrom, // 👈 NEW FIELD for rescheduling
+    rescheduledFrom,
+    procedureCategory, 
   } = req.body;
 
   const { hospitalId } = req.session;
@@ -115,6 +116,7 @@ export const bookAppointment = async (req, res) => {
       note,
       hospital: hospitalId,
       rescheduledFrom: rescheduledFrom || null, // 👈 store reference
+      procedureCategory: procedureCategory || null
     });
 
     if (typeVisit === "Walk in") {
