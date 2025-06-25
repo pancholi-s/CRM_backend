@@ -8,9 +8,9 @@ import { addRoom, getRoomsByHospital,  getRoomById,  updateRoom } from '../contr
 const router = express.Router();
 router.use(requireHospitalContext);
 
-router.post('/addRoom', authorizeRoles("receptionist", "hospitalAdmin"), addRoom);
-router.get('/getRoomsByHospital', authorizeRoles("receptionist", "hospitalAdmin"), getRoomsByHospital);
-router.get('/getRoom/:roomId', authorizeRoles("receptionist", "hospitalAdmin"), getRoomById);
-router.patch('/updateRoom/:roomId', authorizeRoles("receptionist", "hospitalAdmin"), updateRoom);
+router.post('/addRoom', authorizeRoles("receptionist", "hospitalAdmin", "doctor"), addRoom);
+router.get('/getRoomsByHospital', authorizeRoles("receptionist", "hospitalAdmin", "doctor"), getRoomsByHospital);
+router.get('/getRoom/:roomId', authorizeRoles("receptionist", "hospitalAdmin", "doctor"), getRoomById);
+router.patch('/updateRoom/:roomId', authorizeRoles("receptionist", "hospitalAdmin", "doctor"), updateRoom);
 
 export default router;

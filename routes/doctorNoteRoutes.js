@@ -14,7 +14,7 @@ router.post(
 
 router.get(
   '/doctor-notes',
-  authorizeRoles('hospitalAdmin', 'doctor', 'receptionist', 'patient'),
+  authorizeRoles('hospitalAdmin', 'doctor', 'receptionist'),
   getDoctorNotes
 );
 

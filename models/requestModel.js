@@ -7,11 +7,6 @@ const requestSchema = new mongoose.Schema(
       ref: "Doctor",
       required: true,
     },
-    requestType: {
-      type: String,
-      enum: ["Medicine", "Equipment", "Supply", "Maintenance", "Other"],
-      required: true,
-    },
     title: {
       type: String,
       required: true,
@@ -21,67 +16,52 @@ const requestSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    priority: {
+    quantity: {
       type: String,
-      enum: ["Low", "Medium", "High", "Critical"],
-      default: "Medium",
+      required: true,
+    },
+    timeline: {
+      type: String,
+      required: true,
+    },
+    purpose: {
+      type: String,
+      required: true,
     },
     status: {
       type: String,
-      enum: ["Active", "In Active", "Completed", "Rejected", "Cancelled"],
+      enum: ["Active", "Inactive"],
       default: "Active",
-    },
-    department: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Department",
-      required: true,
     },
     hospital: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Hospital",
       required: true,
     },
-    items: [
+    // Simple timeline for comments/updates
+    messages: [
       {
-        name: {
-          type: String,
-          required: true,
-        },
-        quantity: {
-          type: Number,
-          required: true,
-        },
-        unit: {
-          type: String,
-          default: "pcs",
-        },
-        specifications: {
-          type: String,
-        },
-      },
-    ],
-    timeline: [
-      {
-        action: {
-          type: String,
-          required: true,
-        },
         message: {
           type: String,
           required: true,
         },
-        actionBy: {
+        messageBy: {
           type: mongoose.Schema.Types.ObjectId,
           required: true,
         },
-        actionByRole: {
+        messageByRole: {
           type: String,
           enum: ["doctor", "hospitalAdmin", "receptionist", "staff"],
           required: true,
         },
-        actionByModel: {
+
+        messageByModel: {
           type: String,
-          enum: ["Doctor", "HospitalAdmin", "Receptionist", "Staff"],
+          enum: ["Doctor", "HospitalAdmin"],
+          required: true,
+        },
+        messageByName: {
+          type: String,
           required: true,
         },
         timestamp: {
@@ -90,37 +70,8 @@ const requestSchema = new mongoose.Schema(
         },
       },
     ],
-    attachments: [
-      {
-        filename: String,
-        url: String,
-        uploadedBy: {
-          type: mongoose.Schema.Types.ObjectId,
-        },
-        uploadedByModel: {
-          type: String,
-          enum: ["Doctor", "HospitalAdmin", "Receptionist", "Staff"],
-        },
-        uploadedAt: {
-          type: Date,
-          default: Date.now,
-        },
-      },
-    ],
-    expectedDate: {
-      type: Date,
-    },
     completedDate: {
       type: Date,
-    },
-    notes: {
-      type: String,
-    },
-    estimatedCost: {
-      type: Number,
-    },
-    actualCost: {
-      type: Number,
     },
   },
   {
@@ -128,53 +79,59 @@ const requestSchema = new mongoose.Schema(
   }
 );
 
+// Indexes for better performance
 requestSchema.index({ requestBy: 1, status: 1 });
 requestSchema.index({ hospital: 1, status: 1 });
-requestSchema.index({ department: 1, status: 1 });
 requestSchema.index({ createdAt: -1 });
 
+// Virtual for checking if request is active
 requestSchema.virtual("isActive").get(function () {
-  return ["Active", "In Progress"].includes(this.status);
+  return this.status === "Active";
 });
 
-requestSchema.methods.addTimelineEntry = function (
-  action,
+// Method to add a message to timeline
+requestSchema.methods.addMessage = function (
   message,
-  actionBy,
-  actionByRole,
-  actionByModel
+  messageBy,
+  messageByRole,
+  messageByModel,
+  messageByName
 ) {
-  this.timeline.push({
-    action,
+  this.messages.push({
     message,
-    actionBy,
-    actionByRole,
-    actionByModel,
+    messageBy,
+    messageByRole,
+    messageByModel,
+    messageByName,
     timestamp: new Date(),
   });
   return this.save();
 };
 
+// Method to update status
 requestSchema.methods.updateStatus = async function (
   newStatus,
   message,
-  actionBy,
-  actionByRole,
-  actionByModel
+  messageBy,
+  messageByRole,
+  messageByModel,
+  messageByName
 ) {
   this.status = newStatus;
-  if (newStatus === "Completed") {
+  if (newStatus === "Inactive") {
     this.completedDate = new Date();
   }
 
-  await this.addTimelineEntry(
-    `Status changed to ${newStatus}`,
-    message,
-    actionBy,
-    actionByRole,
-    actionByModel
-  );
-  return this;
+  if (message) {
+    await this.addMessage(
+      message,
+      messageBy,
+      messageByRole,
+      messageByModel,
+      messageByName
+    );
+  }
+  return this.save();
 };
 
 export default mongoose.model("Request", requestSchema);
