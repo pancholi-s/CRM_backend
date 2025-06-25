@@ -2,52 +2,34 @@ import Request from "../models/requestModel.js";
 
 export const createRequest = async (req, res) => {
   try {
-    const {
-      requestType,
-      title,
-      description,
-      priority,
-      items,
-      expectedDate,
-      notes,
-      estimatedCost,
-    } = req.body;
+    const { title, quantity, timeline, purpose, description } = req.body;
 
     const doctorId = req.user._id;
+    const doctorName = req.user.name;
     const hospitalId = req.session.hospitalId || req.user.hospital;
-    const departmentId = req.user.departments?.[0] || req.body.departmentId;
 
-    if (!requestType || !title || !description) {
+    if (!title || !quantity || !timeline || !purpose) {
       return res.status(400).json({
-        message: "Request type, title, and description are required.",
-      });
-    }
-
-    if (requestType === "Medicine" && (!items || items.length === 0)) {
-      return res.status(400).json({
-        message: "Items are required for medicine requests.",
+        message:
+          "All fields are required (title, quantity, timeline, purpose).",
       });
     }
 
     const newRequest = new Request({
       requestBy: doctorId,
-      requestType,
       title,
-      description,
-      priority: priority || "Medium",
-      department: departmentId,
+      description: description || purpose,
+      quantity,
+      timeline,
+      purpose,
       hospital: hospitalId,
-      items: items || [],
-      expectedDate: expectedDate ? new Date(expectedDate) : null,
-      notes,
-      estimatedCost,
-      timeline: [
+      messages: [
         {
-          action: "Request Created",
-          message: `Request for ${requestType} has been created`,
-          actionBy: doctorId,
-          actionByRole: "doctor",
-          actionByModel: "Doctor",
+          message: `Request created: ${title}`,
+          messageBy: doctorId,
+          messageByRole: "doctor",
+          messageByModel: "Doctor",
+          messageByName: doctorName,
         },
       ],
     });
@@ -56,9 +38,7 @@ export const createRequest = async (req, res) => {
 
     const populatedRequest = await Request.findById(newRequest._id)
       .populate("requestBy", "name specialization")
-      .populate("department", "name")
-      .populate("hospital", "name")
-      .populate("timeline.actionBy", "name role");
+      .populate("hospital", "name");
 
     res.status(201).json({
       message: "Request created successfully.",
@@ -77,9 +57,7 @@ export const getRequests = async (req, res) => {
     const hospitalId = req.session?.hospitalId || req.user.hospital;
 
     const {
-      status,
-      requestType,
-      priority,
+      status = "active",
       page = 1,
       limit = 10,
       sortBy = "createdAt",
@@ -101,27 +79,18 @@ export const getRequests = async (req, res) => {
         return res.status(403).json({ message: "Unauthorized access" });
     }
 
-    if (status) {
-      if (status === "active") {
-        filter.status = { $in: ["Active", "In Progress"] };
-      } else if (status === "inactive") {
-        filter.status = { $in: ["Completed", "Rejected", "Cancelled"] };
-      } else {
-        filter.status = status;
-      }
+    if (status === "active") {
+      filter.status = "Active";
+    } else if (status === "inactive") {
+      filter.status = "Inactive";
     }
-
-    if (requestType) filter.requestType = requestType;
-    if (priority) filter.priority = priority;
 
     const skip = (page - 1) * limit;
     const sortDirection = sortOrder === "desc" ? -1 : 1;
 
     const requests = await Request.find(filter)
       .populate("requestBy", "name specialization")
-      .populate("department", "name")
       .populate("hospital", "name")
-      .populate("timeline.actionBy", "name role")
       .sort({ [sortBy]: sortDirection })
       .skip(skip)
       .limit(parseInt(limit));
@@ -151,11 +120,8 @@ export const getRequestById = async (req, res) => {
     const hospitalId = req.session?.hospitalId || req.user.hospital;
 
     const request = await Request.findById(requestId)
-      .populate("requestBy", "name specialization email phone")
-      .populate("department", "name")
-      .populate("hospital", "name")
-      .populate("timeline.actionBy", "name role")
-      .populate("attachments.uploadedBy", "name");
+      .populate("requestBy", "name specialization")
+      .populate("hospital", "name");
 
     if (!request) {
       return res.status(404).json({ message: "Request not found" });
@@ -182,66 +148,13 @@ export const getRequestById = async (req, res) => {
   }
 };
 
-export const updateRequestStatus = async (req, res) => {
-  try {
-    const { requestId } = req.params;
-    const { status, message, estimatedCost, actualCost } = req.body;
-    const userId = req.user._id;
-    const userRole = req.user.role;
-
-    if (!["hospitalAdmin", "receptionist", "staff"].includes(userRole)) {
-      return res
-        .status(403)
-        .json({ message: "Not authorized to update request status" });
-    }
-
-    const request = await Request.findById(requestId);
-    if (!request) {
-      return res.status(404).json({ message: "Request not found" });
-    }
-
-    if (estimatedCost !== undefined) request.estimatedCost = estimatedCost;
-    if (actualCost !== undefined) request.actualCost = actualCost;
-
-    const roleToModelMap = {
-      hospitalAdmin: "HospitalAdmin",
-      receptionist: "Receptionist",
-      staff: "Staff",
-      doctor: "Doctor",
-    };
-
-    const actionByModel = roleToModelMap[userRole];
-
-    await request.updateStatus(
-      status,
-      message,
-      userId,
-      userRole,
-      actionByModel
-    );
-
-    const updatedRequest = await Request.findById(requestId)
-      .populate("requestBy", "name specialization")
-      .populate("department", "name")
-      .populate("hospital", "name")
-      .populate("timeline.actionBy", "name role");
-
-    res.status(200).json({
-      message: "Request status updated successfully",
-      data: updatedRequest,
-    });
-  } catch (error) {
-    console.error("Error updating request status:", error);
-    res.status(500).json({ message: "Failed to update request status" });
-  }
-};
-
-export const addRequestComment = async (req, res) => {
+export const addRequestMessage = async (req, res) => {
   try {
     const { requestId } = req.params;
     const { message } = req.body;
     const userId = req.user._id;
     const userRole = req.user.role;
+    const userName = req.user.name;
 
     if (!message) {
       return res.status(400).json({ message: "Message is required" });
@@ -254,88 +167,78 @@ export const addRequestComment = async (req, res) => {
 
     const roleToModelMap = {
       hospitalAdmin: "HospitalAdmin",
-      receptionist: "Receptionist",
-      staff: "Staff",
       doctor: "Doctor",
     };
 
-    const actionByModel = roleToModelMap[userRole];
+    const actionByModel = roleToModelMap[userRole] || "Doctor";
 
-    await request.addTimelineEntry(
-      "Comment Added",
+    await request.addMessage(
       message,
       userId,
       userRole,
-      actionByModel
+      actionByModel,
+      userName
     );
 
-    const updatedRequest = await Request.findById(requestId).populate(
-      "timeline.actionBy",
-      "name role"
-    );
+    const updatedRequest = await Request.findById(requestId);
 
     res.status(200).json({
-      message: "Comment added successfully",
-      data: updatedRequest.timeline,
+      message: "Message added successfully",
+      data: updatedRequest.messages,
     });
   } catch (error) {
-    console.error("Error adding comment:", error);
-    res.status(500).json({ message: "Failed to add comment" });
+    console.error("Error adding message:", error);
+    res.status(500).json({ message: "Failed to add message" });
   }
 };
 
-export const cancelRequest = async (req, res) => {
+export const updateRequestStatus = async (req, res) => {
   try {
     const { requestId } = req.params;
-    const { reason } = req.body;
+    const { status, message } = req.body;
     const userId = req.user._id;
     const userRole = req.user.role;
+    const userName = req.user.name;
+
+    if (!["hospitalAdmin", "receptionist", "staff"].includes(userRole)) {
+      return res
+        .status(403)
+        .json({ message: "Not authorized to update request status" });
+    }
 
     const request = await Request.findById(requestId);
     if (!request) {
       return res.status(404).json({ message: "Request not found" });
     }
 
-    if (
-      userRole === "doctor" &&
-      request.requestBy.toString() !== userId.toString()
-    ) {
-      return res
-        .status(403)
-        .json({ message: "You can only cancel your own requests" });
-    }
-
-    if (request.status === "Completed") {
-      return res
-        .status(400)
-        .json({ message: "Cannot cancel completed request" });
-    }
-
     const roleToModelMap = {
       hospitalAdmin: "HospitalAdmin",
       receptionist: "Receptionist",
       staff: "Staff",
-      doctor: "Doctor",
     };
 
     const actionByModel = roleToModelMap[userRole];
-    const cancelMessage = reason || "Request cancelled by user";
 
     await request.updateStatus(
-      "Cancelled",
-      cancelMessage,
+      status,
+      message || `Status changed to ${status}`,
       userId,
       userRole,
-      actionByModel
+      actionByModel,
+      userName
     );
 
+    const updatedRequest = await Request.findById(requestId)
+      .populate("requestBy", "name specialization")
+      .populate("hospital", "name");
+
     res.status(200).json({
-      message: "Request cancelled successfully",
-      data: request,
+      message: "Request status updated successfully",
+      data: updatedRequest,
     });
   } catch (error) {
-    console.error("Error cancelling request:", error);
-    res.status(500).json({ message: "Failed to cancel request" });
+    console.error("Error updating request status:", error);
+    res.status(500).json({ message: "Failed to update request status" });
   }
 };
 
@@ -361,44 +264,14 @@ export const getRequestStats = async (req, res) => {
           totalRequests: { $sum: 1 },
           activeRequests: {
             $sum: {
-              $cond: [{ $in: ["$status", ["Active", "In Progress"]] }, 1, 0],
-            },
-          },
-          completedRequests: {
-            $sum: {
-              $cond: [{ $eq: ["$status", "Completed"] }, 1, 0],
-            },
-          },
-          pendingRequests: {
-            $sum: {
               $cond: [{ $eq: ["$status", "Active"] }, 1, 0],
             },
           },
-          rejectedRequests: {
+          inactiveRequests: {
             $sum: {
-              $cond: [{ $eq: ["$status", "Rejected"] }, 1, 0],
+              $cond: [{ $eq: ["$status", "Inactive"] }, 1, 0],
             },
           },
-        },
-      },
-    ]);
-
-    const requestsByType = await Request.aggregate([
-      { $match: matchFilter },
-      {
-        $group: {
-          _id: "$requestType",
-          count: { $sum: 1 },
-        },
-      },
-    ]);
-
-    const requestsByPriority = await Request.aggregate([
-      { $match: matchFilter },
-      {
-        $group: {
-          _id: "$priority",
-          count: { $sum: 1 },
         },
       },
     ]);
@@ -408,12 +281,8 @@ export const getRequestStats = async (req, res) => {
         overview: stats[0] || {
           totalRequests: 0,
           activeRequests: 0,
-          completedRequests: 0,
-          pendingRequests: 0,
-          rejectedRequests: 0,
+          inactiveRequests: 0,
         },
-        byType: requestsByType,
-        byPriority: requestsByPriority,
       },
     });
   } catch (error) {

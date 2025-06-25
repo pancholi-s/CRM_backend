@@ -14,7 +14,7 @@ const router = express.Router();
 router.post(
   "/beds",
   requireHospitalContext,
-  authorizeRoles("hospitalAdmin", "doctor"),
+  authorizeRoles("hospitalAdmin", "doctor", "receptionist"),
   addBedsToRoom
 );
 
