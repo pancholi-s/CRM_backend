@@ -35,13 +35,16 @@ export const getPatientOverview = async (req, res) => {
       }
     }
 
-    const [admitted, discharged, scheduled] = await Promise.all([
+    const [admitted, discharged, scheduled, opd,totalCases] = await Promise.all([
       Appointment.countDocuments({ ...matchConditions, status: "Admitted" }),
       Appointment.countDocuments({ ...matchConditions, status: "Discharged" }),
       Appointment.countDocuments({ ...matchConditions, status: "Scheduled" }),
+      Appointment.countDocuments({ ...matchConditions, status: { $in: ["Completed", "Ongoing"] } }),
+      Appointment.countDocuments({ ...matchConditions }),
     ]);
 
     const totalInpatients = admitted;
+    const totalOutpatients = opd;
 
     res.status(200).json({
       success: true,
@@ -50,11 +53,14 @@ export const getPatientOverview = async (req, res) => {
         fromDate,
         toDate,
       },
+      totalCases,
       totalInpatients,
+      totalOutpatients,
       overview: {
         admitted,
         discharged,
         scheduled,
+        opd,
       },
     });
   } catch (error) {
