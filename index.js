@@ -23,6 +23,7 @@ import consultationFormRoutes from "./routes/consultationFormRoutes.js";
 import assignmentRoutes from './routes/assignmentRoutes.js';
 import procedurerRoutes from './routes/procedureRoutes.js';
 import patientOverviewRoutes from './routes/patientOverviewRoutes.js';
+import bedRoutes from './routes/bedRoutes.js';
 
 dotenv.config();
 
@@ -72,6 +73,7 @@ app.use("/", consultationFormRoutes);
 app.use('/', assignmentRoutes);
 app.use('/', procedurerRoutes);
 app.use('/', patientOverviewRoutes);
+app.use('/', bedRoutes);
 
 // Base route
 app.get('/', (req, res) => {
