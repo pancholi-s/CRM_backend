@@ -272,98 +272,44 @@ export const dischargePatientFromBed = async (req, res) => {
 
 export const getHospitalStatistics = async (req, res) => {
   const hospitalId = req.session.hospitalId;
+  const { departmentId } = req.query;
+
   if (!hospitalId) {
-    return res
-      .status(403)
-      .json({
-        message: "Unauthorized access. Hospital ID not found in session.",
-      });
+    return res.status(403).json({
+      message: "Unauthorized access. Hospital ID not found in session.",
+    });
   }
 
   try {
-    const totalPatients = await Patient.countDocuments({hospital: hospitalId});
-    const totalRooms = await Room.countDocuments({ hospital: hospitalId });
-    const totalBeds = await Bed.countDocuments({ hospital: hospitalId });
+    const filter = {
+      hospital: new mongoose.Types.ObjectId(hospitalId),
+    };
+
+    if (departmentId) {
+      filter.department = new mongoose.Types.ObjectId(departmentId);
+    }
+
+    // ========== Basic Counts ==========
+    const totalPatients = await Patient.countDocuments(filter);
+
+    const totalRooms = await Room.countDocuments(filter);
+
+    const totalBeds = await Bed.countDocuments(filter);
 
     const availableBeds = await Bed.countDocuments({
-      hospital: hospitalId,
+      ...filter,
       status: "Available",
     });
 
     const roomsWithAvailableBeds = await Room.countDocuments({
       hospital: hospitalId,
+      ...(departmentId && { department: departmentId }),
       "capacity.availableBeds": { $gt: 0 },
     });
 
-    const departmentStats = await Room.aggregate([
-      { $match: { hospital: new mongoose.Types.ObjectId(hospitalId) } },
-      {
-        $lookup: {
-          from: "beds",
-          localField: "_id",
-          foreignField: "room",
-          as: "beds",
-        },
-      },
-      {
-        $group: {
-          _id: "$department",
-          totalRooms: { $sum: 1 },
-          totalBeds: { $sum: { $size: "$beds" } },
-          availableBeds: {
-            $sum: {
-              $size: {
-                $filter: {
-                  input: "$beds",
-                  cond: { $eq: ["$$this.status", "Available"] },
-                },
-              },
-            },
-          },
-          roomsWithBeds: {
-            $sum: {
-              $cond: [{ $gt: ["$capacity.availableBeds", 0] }, 1, 0],
-            },
-          },
-        },
-      },
-      {
-        $lookup: {
-          from: "departments",
-          localField: "_id",
-          foreignField: "_id",
-          as: "dept",
-        },
-      },
-      {
-        $project: {
-          departmentName: { $arrayElemAt: ["$dept.name", 0] },
-          totalRooms: 1,
-          totalBeds: 1,
-          availableBeds: 1,
-          roomsWithBeds: 1,
-          bedOccupancyRate: {
-            $round: [
-              {
-                $multiply: [
-                  {
-                    $divide: [
-                      { $subtract: ["$totalBeds", "$availableBeds"] },
-                      "$totalBeds",
-                    ],
-                  },
-                  100,
-                ],
-              },
-              1,
-            ],
-          },
-        },
-      },
-    ]);
-
+    // ========== Aggregated Types ==========
     const bedTypes = await Bed.aggregate([
-      { $match: { hospital: new mongoose.Types.ObjectId(hospitalId) } },
+      { $match: filter },
       {
         $group: {
           _id: "$bedType",
@@ -376,7 +322,12 @@ export const getHospitalStatistics = async (req, res) => {
     ]);
 
     const roomTypes = await Room.aggregate([
-      { $match: { hospital: new mongoose.Types.ObjectId(hospitalId) } },
+      {
+        $match: {
+          hospital: new mongoose.Types.ObjectId(hospitalId),
+          ...(departmentId && { department: new mongoose.Types.ObjectId(departmentId) }),
+        },
+      },
       {
         $group: {
           _id: "$roomType",
@@ -388,8 +339,88 @@ export const getHospitalStatistics = async (req, res) => {
       },
     ]);
 
+    // ========== Department Summary (only if not filtered) ==========
+    let departmentWise = [];
+
+    if (!departmentId) {
+      departmentWise = await Room.aggregate([
+        { $match: { hospital: new mongoose.Types.ObjectId(hospitalId) } },
+        {
+          $lookup: {
+            from: "beds",
+            localField: "_id",
+            foreignField: "room",
+            as: "beds",
+          },
+        },
+        {
+          $group: {
+            _id: "$department",
+            totalRooms: { $sum: 1 },
+            totalBeds: { $sum: { $size: "$beds" } },
+            availableBeds: {
+              $sum: {
+                $size: {
+                  $filter: {
+                    input: "$beds",
+                    cond: { $eq: ["$$this.status", "Available"] },
+                  },
+                },
+              },
+            },
+            roomsWithBeds: {
+              $sum: {
+                $cond: [{ $gt: ["$capacity.availableBeds", 0] }, 1, 0],
+              },
+            },
+          },
+        },
+        {
+          $lookup: {
+            from: "departments",
+            localField: "_id",
+            foreignField: "_id",
+            as: "dept",
+          },
+        },
+        {
+          $project: {
+            departmentName: { $arrayElemAt: ["$dept.name", 0] },
+            totalRooms: 1,
+            totalBeds: 1,
+            availableBeds: 1,
+            roomsWithBeds: 1,
+            bedOccupancyRate: {
+              $round: [
+                {
+                  $multiply: [
+                    {
+                      $divide: [
+                        { $subtract: ["$totalBeds", "$availableBeds"] },
+                        "$totalBeds",
+                      ],
+                    },
+                    100,
+                  ],
+                },
+                1,
+              ],
+            },
+          },
+        },
+      ]);
+    }
+
+    // ========== Final Response ==========
+    const occupancyRate =
+      totalBeds > 0
+        ? (((totalBeds - availableBeds) / totalBeds) * 100).toFixed(1)
+        : "0.0";
+
     res.status(200).json({
-      message: "Hospital statistics retrieved successfully.",
+      message: departmentId
+        ? "Department statistics retrieved successfully."
+        : "Hospital statistics retrieved successfully.",
       statistics: {
         patients: { total: totalPatients },
         rooms: {
@@ -399,18 +430,15 @@ export const getHospitalStatistics = async (req, res) => {
         beds: {
           total: totalBeds,
           available: availableBeds,
-          occupancyRate:
-            totalBeds > 0
-              ? (((totalBeds - availableBeds) / totalBeds) * 100).toFixed(1)
-              : 0,
+          occupancyRate,
         },
-
-        departmentWise: departmentStats,
-        bedTypes: bedTypes,
-        roomTypes: roomTypes,
+        ...(departmentId ? {} : { departmentWise }),
+        bedTypes,
+        roomTypes,
       },
     });
   } catch (error) {
+    console.error("Hospital statistics error:", error);
     res.status(500).json({
       message: "Error fetching hospital statistics.",
       error: error.message,
