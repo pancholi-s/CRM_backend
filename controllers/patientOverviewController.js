@@ -1,4 +1,5 @@
 import Appointment from "../models/appointmentModel.js";
+import Bed from "../models/bedModel.js";
 import mongoose from "mongoose";
 
 export const getPatientOverview = async (req, res) => {
@@ -35,13 +36,20 @@ export const getPatientOverview = async (req, res) => {
       }
     }
 
-    const [admitted, discharged, scheduled, opd,totalCases] = await Promise.all([
-      Appointment.countDocuments({ ...matchConditions, status: "Admitted" }),
-      Appointment.countDocuments({ ...matchConditions, status: "Discharged" }),
-      Appointment.countDocuments({ ...matchConditions, status: "Scheduled" }),
-      Appointment.countDocuments({ ...matchConditions, status: { $in: ["Completed", "Ongoing"] } }),
-      Appointment.countDocuments({ ...matchConditions }),
-    ]);
+    const [admitted, discharged, scheduled, opd, totalCases] =
+      await Promise.all([
+        Appointment.countDocuments({ ...matchConditions, status: "Admitted" }),
+        Appointment.countDocuments({
+          ...matchConditions,
+          status: "Discharged",
+        }),
+        Appointment.countDocuments({ ...matchConditions, status: "Scheduled" }),
+        Appointment.countDocuments({
+          ...matchConditions,
+          status: { $in: ["Completed", "Ongoing"] },
+        }),
+        Appointment.countDocuments({ ...matchConditions }),
+      ]);
 
     const totalInpatients = admitted;
     const totalOutpatients = opd;
@@ -111,17 +119,30 @@ export const getInpatientsList = async (req, res) => {
       .populate("department", "name")
       .select("patient doctor tokenDate department status note type");
 
-    const formatted = patients.map((appt) => ({
-      patientId: appt.patient?._id,
-      patientName: appt.patient?.name || "Unknown",
-      email: appt.patient?.email || "",
-      doctorName: appt.doctor?.name || "Unknown",
-      department: appt.department?.name || "Unknown",
-      status: appt.status,
-      condition: appt.note || "N/A",
-      date: appt.tokenDate,
-      visitType: appt.type || "Consultation",
-    }));
+    const formatted = await Promise.all(
+      patients.map(async (appt) => {
+        let bedInfo = await Bed.findOne({
+          assignedPatient: appt.patient?._id,
+        }).populate("room", "roomID name roomType");
+
+        return {
+          patientId: appt.patient?._id,
+          patientName: appt.patient?.name || "Unknown",
+          email: appt.patient?.email || "",
+          doctorName: appt.doctor?.name || "Unknown",
+          department: appt.department?.name || "Unknown",
+          status: appt.status,
+          condition: appt.note || "N/A",
+          date: appt.tokenDate,
+          visitType: appt.type || "Consultation",
+          bedNumber: bedInfo?.bedNumber || "Not Assigned",
+          bedType: bedInfo?.bedType || null,
+          roomID: bedInfo?.room?.roomID || "Not Assigned",
+          roomName: bedInfo?.room?.name || "Not Assigned",
+          roomType: bedInfo?.room?.roomType || null,
+        };
+      })
+    );
 
     res.status(200).json({
       success: true,
