@@ -18,6 +18,10 @@ export const getPatientOverview = async (req, res) => {
       hospital: new mongoose.Types.ObjectId(String(hospitalId)),
     };
 
+    if (req.user?.role === "doctor" && req.user?._id) {
+      matchConditions.doctor = new mongoose.Types.ObjectId(req.user._id);
+    }
+
     if (departmentId) {
       matchConditions.department = new mongoose.Types.ObjectId(
         String(departmentId)
@@ -96,6 +100,10 @@ export const getInpatientsList = async (req, res) => {
       hospital: new mongoose.Types.ObjectId(String(hospitalId)),
       status: "Admitted",
     };
+
+    if (req.user?.role === "doctor" && req.user?._id) {
+      matchConditions.doctor = new mongoose.Types.ObjectId(req.user._id);
+    }
 
     if (departmentId) {
       matchConditions.department = new mongoose.Types.ObjectId(
@@ -177,6 +185,10 @@ export const getAllAppointedPatients = async (req, res) => {
       },
     };
 
+    if (req.user?.role === "doctor" && req.user?._id) {
+      matchConditions.doctor = new mongoose.Types.ObjectId(req.user._id);
+    }
+
     if (departmentId) {
       matchConditions.department = new mongoose.Types.ObjectId(
         String(departmentId)
@@ -206,6 +218,8 @@ export const getAllAppointedPatients = async (req, res) => {
       Appointment.countDocuments(matchConditions),
     ]);
 
+    const ACTIVE_STATUSES = ["Scheduled", "Admitted", "Ongoing", "Waiting"];
+
     const formattedPatients = appointments.map((appt) => ({
       caseId: appt.caseId || "N/A",
       name: appt.patient?.name || "N/A",
@@ -214,7 +228,8 @@ export const getAllAppointedPatients = async (req, res) => {
       typeVisit: appt.typeVisit || "N/A",
       branch: appt.department?.name || "N/A",
       date: appt.tokenDate,
-      booking: appt.status,
+      booking: ACTIVE_STATUSES.includes(appt.status) ? "Active" : "In Active",
+      realStatus: appt.status,
     }));
 
     res.status(200).json({
