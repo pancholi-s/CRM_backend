@@ -3,6 +3,8 @@ import {
   createCategory,
   addInventoryItem,
   getInventoryByDepartment,
+  getCategoriesByDepartment,
+  getInventorySummary,
 } from "../controllers/inventoryController.js";
 import { authorizeRoles } from "../middleware/roleMiddleware.js";
 import { requireHospitalContext } from "../middleware/hospitalContext.js";
@@ -27,6 +29,18 @@ router.get(
   "/inventory/:departmentId",
   authorizeRoles("hospitalAdmin", "doctor", "staff"),
   getInventoryByDepartment
+);
+
+router.get(
+  "/inventory/categories/:departmentId",
+  authorizeRoles("hospitalAdmin", "doctor", "staff"),
+  getCategoriesByDepartment
+);
+
+router.get(
+  "/inventory/summary/:departmentId",
+  authorizeRoles("hospitalAdmin", "doctor", "staff"),
+  getInventorySummary
 );
 
 export default router;

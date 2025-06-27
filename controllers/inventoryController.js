@@ -81,3 +81,59 @@ export const getInventoryByDepartment = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch inventory" });
   }
 };
+
+export const getCategoriesByDepartment = async (req, res) => {
+  try {
+    const { departmentId } = req.params;
+    const hospitalId = req.session.hospitalId;
+
+    const categories = await InventoryCategory.find({
+      department: departmentId,
+      hospital: hospitalId,
+    }).select("name");
+
+    res.status(200).json({ data: categories });
+  } catch (error) {
+    console.error("Error fetching categories:", error);
+    res.status(500).json({ message: "Failed to fetch categories" });
+  }
+};
+
+export const getInventorySummary = async (req, res) => {
+  try {
+    const { departmentId } = req.params;
+    const hospitalId = req.session.hospitalId;
+
+    const categories = await InventoryCategory.find({
+      department: departmentId,
+      hospital: hospitalId,
+    });
+
+    let total = 0;
+    const breakdown = [];
+
+    for (const category of categories) {
+      const items = await InventoryItem.find({ category: category._id });
+      const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
+
+      total += quantity;
+
+      breakdown.push({
+        category: category.name,
+        quantity,
+      });
+    }
+
+    const result = breakdown.map((entry) => ({
+      ...entry,
+      percent: total > 0 ? Math.round((entry.quantity / total) * 100) : 0,
+    }));
+
+    res.status(200).json({ total, breakdown: result });
+  } catch (error) {
+    console.error("Error fetching inventory summary:", error);
+    res.status(500).json({ message: "Failed to generate inventory summary" });
+  }
+};
+
+
