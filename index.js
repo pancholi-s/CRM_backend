@@ -66,7 +66,7 @@ app.use('/', billRoutes);
 app.use('/', serviceRoutes);
 app.use('/', expenseRoutes);
 app.use('/', resourceRoutes);
-app.use('/events', eventRoutes);
+app.use('/', eventRoutes);
 app.use('/',doctorNoteRoutes);
 app.use('/', requestRoutes);
 app.use('/', consultationRoutes);
