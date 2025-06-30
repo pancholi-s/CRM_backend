@@ -25,6 +25,7 @@ import procedurerRoutes from './routes/procedureRoutes.js';
 import patientOverviewRoutes from './routes/patientOverviewRoutes.js';
 import bedRoutes from './routes/bedRoutes.js';
 import inventoryRoutes from './routes/inventoryRoutes.js';
+import criticalPatientRoutes from './routes/criticalPatientRoutes.js';
 
 dotenv.config();
 
@@ -76,6 +77,7 @@ app.use('/', procedurerRoutes);
 app.use('/', patientOverviewRoutes);
 app.use('/', bedRoutes);
 app.use('/', inventoryRoutes);
+app.use('/', criticalPatientRoutes);
 
 // Base route
 app.get('/', (req, res) => {
