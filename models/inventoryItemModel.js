@@ -5,6 +5,7 @@ const inventoryItemSchema = new mongoose.Schema(
     name: {
       type: String,
       required: true,
+      trim: true,
     },
     category: {
       type: mongoose.Schema.Types.ObjectId,
@@ -24,6 +25,10 @@ const inventoryItemSchema = new mongoose.Schema(
     quantity: {
       type: Number,
       required: true,
+      min: 0,
+    },
+    lastRestockedDate: {
+      type: Date,
     },
     usagePercent: {
       type: Number,
