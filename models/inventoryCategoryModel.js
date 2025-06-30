@@ -7,6 +7,15 @@ const inventoryCategorySchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    description: {
+      type: String,
+      trim: true,
+    },
+    minimumStockThreshold: {
+      type: Number,
+      required: true,
+      default: 10,
+    },
     department: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Department",

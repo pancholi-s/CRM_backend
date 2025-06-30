@@ -158,7 +158,11 @@ export const loginUser = async (req, res) => {
     let role = null;
 
     for (const [key, Model] of Object.entries(models)) {
+    if (key === "doctor") {
+      user = await Model.findOne({ email }).populate("hospital").populate("departments");
+    } else {
       user = await Model.findOne({ email }).populate("hospital");
+    }
       if (user) {
         role = key;
         break;
@@ -192,6 +196,9 @@ export const loginUser = async (req, res) => {
       role,
       hospitalId: user.hospital._id,
       hospitalName: user.hospital.name,
+      departmentIds: role === "doctor" && user.departments
+        ? user.departments.map((dep) => dep._id)
+        : undefined,
     });
   } catch (error) {
     console.error("Error logging in:", error);
