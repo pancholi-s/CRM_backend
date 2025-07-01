@@ -5,7 +5,8 @@ import {
   getEventById,
   updateEvent,
   deleteEvent,
-  getEventStats
+  getEventStats,
+  getMonthlyEvents,
 } from "../controllers/eventController.js";
 
 import { authorizeRoles } from "../middleware/roleMiddleware.js";
@@ -35,6 +36,13 @@ router.get(
 );
 
 router.get(
+  "/events/monthly",
+  requireHospitalContext,
+  authorizeRoles("hospitalAdmin", "receptionist", "doctor"),
+  getMonthlyEvents
+);
+
+router.get(
   "/events/:id",
   requireHospitalContext,
   authorizeRoles("hospitalAdmin", "receptionist", "doctor"),
@@ -48,11 +56,13 @@ router.patch(
   updateEvent
 );
 
+
 router.delete(
   "/events/:id",
   requireHospitalContext,
   authorizeRoles("hospitalAdmin", "receptionist", "doctor"),
   deleteEvent
 );
+
 
 export default router;

@@ -148,14 +148,14 @@ export const getMostCommonDiagnoses = async (req, res) => {
     return res.status(403).json({ message: 'No hospital context found.' });
   }
 
-  const thisMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  const thisYearStart = new Date(new Date().getFullYear(), 0, 1);
 
   try {
     const result = await Consultation.aggregate([
       {
         $match: {
           department: { $exists: true },
-          date: { $gte: thisMonthStart },
+          date: { $gte: thisYearStart },
           'consultationData.diagnosis': { $exists: true, $ne: null }
         }
       },
@@ -199,8 +199,6 @@ export const getMostCommonDiagnoses = async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error fetching most common diagnoses:', error);
     res.status(500).json({ message: 'Server error.', error });
   }
 };
-

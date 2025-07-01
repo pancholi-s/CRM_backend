@@ -15,6 +15,21 @@ const getModelForRole = (role) => {
   }
 };
 
+const timeToMinutes = (timeStr) => {
+  if (!timeStr) return 0;
+
+  if (!timeStr.includes("AM") && !timeStr.includes("PM")) {
+    const [hours, minutes] = timeStr.split(":").map(Number);
+    return hours * 60 + (minutes || 0);
+  }
+
+  const [time, period] = timeStr.split(" ");
+  let [hours, minutes] = time.split(":").map(Number);
+  if (period === "PM" && hours !== 12) hours += 12;
+  if (period === "AM" && hours === 12) hours = 0;
+  return hours * 60 + (minutes || 0);
+};
+
 export const createEvent = async (req, res) => {
   try {
     const hospitalId = req.session.hospitalId;
@@ -27,14 +42,22 @@ export const createEvent = async (req, res) => {
       allDay,
       startTime,
       endTime,
-      participantsName,
+      participants,
       eventType,
       labelTag,
       note,
     } = req.body;
 
-    if (!title || !date || !participantsName || !eventType) {
+    if (!title || !date || !eventType) {
       return res.status(400).json({ message: "Required fields missing" });
+    }
+
+    if (
+      !participants ||
+      !Array.isArray(participants) ||
+      participants.length === 0
+    ) {
+      return res.status(400).json({ message: "Participants required" });
     }
 
     if (
@@ -55,7 +78,7 @@ export const createEvent = async (req, res) => {
       allDay: !!allDay,
       startTime: allDay ? undefined : startTime,
       endTime: allDay ? undefined : endTime,
-      participantsName: participantsName.trim(),
+      participants,
       eventType,
       labelTag: labelTag || "Medium",
       note: note?.trim(),
@@ -69,12 +92,10 @@ export const createEvent = async (req, res) => {
     res.status(201).json({ message: "Event created", event: newEvent });
   } catch (err) {
     if (err.name === "ValidationError") {
-      return res
-        .status(400)
-        .json({
-          message: "Validation error",
-          errors: Object.values(err.errors).map((e) => e.message),
-        });
+      return res.status(400).json({
+        message: "Validation error",
+        errors: Object.values(err.errors).map((e) => e.message),
+      });
     }
     res.status(500).json({ message: "Server error" });
   }
@@ -91,11 +112,7 @@ export const getEvents = async (req, res) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit) || 50, 1), 100);
     const skip = (page - 1) * limit;
 
-    const events = await Event.find(filter)
-      .sort({ date: 1, startTime: 1 })
-      .skip(skip)
-      .limit(limit)
-      .lean();
+    const events = await Event.find(filter).skip(skip).limit(limit).lean();
 
     for (const event of events) {
       const role = event.createdBy?.role;
@@ -110,6 +127,24 @@ export const getEvents = async (req, res) => {
         }
       }
     }
+
+    events.sort((a, b) => {
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
+
+      if (dateA.getTime() !== dateB.getTime()) return dateA - dateB;
+
+      if (a.allDay && !b.allDay) return -1;
+      if (!a.allDay && b.allDay) return 1;
+      if (a.allDay && b.allDay)
+        return new Date(a.createdAt) - new Date(b.createdAt);
+
+      const timeA = timeToMinutes(a.startTime);
+      const timeB = timeToMinutes(b.startTime);
+      if (timeA !== timeB) return timeA - timeB;
+
+      return new Date(a.createdAt) - new Date(b.createdAt);
+    });
 
     const total = await Event.countDocuments(filter);
 
@@ -206,12 +241,10 @@ export const updateEvent = async (req, res) => {
     res.status(200).json({ message: "Event updated", event });
   } catch (err) {
     if (err.name === "ValidationError") {
-      return res
-        .status(400)
-        .json({
-          message: "Validation error",
-          errors: Object.values(err.errors).map((e) => e.message),
-        });
+      return res.status(400).json({
+        message: "Validation error",
+        errors: Object.values(err.errors).map((e) => e.message),
+      });
     }
     res.status(500).json({ message: "Server error" });
   }
@@ -290,6 +323,51 @@ export const getEventStats = async (req, res) => {
     });
   } catch (err) {
     console.error("getEventStats error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const getMonthlyEvents = async (req, res) => {
+  try {
+    const { month, year } = req.query;
+    const hospitalId = req.session.hospitalId;
+
+    if (!hospitalId)
+      return res.status(400).json({ message: "Hospital context missing" });
+
+    const currentDate = new Date();
+    const selectedYear = year ? parseInt(year) : currentDate.getFullYear();
+    const selectedMonth = month ? parseInt(month) - 1 : currentDate.getMonth();
+
+    const startDate = new Date(selectedYear, selectedMonth, 1);
+    const endDate = new Date(selectedYear, selectedMonth + 1, 0, 23, 59, 59);
+
+    const events = await Event.find({
+      hospital: hospitalId,
+      date: { $gte: startDate, $lte: endDate },
+    }).lean();
+
+    events.sort((a, b) => {
+      const dateA = new Date(a.date);
+      const dateB = new Date(b.date);
+
+      if (dateA.getTime() !== dateB.getTime()) return dateA - dateB;
+
+      if (a.allDay && !b.allDay) return -1;
+      if (!a.allDay && b.allDay) return 1;
+      if (a.allDay && b.allDay)
+        return new Date(a.createdAt) - new Date(b.createdAt);
+
+      const timeA = timeToMinutes(a.startTime);
+      const timeB = timeToMinutes(b.startTime);
+      if (timeA !== timeB) return timeA - timeB;
+
+      return new Date(a.createdAt) - new Date(b.createdAt);
+    });
+
+    res.status(200).json({ events });
+  } catch (err) {
+    console.error("getMonthlyEvents error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };
