@@ -3,13 +3,14 @@ import mongoose from "mongoose";
 
 export const getMedicalProceduresStats = async (req, res) => {
   try {
-    const { departmentId, month, year } = req.query;
+    const { departmentId, filterType = "month", month, year } = req.query;
     const { hospitalId } = req.session;
 
     if (!hospitalId) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Hospital context required" });
+      return res.status(400).json({
+        success: false,
+        message: "Hospital context required",
+      });
     }
 
     const matchConditions = {
@@ -18,14 +19,32 @@ export const getMedicalProceduresStats = async (req, res) => {
     };
 
     if (departmentId) {
-      matchConditions.department = new mongoose.Types.ObjectId(
-        String(departmentId)
-      );
+      matchConditions.department = new mongoose.Types.ObjectId(String(departmentId));
     }
 
-    if (month && year) {
-      const startDate = new Date(year, month - 1, 1);
-      const endDate = new Date(year, month, 0, 23, 59, 59);
+    const today = new Date();
+    let startDate, endDate;
+
+    if (filterType === "month") {
+      const selectedMonth = month ? parseInt(month) - 1 : today.getMonth();
+      const selectedYear = year ? parseInt(year) : today.getFullYear();
+      startDate = new Date(selectedYear, selectedMonth, 1);
+      endDate = new Date(selectedYear, selectedMonth + 1, 0, 23, 59, 59);
+    } else if (filterType === "week") {
+      const current = new Date();
+      const first = current.getDate() - current.getDay() + 1; // Monday
+      startDate = new Date(current.setDate(first));
+      startDate.setHours(0, 0, 0, 0);
+      endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 6);
+      endDate.setHours(23, 59, 59, 999);
+    } else if (filterType === "year") {
+      const selectedYear = year ? parseInt(year) : today.getFullYear();
+      startDate = new Date(selectedYear, 0, 1);
+      endDate = new Date(selectedYear, 11, 31, 23, 59, 59);
+    }
+
+    if (startDate && endDate) {
       matchConditions.tokenDate = { $gte: startDate, $lte: endDate };
     }
 
@@ -46,7 +65,7 @@ export const getMedicalProceduresStats = async (req, res) => {
     ]);
 
     let percentageChange = 0;
-    if (month && year) {
+    if (filterType === "month" && month && year) {
       const lastMonth = month - 1 === 0 ? 12 : month - 1;
       const lastYear = month - 1 === 0 ? year - 1 : year;
       const lastMonthStart = new Date(lastYear, lastMonth - 1, 1);
@@ -83,12 +102,13 @@ export const getMedicalProceduresStats = async (req, res) => {
       success: true,
       data: {
         totalCases,
-        percentageChange: `${
-          percentageChange > 0 ? "+" : ""
-        }${percentageChange.toFixed(1)}%`,
+        percentageChange:
+          filterType === "month"
+            ? `${percentageChange > 0 ? "+" : ""}${percentageChange.toFixed(1)}%`
+            : null,
         chartData: stats,
         breakdown,
-        displayedCategories: topCategories, 
+        displayedCategories: topCategories,
       },
     });
   } catch (error) {

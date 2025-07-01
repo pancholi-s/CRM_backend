@@ -9,7 +9,7 @@ import { getDoctorsByHospital, getDoctorsByDepartment } from "../controllers/doc
 const router = express.Router();
 router.use(requireHospitalContext);
 
-router.get("/getDoctorsByHospital", authorizeRoles("receptionist", "hospitalAdmin"), getDoctorsByHospital, paginationMiddleware)
-router.get("/getDoctorsByDepartment/:departmentId", authorizeRoles("receptionist", "hospitalAdmin"), getDoctorsByDepartment, paginationMiddleware);
+router.get("/getDoctorsByHospital", authorizeRoles("receptionist", "hospitalAdmin",'doctor'), getDoctorsByHospital, paginationMiddleware)
+router.get("/getDoctorsByDepartment/:departmentId", authorizeRoles("receptionist", "hospitalAdmin",'doctor'), getDoctorsByDepartment, paginationMiddleware);
 
 export default router;
