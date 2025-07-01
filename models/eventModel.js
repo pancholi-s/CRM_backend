@@ -40,7 +40,12 @@ const eventSchema = new mongoose.Schema(
         },
       ],
     },
-    participantsName: { type: String, required: true, trim: true },
+    participants: [
+      {
+        name: { type: String, required: true, trim: true },
+        image: { type: String, default: null },
+      },
+    ],
     eventType: {
       type: String,
       enum: ["Appointment", "Task", "Meeting", "Call", "Surgery", "Note"],
