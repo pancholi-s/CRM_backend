@@ -13,11 +13,34 @@ export const convertTo24Hour = (time12h) => {
   return `${hours.toString().padStart(2, '0')}:${minutes}`;
 };
 
+// export const validateTimeRange = (startTime, endTime) => {
+//   if (!startTime || !endTime) return true;
+//   const start = convertTo24Hour(startTime);
+//   const end = convertTo24Hour(endTime);
+//   return start < end;
+// };
+
+const timeToMinutes = (timeStr) => {
+  if (!timeStr) return 0;
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  return hours * 60 + (minutes || 0);
+};
+
 export const validateTimeRange = (startTime, endTime) => {
   if (!startTime || !endTime) return true;
-  const start = convertTo24Hour(startTime);
-  const end = convertTo24Hour(endTime);
-  return start < end;
+  
+  const start24 = convertTo24Hour(startTime);
+  const end24 = convertTo24Hour(endTime);
+  
+  if (!start24 || !end24) return false;
+  
+  const startMinutes = timeToMinutes(start24);
+  const endMinutes = timeToMinutes(end24);
+  
+  if (endMinutes < startMinutes) {
+    return true; 
+  }
+    return endMinutes > startMinutes;
 };
 
 export const buildEventFilter = (hospitalId, { date, startDate, endDate, eventType, labelTag }) => {

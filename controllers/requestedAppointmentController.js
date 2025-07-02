@@ -82,15 +82,27 @@ export const getRequestedAppointments = async (req, res) => {
       .json({ message: 'Unauthorized access. Hospital ID not found in session.' });
   }
 
-  const { patientId, doctorId, departmentName, status } = req.query;
+  // Get the logged-in doctor's ID from the middleware
+  const loggedInDoctorId = req.user._id;
+
+  // Verify the user is a doctor
+  if (req.user.role !== 'doctor') {
+    return res
+      .status(403)
+      .json({ message: 'Access denied. Only doctors can access this endpoint.' });
+  }
+
+  const { patientId, departmentName, status } = req.query;
 
   try {
-    // Build a filter object for the query
-    const filters = { hospital: hospitalId };
+    // Build a filter object for the query - ALWAYS filter by logged-in doctor
+    const filters = { 
+      hospital: hospitalId,
+      doctor: loggedInDoctorId // Only show appointments for the logged-in doctor
+    };
 
     // Add optional filters
     if (patientId) filters.patient = patientId;
-    if (doctorId) filters.doctor = doctorId;
     if (status) filters.status = status;
 
     // Filter by department name if provided
@@ -122,7 +134,6 @@ export const getRequestedAppointments = async (req, res) => {
     res.status(500).json({ message: 'Error fetching appointments.', error: error.message });
   }
 };
-
 
 export const approveAppointment = async (req, res) => {
   const { requestId } = req.params;
