@@ -55,9 +55,14 @@ export const createEvent = async (req, res) => {
     if (
       !participants ||
       !Array.isArray(participants) ||
-      participants.length === 0
+      participants.length === 0 ||
+      participants.some(
+        (p) => !p.name || typeof p.name !== "string" || !p.name.trim()
+      )
     ) {
-      return res.status(400).json({ message: "Participants required" });
+      return res.status(400).json({
+        message: "Each participant must have a name",
+      });
     }
 
     if (
