@@ -1,6 +1,7 @@
 import Hospital from "../models/hospitalModel.js";
 import Department from "../models/departmentModel.js";
 import Staff from "../models/staffModel.js";
+import mongoose from "mongoose";
 
 export const addStaff = async (req, res) => {
   const { profile, staff_id, name, phone, department, designation, status } = req.body;
@@ -98,6 +99,36 @@ export const getStaff = async (req, res) => {
       totalStaff: total,
       totalPages: Math.ceil(total / limit),
       currentPage: parseInt(page),
+      staff,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching staff.", error: error.message });
+  }
+};
+
+export const getStaffByDepartment = async (req, res) => {
+  const hospitalId = req.session.hospitalId;
+  const { departmentId } = req.params;
+
+  if (!hospitalId) {
+    return res.status(403).json({ message: "Unauthorized access." });
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(departmentId)) {
+    return res.status(400).json({ message: "Invalid department ID." });
+  }
+
+  try {
+    const staff = await Staff.find({
+      hospital: hospitalId,
+      department: departmentId,
+    })
+      .populate("department", "name")
+      .populate("hospital", "name");
+
+    res.status(200).json({
+      message: "Staff filtered by department retrieved successfully.",
+      count: staff.length,
       staff,
     });
   } catch (error) {
