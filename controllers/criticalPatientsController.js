@@ -1,6 +1,7 @@
 import CriticalPatient from "../models/criticalPatientModel.js";
 import Patient from "../models/patientModel.js";
 
+//make a patient critical
 export const markPatientCritical = async (req, res) => {
   try {
     const doctorId = req.user._id;
@@ -70,6 +71,7 @@ export const markPatientCritical = async (req, res) => {
   }
 };
 
+// Get all critical patients
 export const getCriticalPatients = async (req, res) => {
   try {
     const hospitalId = req.session.hospitalId;
@@ -116,6 +118,7 @@ export const getCriticalPatients = async (req, res) => {
   }
 };
 
+// Resolve a critical alert
 export const resolveCriticalAlert = async (req, res) => {
   try {
     const { id } = req.params;
