@@ -15,6 +15,10 @@ const doctorNoteSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
+    color: {
+    type: String,
+    default: "#000000",
+  },
   hospital: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Hospital',

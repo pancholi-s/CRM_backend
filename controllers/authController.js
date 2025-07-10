@@ -189,17 +189,22 @@ export const loginUser = async (req, res) => {
       { expiresIn: process.env.JWT_EXPIRES_IN || "1d" }
     );
 
-    res.status(200).json({
-      message: "Login successful",
-      token,
-      userId: user._id,
-      role,
-      hospitalId: user.hospital._id,
-      hospitalName: user.hospital.name,
-      departmentIds: role === "doctor" && user.departments
-        ? user.departments.map((dep) => dep._id)
-        : undefined,
-    });
+      res.status(200).json({
+        message: "Login successful",
+        token,
+        userId: user._id,
+        role,
+        username: user.name,
+        hospitalId: user.hospital._id,
+        hospitalName: user.hospital.name,
+        departmentIds: role === "doctor" && user.departments
+          ? user.departments.map((dep) => dep._id)
+          : undefined,
+        departmentNames: role === "doctor" && user.departments
+          ? user.departments.map((dep) => dep.name)
+          : undefined,
+      });
+
   } catch (error) {
     console.error("Error logging in:", error);
     res.status(500).json({ message: "Error logging in." });
