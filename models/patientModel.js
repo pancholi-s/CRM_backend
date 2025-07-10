@@ -115,6 +115,11 @@ const patientSchema = new mongoose.Schema({
     enum: ["active", "inactive"],
     default: "active",
   },
+  admissionStatus: {
+    type: String,
+    enum: ["Admitted", "Discharged", "Not Admitted"],
+    default: "Not Admitted",
+  },
   files: [
     {
       fileName: { type: String, required: true },
