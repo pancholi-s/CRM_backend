@@ -1,17 +1,22 @@
-import Consultation from "../models/consultationModel.js";
-import Appointment from "../models/appointmentModel.js";
-import Department from "../models/departmentModel.js";
-import Hospital from "../models/hospitalModel.js";
+import Consultation from '../models/consultationModel.js';
+import Department from '../models/departmentModel.js';
+import Hospital from '../models/hospitalModel.js';
+import Appointment from '../models/appointmentModel.js';
+import Patient from '../models/patientModel.js';
 
 export const submitConsultation = async (req, res) => {
   const session = await Consultation.startSession();
   session.startTransaction();
 
   try {
-    const hospitalId = req.session.hospitalId;
-    const { doctor, patient, appointment, department, consultationData, action } = req.body;
+    const hospitalId = req.session.hospitalId;  
+    const {
+      doctor, patient, appointment, department,
+      consultationData, action, // required
+      referredToDoctor, referredToDepartment, referralReason, preferredDate, preferredTime, // for refer
+      treatment // for scheduled treatment
+    } = req.body;
 
-    // Validation
     if (!hospitalId) {
       return res.status(403).json({ message: "Access denied. No hospital context found." });
     }
@@ -20,11 +25,11 @@ export const submitConsultation = async (req, res) => {
       return res.status(400).json({ message: "All fields including action are required." });
     }
 
-    if (!["complete", "final", "refer"].includes(action)) {
+    const validActions = ["complete", "refer", "schedule"];
+    if (!validActions.includes(action)) {
       return res.status(400).json({ message: "Invalid action type." });
     }
 
-    // Verify hospital and department
     const hospital = await Hospital.findById(hospitalId).session(session);
     if (!hospital) {
       await session.abortTransaction();
@@ -39,36 +44,55 @@ export const submitConsultation = async (req, res) => {
       return res.status(404).json({ message: "Department not found in this hospital." });
     }
 
-    // Prepare consultation status and follow-up logic
+    // Setup status & extra fields
     let status = "completed";
     let followUpRequired = false;
+    const consultationPayload = {
+      doctor,
+      patient,
+      appointment,
+      department,
+      consultationData,
+      status: "completed",
+      followUpRequired: false
+    };
 
     if (action === "complete") {
-      followUpRequired = true;
-    } else if (action === "refer") {
-      status = "referred";
+      // followUpRequired is false if finalized, true if follow-up is needed
+      followUpRequired = req.body.followUpRequired === true;
+      consultationPayload.followUpRequired = followUpRequired;
     }
 
-    // Create consultation
-    const newConsultation = await Consultation.create(
-      [{
-        doctor,
-        patient,
-        appointment,
-        department,
-        consultationData,
-        status,
-        followUpRequired
-      }],
-      { session }
-    );
+    if (action === "refer") {
+      status = "referred";
+      consultationPayload.status = status;
+      consultationPayload.followUpRequired = true;
+      consultationPayload.referredToDoctor = referredToDoctor;
+      consultationPayload.referredToDepartment = referredToDepartment;
+      consultationPayload.referralReason = referralReason;
+      consultationPayload.preferredDate = preferredDate;
+      consultationPayload.preferredTime = preferredTime;
+    }
 
-    // Update appointment status
-    await Appointment.findByIdAndUpdate(
-      appointment,
-      { status: "completed" },
-      { session }
-    );
+     if (action === "schedule") {
+      consultationPayload.status = "scheduled";
+      consultationPayload.followUpRequired = true;
+      consultationPayload.treatment = treatment;
+
+      if (treatment?.admitted === true) {
+        await Patient.findByIdAndUpdate(
+          patient,
+          { admissionStatus: "Admitted" },
+          { session }
+        );
+      }
+    }
+
+    // Save Consultation
+    const newConsultation = await Consultation.create([consultationPayload], { session });
+
+    // Mark appointment completed
+    await Appointment.findByIdAndUpdate(appointment, { status: "completed" }, { session });
 
     await session.commitTransaction();
     session.endSession();
