@@ -853,7 +853,7 @@ export const getAppointments = async (req, res) => {
 
     const total = await Appointment.countDocuments(filter);
     const appointments = await Appointment.find(filter)
-      .populate("patient", "name email phone")
+      .populate("patient","-password")
       .populate("doctor", "name specialization email")
       .populate("department", "name")
       .populate("hospital", "name address")

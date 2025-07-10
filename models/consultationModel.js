@@ -6,7 +6,17 @@ const consultationSchema = new mongoose.Schema({
   appointment: { type: mongoose.Schema.Types.ObjectId, ref: 'Appointment', required: true },
   department: { type: mongoose.Schema.Types.ObjectId, ref: 'Department', required: true },
   consultationData: { type: mongoose.Schema.Types.Mixed, required: true }, // dynamic JSON
-  date: { type: Date, default: Date.now }
+  date: { type: Date, default: Date.now },
+  status: {
+  type: String,
+  enum: ["draft", "completed", "referred"],
+  default: "draft"
+},
+followUpRequired: {
+  type: Boolean,
+  default: false
+}
+
 });
 
 export default mongoose.model('Consultation', consultationSchema);

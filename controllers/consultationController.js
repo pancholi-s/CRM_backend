@@ -1,53 +1,72 @@
-import Consultation from '../models/consultationModel.js';
-import Department from '../models/departmentModel.js';
-import Hospital from '../models/hospitalModel.js';
+import Consultation from "../models/consultationModel.js";
+import Appointment from "../models/appointmentModel.js";
+import Department from "../models/departmentModel.js";
+import Hospital from "../models/hospitalModel.js";
 
-export const createConsultation = async (req, res) => {
-  console.log("Session Hospital ID:", req.session.hospitalId);
-  console.log("Request Body:", req.body);
-  
+export const submitConsultation = async (req, res) => {
   const session = await Consultation.startSession();
   session.startTransaction();
 
   try {
-    const hospitalId = req.session.hospitalId; // Access hospitalId from session
-    const { doctor, patient, appointment, department, consultationData } = req.body;
+    const hospitalId = req.session.hospitalId;
+    const { doctor, patient, appointment, department, consultationData, action } = req.body;
 
-    // Validate hospital context
+    // Validation
     if (!hospitalId) {
-      return res.status(403).json({ message: 'Access denied. No hospital context found.' });
+      return res.status(403).json({ message: "Access denied. No hospital context found." });
     }
 
-    // Validate required fields
-    if (!doctor || !patient || !appointment || !department || !consultationData) {
-      return res.status(400).json({ message: 'All fields are required.' });
+    if (!doctor || !patient || !appointment || !department || !consultationData || !action) {
+      return res.status(400).json({ message: "All fields including action are required." });
     }
 
-    // Check if hospital exists
+    if (!["complete", "final", "refer"].includes(action)) {
+      return res.status(400).json({ message: "Invalid action type." });
+    }
+
+    // Verify hospital and department
     const hospital = await Hospital.findById(hospitalId).session(session);
     if (!hospital) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ message: 'Hospital not found.' });
+      return res.status(404).json({ message: "Hospital not found." });
     }
 
-    // Check if department belongs to hospital
     const departmentExists = await Department.findOne({ _id: department, hospital: hospitalId }).session(session);
     if (!departmentExists) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ message: 'Department not found in this hospital.' });
+      return res.status(404).json({ message: "Department not found in this hospital." });
     }
 
-    // Create new consultation
+    // Prepare consultation status and follow-up logic
+    let status = "completed";
+    let followUpRequired = false;
+
+    if (action === "complete") {
+      followUpRequired = true;
+    } else if (action === "refer") {
+      status = "referred";
+    }
+
+    // Create consultation
     const newConsultation = await Consultation.create(
       [{
         doctor,
         patient,
         appointment,
         department,
-        consultationData
+        consultationData,
+        status,
+        followUpRequired
       }],
+      { session }
+    );
+
+    // Update appointment status
+    await Appointment.findByIdAndUpdate(
+      appointment,
+      { status: "completed" },
       { session }
     );
 
@@ -55,17 +74,15 @@ export const createConsultation = async (req, res) => {
     session.endSession();
 
     res.status(201).json({
-      message: 'Consultation created successfully.',
+      message: "Consultation submitted successfully.",
       consultation: newConsultation[0]
     });
-
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    console.error('Error creating consultation:', error);
-    res.status(500).json({ message: 'Error creating consultation.', error: error.message });
+    console.error("Error submitting consultation:", error);
+    res.status(500).json({ message: "Error submitting consultation.", error: error.message });
   }
-  
 };
 
 
