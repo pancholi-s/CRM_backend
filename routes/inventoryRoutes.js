@@ -6,6 +6,8 @@ import {
   getInventoryByDepartment,
   getCategoriesByDepartment,
   getInventorySummary,
+  deleteInventoryItem,
+  deleteInventoryCategory,
 } from "../controllers/inventoryController.js";
 import { authorizeRoles } from "../middleware/roleMiddleware.js";
 import { requireHospitalContext } from "../middleware/hospitalContext.js";
@@ -53,5 +55,20 @@ router.get(
   authorizeRoles("hospitalAdmin", "doctor", "staff"),
   getInventorySummary
 );
+
+router.delete(
+  "/inventory/items/:itemId",
+  requireHospitalContext,
+  authorizeRoles("hospitalAdmin", "doctor", "staff"),
+  deleteInventoryItem
+);
+
+router.delete(
+  "/inventory/categories/:categoryId",
+  requireHospitalContext,
+  authorizeRoles("hospitalAdmin", "doctor", "staff"),
+  deleteInventoryCategory
+);
+
 
 export default router;

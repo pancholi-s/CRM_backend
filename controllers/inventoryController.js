@@ -1,29 +1,25 @@
 import InventoryCategory from "../models/inventoryCategoryModel.js";
 import InventoryItem from "../models/inventoryItemModel.js";
+import { calculateUsageAndStatus } from "../utils/inventoryUtils.js";
 
 export const createCategory = async (req, res) => {
   try {
-    const { name, description, minimumStockThreshold, departmentId } = req.body;
+    const { name, description, departmentId } = req.body;
     const hospitalId = req.session.hospitalId;
 
     if (!name || !departmentId) {
-      return res
-        .status(400)
-        .json({ message: "Category name and department are required." });
+      return res.status(400).json({ message: "Category name and department are required." });
     }
 
     const category = new InventoryCategory({
       name,
       description,
-      minimumStockThreshold: minimumStockThreshold || 10,
       department: departmentId,
       hospital: hospitalId,
     });
 
     await category.save();
-    res
-      .status(201)
-      .json({ message: "Inventory category created", data: category });
+    res.status(201).json({ message: "Inventory category created", data: category });
   } catch (error) {
     console.error("Error creating category:", error);
     res.status(500).json({ message: "Internal server error" });
@@ -32,28 +28,29 @@ export const createCategory = async (req, res) => {
 
 export const addInventoryItem = async (req, res) => {
   try {
-    const { name, quantity, categoryId, lastRestockedDate } = req.body;
+    const { name, quantity, categoryId, minimumStockThreshold, lastRestockedDate } = req.body;
+    const hospitalId = req.session.hospitalId;
 
     if (!name || quantity === undefined || !categoryId) {
-      return res
-        .status(400)
-        .json({ message: "Name, quantity, and category are required." });
+      return res.status(400).json({ message: "Name, quantity, and category are required." });
     }
 
     const category = await InventoryCategory.findById(categoryId);
-    if (!category) {
-      return res.status(404).json({ message: "Category not found." });
-    }
+    if (!category) return res.status(404).json({ message: "Category not found." });
+
+    const threshold = minimumStockThreshold || 10;
+    const { usagePercent, status } = calculateUsageAndStatus(quantity, threshold);
 
     const item = new InventoryItem({
       name,
       quantity,
+      minimumStockThreshold: threshold,
       category: category._id,
       department: category.department,
       hospital: category.hospital,
-      lastRestockedDate: lastRestockedDate
-        ? new Date(lastRestockedDate)
-        : undefined,
+      usagePercent,
+      status,
+      lastRestockedDate: lastRestockedDate ? new Date(lastRestockedDate) : undefined,
     });
 
     await item.save();
@@ -67,18 +64,19 @@ export const addInventoryItem = async (req, res) => {
 export const updateInventoryItem = async (req, res) => {
   try {
     const { itemId } = req.params;
-    const { quantity, usagePercent, lastRestockedDate, status } = req.body;
+    const { quantity, minimumStockThreshold, lastRestockedDate } = req.body;
 
     const item = await InventoryItem.findById(itemId);
-    if (!item) {
-      return res.status(404).json({ message: "Item not found." });
-    }
+    if (!item) return res.status(404).json({ message: "Item not found." });
 
     if (quantity !== undefined) item.quantity = quantity;
-    if (usagePercent !== undefined) item.usagePercent = usagePercent;
-    if (status !== undefined) item.status = status;
+    if (minimumStockThreshold !== undefined) item.minimumStockThreshold = minimumStockThreshold;
     if (lastRestockedDate) item.lastRestockedDate = new Date(lastRestockedDate);
 
+    // Recalculate status and usage
+    const { usagePercent, status } = calculateUsageAndStatus(item.quantity, item.minimumStockThreshold);
+    item.usagePercent = usagePercent;
+    item.status = status;
     item.lastUpdated = new Date();
 
     await item.save();
@@ -94,10 +92,7 @@ export const getInventoryByDepartment = async (req, res) => {
     const { departmentId } = req.params;
     const hospitalId = req.session.hospitalId;
 
-    const categories = await InventoryCategory.find({
-      department: departmentId,
-      hospital: hospitalId,
-    });
+    const categories = await InventoryCategory.find({ department: departmentId, hospital: hospitalId });
 
     const result = await Promise.all(
       categories.map(async (category) => {
@@ -107,7 +102,6 @@ export const getInventoryByDepartment = async (req, res) => {
             _id: category._id,
             name: category.name,
             description: category.description,
-            minimumStockThreshold: category.minimumStockThreshold,
           },
           items,
         };
@@ -129,7 +123,7 @@ export const getCategoriesByDepartment = async (req, res) => {
     const categories = await InventoryCategory.find({
       department: departmentId,
       hospital: hospitalId,
-    }).select("name description minimumStockThreshold");
+    }).select("name description");
 
     res.status(200).json({ data: categories });
   } catch (error) {
@@ -143,18 +137,15 @@ export const getInventorySummary = async (req, res) => {
     const { departmentId } = req.params;
     const hospitalId = req.session.hospitalId;
 
-    const categories = await InventoryCategory.find({
-      department: departmentId,
-      hospital: hospitalId,
-    });
+    const categories = await InventoryCategory.find({ department: departmentId, hospital: hospitalId });
 
     let total = 0;
     const breakdown = [];
 
     for (const category of categories) {
       const items = await InventoryItem.find({ category: category._id });
-      const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
 
+      const quantity = items.reduce((sum, item) => sum + item.quantity, 0);
       total += quantity;
 
       breakdown.push({
@@ -172,5 +163,49 @@ export const getInventorySummary = async (req, res) => {
   } catch (error) {
     console.error("Error fetching inventory summary:", error);
     res.status(500).json({ message: "Failed to generate inventory summary" });
+  }
+};
+
+export const deleteInventoryItem = async (req, res) => {
+  try {
+    const { itemId } = req.params;
+    const hospitalId = req.session.hospitalId;
+
+    // Find item that belongs to current hospital
+    const item = await InventoryItem.findOne({ _id: itemId, hospital: hospitalId });
+
+    if (!item) {
+      return res.status(404).json({ message: "Inventory item not found or unauthorized." });
+    }
+
+    await item.deleteOne(); // safely deletes only if item is found for this hospital
+    res.status(200).json({ message: "Inventory item deleted successfully." });
+  } catch (error) {
+    console.error("Error deleting inventory item:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+export const deleteInventoryCategory = async (req, res) => {
+  try {
+    const { categoryId } = req.params;
+    const hospitalId = req.session.hospitalId;
+
+    // Check if category belongs to this hospital
+    const category = await InventoryCategory.findOne({ _id: categoryId, hospital: hospitalId });
+    if (!category) {
+      return res.status(404).json({ message: "Category not found or unauthorized." });
+    }
+
+    // Delete all items under this category
+    await InventoryItem.deleteMany({ category: category._id });
+
+    // Delete the category itself
+    await category.deleteOne();
+
+    res.status(200).json({ message: "Category and related items deleted successfully." });
+  } catch (error) {
+    console.error("Error deleting category:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
