@@ -9,12 +9,21 @@ export const submitConsultation = async (req, res) => {
   session.startTransaction();
 
   try {
-    const hospitalId = req.session.hospitalId;  
+    const hospitalId = req.session.hospitalId;
     const {
-      doctor, patient, appointment, department,
-      consultationData, action, // required
-      referredToDoctor, referredToDepartment, referralReason, preferredDate, preferredTime, // for refer
-      treatment // for scheduled treatment
+      doctor,
+      patient,
+      appointment,
+      department,
+      consultationData,
+      action,
+      referredToDoctor,
+      referredToDepartment,
+      referralReason,
+      preferredDate,
+      preferredTime,
+      treatment,
+      followUpRequired // only relevant for 'complete'
     } = req.body;
 
     if (!hospitalId) {
@@ -37,16 +46,28 @@ export const submitConsultation = async (req, res) => {
       return res.status(404).json({ message: "Hospital not found." });
     }
 
-    const departmentExists = await Department.findOne({ _id: department, hospital: hospitalId }).session(session);
+    const departmentExists = await Department.findOne({
+      _id: department,
+      hospital: hospitalId,
+    }).session(session);
+
     if (!departmentExists) {
       await session.abortTransaction();
       session.endSession();
       return res.status(404).json({ message: "Department not found in this hospital." });
     }
 
-    // Setup status & extra fields
-    let status = "completed";
-    let followUpRequired = false;
+    const appointmentDoc = await Appointment.findById(appointment).session(session);
+    if (!appointmentDoc) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({ message: "Appointment not found." });
+    }
+
+    // Get caseId from appointment
+    const caseId = appointmentDoc.caseId;
+
+    // Prepare base consultation data
     const consultationPayload = {
       doctor,
       patient,
@@ -54,18 +75,18 @@ export const submitConsultation = async (req, res) => {
       department,
       consultationData,
       status: "completed",
-      followUpRequired: false
+      followUpRequired: false,
+      caseId // used for grouping consultations
     };
 
+    // Handle different actions
     if (action === "complete") {
-      // followUpRequired is false if finalized, true if follow-up is needed
-      followUpRequired = req.body.followUpRequired === true;
-      consultationPayload.followUpRequired = followUpRequired;
+      consultationPayload.status = "completed";
+      consultationPayload.followUpRequired = followUpRequired === true;
     }
 
     if (action === "refer") {
-      status = "referred";
-      consultationPayload.status = status;
+      consultationPayload.status = "referred";
       consultationPayload.followUpRequired = true;
       consultationPayload.referredToDoctor = referredToDoctor;
       consultationPayload.referredToDepartment = referredToDepartment;
@@ -74,38 +95,45 @@ export const submitConsultation = async (req, res) => {
       consultationPayload.preferredTime = preferredTime;
     }
 
-     if (action === "schedule") {
+    if (action === "schedule") {
       consultationPayload.status = "scheduled";
       consultationPayload.followUpRequired = true;
       consultationPayload.treatment = treatment;
 
-      if (treatment?.admitted === true) {
-        await Patient.findByIdAndUpdate(
-          patient,
-          { admissionStatus: "Admitted" },
-          { session }
-        );
-      }
+      // Update patient's admission recommendation if included
+      const admissionRec = treatment?.admissionRecommendation === true ? "Yes" : "No";
+      await Patient.findByIdAndUpdate(
+        patient,
+        { admissionRecommendation: admissionRec },
+        { session }
+      );
     }
 
-    // Save Consultation
+    // Save consultation
     const newConsultation = await Consultation.create([consultationPayload], { session });
 
     // Mark appointment completed
-    await Appointment.findByIdAndUpdate(appointment, { status: "completed" }, { session });
+    await Appointment.findByIdAndUpdate(
+      appointment,
+      { status: "completed" },
+      { session }
+    );
 
     await session.commitTransaction();
     session.endSession();
 
     res.status(201).json({
       message: "Consultation submitted successfully.",
-      consultation: newConsultation[0]
+      consultation: newConsultation[0],
     });
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
     console.error("Error submitting consultation:", error);
-    res.status(500).json({ message: "Error submitting consultation.", error: error.message });
+    res.status(500).json({
+      message: "Error submitting consultation.",
+      error: error.message,
+    });
   }
 };
 
@@ -116,26 +144,31 @@ export const getConsultationByAppointment = async (req, res) => {
     const { appointmentId } = req.params;
 
     if (!hospitalId) {
-      return res.status(400).json({ message: 'Hospital context not found in session.' });
+      return res
+        .status(400)
+        .json({ message: "Hospital context not found in session." });
     }
 
-    const consultation = await Consultation.findOne({ appointment: appointmentId })
-      .populate('doctor', 'name')
-      .populate('patient', 'name')
-      .populate('department', 'name');
+    const consultation = await Consultation.findOne({
+      appointment: appointmentId,
+    })
+      .populate("doctor", "name")
+      .populate("patient", "name")
+      .populate("department", "name");
 
     if (!consultation) {
-      return res.status(404).json({ message: 'Consultation not found for this appointment.' });
+      return res
+        .status(404)
+        .json({ message: "Consultation not found for this appointment." });
     }
 
     res.status(200).json({
-      message: 'Consultation retrieved successfully.',
-      consultation
+      message: "Consultation retrieved successfully.",
+      consultation,
     });
-
   } catch (error) {
-    console.error('Error fetching consultation:', error);
-    res.status(500).json({ message: 'Error fetching consultation.' });
+    console.error("Error fetching consultation:", error);
+    res.status(500).json({ message: "Error fetching consultation." });
   }
 };
 
@@ -146,7 +179,9 @@ export const getPatientConsultationHistory = async (req, res) => {
     const { departmentId } = req.query; // Optional filter for department
 
     if (!hospitalId) {
-      return res.status(400).json({ message: 'Hospital context not found in session.' });
+      return res
+        .status(400)
+        .json({ message: "Hospital context not found in session." });
     }
 
     const filter = { patient: patientId };
@@ -155,30 +190,31 @@ export const getPatientConsultationHistory = async (req, res) => {
     }
 
     const consultations = await Consultation.find(filter)
-      .select('consultationData date doctor department') // All sections
-      .populate('department', 'name')
-      .populate('doctor', 'name');
+      .select("consultationData date doctor department") // All sections
+      .populate("department", "name")
+      .populate("doctor", "name");
 
     if (!consultations.length) {
-      return res.status(404).json({ message: 'No consultations found for this patient.' });
+      return res
+        .status(404)
+        .json({ message: "No consultations found for this patient." });
     }
 
-    const history = consultations.map(cons => ({
+    const history = consultations.map((cons) => ({
       department: cons.department.name,
       doctor: cons.doctor.name,
       date: cons.date,
-      consultationData: cons.consultationData
+      consultationData: cons.consultationData,
     }));
 
     res.status(200).json({
-      message: 'Full consultation history retrieved successfully.',
+      message: "Full consultation history retrieved successfully.",
       count: history.length,
-      history
+      history,
     });
-
   } catch (error) {
-    console.error('Error fetching consultation history:', error);
-    res.status(500).json({ message: 'Error fetching consultation history.' });
+    console.error("Error fetching consultation history:", error);
+    res.status(500).json({ message: "Error fetching consultation history." });
   }
 };
 
@@ -186,7 +222,7 @@ export const getMostCommonDiagnoses = async (req, res) => {
   const hospitalId = req.session.hospitalId;
 
   if (!hospitalId) {
-    return res.status(403).json({ message: 'No hospital context found.' });
+    return res.status(403).json({ message: "No hospital context found." });
   }
 
   const thisYearStart = new Date(new Date().getFullYear(), 0, 1);
@@ -197,38 +233,38 @@ export const getMostCommonDiagnoses = async (req, res) => {
         $match: {
           department: { $exists: true },
           date: { $gte: thisYearStart },
-          'consultationData.diagnosis': { $exists: true, $ne: null }
-        }
+          "consultationData.diagnosis": { $exists: true, $ne: null },
+        },
       },
       {
         $facet: {
           topDiagnoses: [
             {
               $group: {
-                _id: '$consultationData.diagnosis',
-                count: { $sum: 1 }
-              }
+                _id: "$consultationData.diagnosis",
+                count: { $sum: 1 },
+              },
             },
             { $sort: { count: -1 } },
-            { $limit: 5 }
+            { $limit: 5 },
           ],
           totalCount: [
             {
               $group: {
-                _id: '$consultationData.diagnosis'
-              }
+                _id: "$consultationData.diagnosis",
+              },
             },
             {
-              $count: 'total'
-            }
-          ]
-        }
-      }
+              $count: "total",
+            },
+          ],
+        },
+      },
     ]);
 
-    const topDiagnoses = result[0].topDiagnoses.map(item => ({
+    const topDiagnoses = result[0].topDiagnoses.map((item) => ({
       diagnosis: item._id,
-      count: item.count
+      count: item.count,
     }));
 
     const total = result[0].totalCount[0]?.total || 0;
@@ -236,10 +272,9 @@ export const getMostCommonDiagnoses = async (req, res) => {
     res.status(200).json({
       success: true,
       totalDiagnoses: total,
-      data: topDiagnoses
+      data: topDiagnoses,
     });
-
   } catch (error) {
-    res.status(500).json({ message: 'Server error.', error });
+    res.status(500).json({ message: "Server error.", error });
   }
 };

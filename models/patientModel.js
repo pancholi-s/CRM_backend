@@ -120,6 +120,12 @@ const patientSchema = new mongoose.Schema({
     enum: ["Admitted", "Discharged", "Not Admitted"],
     default: "Not Admitted",
   },
+  admissionRecommendation: {
+    type: String,
+    enum: ["Yes", "No"],
+    default: "No"
+  },
+
   files: [
     {
       fileName: { type: String, required: true },
@@ -134,8 +140,8 @@ const patientSchema = new mongoose.Schema({
     default: null
   },
   passwordResetExpires: {
-      type: Date,
-      default: null
+    type: Date,
+    default: null
   },
   bills: [{ type: mongoose.Schema.Types.ObjectId, ref: "Bill" }],
 });
