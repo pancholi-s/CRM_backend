@@ -12,17 +12,24 @@ const parsePrescriptionTextToObject = (text) => {
     problemStatement: "",
     icdCode: "",
     therapyPlan: "",
-    medications: "",
+    medications: [],
+    injectionsTherapies: [],
+    nonDrugRecommendations: [],
     precautions: "",
-    lifestyle: "",
-    followUp: "",
+    lifestyle: [],
+    followUp: {
+      reviewDate: "",
+      notes: "",
+    },
   };
 
-  const map = {
+  const sectionMap = {
     "Problem Statement": "problemStatement",
     "ICD Code": "icdCode",
     "Therapy Plan": "therapyPlan",
     Medications: "medications",
+    "Injections / Therapies": "injectionsTherapies",
+    "Non-Drug Recommendations": "nonDrugRecommendations",
     Precautions: "precautions",
     "Lifestyle & Diet": "lifestyle",
     "Follow-Up Instructions": "followUp",
@@ -32,10 +39,39 @@ const parsePrescriptionTextToObject = (text) => {
 
   text.split("\n").forEach((line) => {
     const trimmed = line.trim();
-    if (map[trimmed]) {
-      currentKey = map[trimmed];
-    } else if (currentKey) {
-      sections[currentKey] += (sections[currentKey] ? "\n" : "") + trimmed;
+    if (!trimmed) return;
+
+    for (const label in sectionMap) {
+      const pattern = new RegExp(`^(\\d+\\.\\s*)?${label}$`, "i");
+      if (pattern.test(trimmed)) {
+        currentKey = sectionMap[label];
+        return;
+      }
+    }
+
+    if (!currentKey) return;
+
+    if (
+      [
+        "medications",
+        "injectionsTherapies",
+        "nonDrugRecommendations",
+        "lifestyle",
+      ].includes(currentKey)
+    ) {
+      if (/^[-•]\s*/.test(trimmed)) {
+        sections[currentKey].push(trimmed.replace(/^[-•]\s*/, "").trim());
+      }
+    } else if (currentKey === "followUp") {
+      if (trimmed.startsWith("Review Date:")) {
+        sections.followUp.reviewDate = trimmed
+          .replace("Review Date:", "")
+          .trim();
+      } else if (trimmed.startsWith("Notes:")) {
+        sections.followUp.notes = trimmed.replace("Notes:", "").trim();
+      }
+    } else {
+      sections[currentKey] += (sections[currentKey] ? " " : "") + trimmed;
     }
   });
 
@@ -44,32 +80,44 @@ const parsePrescriptionTextToObject = (text) => {
 
 export const getAIPrescription = async (inputData) => {
   const prompt = `
-You are a clinical assistant AI. Based on the following patient details, generate a prescription draft with these SECTIONS AS HEADERS in the same exact format:
+You are a clinical assistant AI. Based on the following patient details, generate a short but complete structured prescription note.
 
-- Problem Statement
-- ICD Code
-- Therapy Plan
-- Medications
-- Precautions
-- Lifestyle & Diet
-- Follow-Up Instructions
+Use exactly the following SECTIONS as HEADERS (no explanation, no extras):
+
+1. Problem Statement
+2. ICD Code
+3. Therapy Plan
+4. Medications
+5. Injections / Therapies
+6. Non-Drug Recommendations
+7. Precautions
+8. Lifestyle & Diet
+9. Follow-Up Instructions
+
+→ Keep each section 1-3 lines max, realistic and human-like.
+→ Use bullet points (with dashes) for items in Medications, Injections / Therapies, Non-Drug Recommendations, and Lifestyle & Diet.
+→ For Follow-Up Instructions, clearly include "Review Date:" and "Notes:".
 
 Patient Info:
 Medical History: ${JSON.stringify(inputData.medicalHistory)}
 Current Medications: ${JSON.stringify(inputData.currentMedications)}
 Diagnosis & Vitals: ${JSON.stringify(inputData.diagnosisVitals)}
 
-Only generate the structured draft. No explanation.
+Only generate the structured draft. No explanation, no extra text.
 `;
 
   const response = await openai.chat.completions.create({
     messages: [{ role: "user", content: prompt }],
     model: "gpt-4",
     temperature: 0.3,
-    max_tokens: 700,
+    max_tokens: 1200,
   });
 
-  const text = response.choices[0].message.content;
+  const text = response?.choices?.[0]?.message?.content?.trim();
+
+  if (!text || text.length < 10) {
+    throw new Error("OpenAI returned an empty or invalid response.");
+  }
 
   return parsePrescriptionTextToObject(text);
 };
