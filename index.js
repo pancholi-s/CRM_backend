@@ -27,6 +27,8 @@ import bedRoutes from './routes/bedRoutes.js';
 import inventoryRoutes from './routes/inventoryRoutes.js';
 import criticalPatientRoutes from './routes/criticalPatientRoutes.js';
 import prescriptionRoutes from './routes/prescriptionRoutes.js';
+import admissionRouters from './routes/admissionRoutes.js';
+import nursingRoutes from './routes/nursingRoutes.js';
 
 dotenv.config();
 
@@ -80,6 +82,8 @@ app.use('/', bedRoutes);
 app.use('/', inventoryRoutes);
 app.use('/', criticalPatientRoutes);
 app.use('/', prescriptionRoutes);
+app.use('/', admissionRouters);
+app.use('/', nursingRoutes);
 
 // Base route
 app.get('/', (req, res) => {

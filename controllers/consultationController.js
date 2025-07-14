@@ -3,6 +3,7 @@ import Department from '../models/departmentModel.js';
 import Hospital from '../models/hospitalModel.js';
 import Appointment from '../models/appointmentModel.js';
 import Patient from '../models/patientModel.js';
+import ProgressPhase from '../models/ProgressPhase.js';
 
 export const submitConsultation = async (req, res) => {
   const session = await Consultation.startSession();
@@ -276,5 +277,148 @@ export const getMostCommonDiagnoses = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: "Server error.", error });
+  }
+};
+
+export const getProgressTracker = async (req, res) => {
+  try {
+    const { patientId } = req.params;
+
+    // 1. Fetch consultations for patient
+    const consultations = await Consultation.find({ patient: patientId })
+      .populate('doctor', 'name')
+      .populate('department', 'name')
+      .populate('appointment', 'caseId');
+
+    // 2. Extract all unique caseIds from consultations
+    const caseIds = consultations.map(c => c.appointment?.caseId).filter(Boolean);
+
+    // 3. Fetch progress phases for those caseIds
+    const phases = await ProgressPhase.find({ caseId: { $in: caseIds } })
+      .populate('assignedDoctor', 'name');
+
+    // 4. Combine and sort by date
+    const progress = [
+      ...consultations.map(c => ({
+        type: 'consultation',
+        date: c.date,
+        doctor: c.doctor,
+        data: c.consultationData,
+        status: c.status,
+        caseId: c.appointment?.caseId
+      })),
+      ...phases.map(p => ({
+        type: 'phase',
+        date: p.date,
+        doctor: p.assignedDoctor,
+        data: {
+          title: p.title,
+          description: p.description,
+          files: p.files,
+        },
+        isCompleted: p.isCompleted,
+        caseId: p.caseId
+      }))
+    ].sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    res.status(200).json({
+      message: 'Progress tracker data fetched successfully.',
+      progress
+    });
+  } catch (error) {
+    console.error('Error fetching progress tracker:', error);
+    res.status(500).json({ message: 'Internal server error', error: error.message });
+  }
+};
+
+
+export const addProgressPhase = async (req, res) => {
+  try {
+    const {
+      caseId,
+      patient,
+      title,
+      date,
+      assignedDoctor,
+      isDone,
+      description,
+      files
+    } = req.body;
+
+    if (!caseId || !patient || !title || !assignedDoctor) {
+      return res.status(400).json({ message: 'Required fields are missing' });
+    }
+
+    const newPhase = await ProgressPhase.create({
+      caseId,
+      patient,
+      title,
+      date,
+      assignedDoctor,
+      isDone,
+      description,
+      files
+    });
+
+    res.status(201).json({
+      message: "Progress phase added successfully",
+      phase: newPhase
+    });
+
+  } catch (error) {
+    console.error("Error adding progress phase:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+export const updateConsultation = async (req, res) => {
+  try {
+    const { consultationId } = req.params;
+    const {
+      consultationData,
+      status,
+      followUpRequired,
+      referredToDoctor,
+      referredToDepartment,
+      referralReason,
+      preferredDate,
+      preferredTime,
+      treatment
+    } = req.body;
+
+    const updatedFields = {
+      consultationData,
+      status,
+      followUpRequired,
+      referredToDoctor,
+      referredToDepartment,
+      referralReason,
+      preferredDate,
+      preferredTime,
+      treatment
+    };
+
+    // Remove undefined/null values
+    Object.keys(updatedFields).forEach(key => {
+      if (updatedFields[key] === undefined) delete updatedFields[key];
+    });
+
+    const updatedConsultation = await Consultation.findByIdAndUpdate(
+      consultationId,
+      { $set: updatedFields },
+      { new: true }
+    );
+
+    if (!updatedConsultation) {
+      return res.status(404).json({ message: "Consultation not found." });
+    }
+
+    res.status(200).json({
+      message: "Consultation updated successfully.",
+      consultation: updatedConsultation
+    });
+  } catch (error) {
+    console.error("Error updating consultation:", error);
+    res.status(500).json({ message: "Internal server error", error: error.message });
   }
 };

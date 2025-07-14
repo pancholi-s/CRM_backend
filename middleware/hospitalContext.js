@@ -15,6 +15,11 @@ export const requireHospitalContext = (req, res, next) => {
     }
 
     req.session.hospitalId = decoded.hospitalId;
+    req.user = {
+      _id: decoded._id,
+      role: decoded.role,
+      email: decoded.email,
+    };
 
     next();
   } catch (error) {
