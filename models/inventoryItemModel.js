@@ -7,6 +7,15 @@ const inventoryItemSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    quantity: {
+      type: Number,
+      required: true,
+    },
+    minimumStockThreshold: {
+      type: Number,
+      required: true,
+      default: 10,
+    },
     category: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "InventoryCategory",
@@ -22,27 +31,14 @@ const inventoryItemSchema = new mongoose.Schema(
       ref: "Hospital",
       required: true,
     },
-    quantity: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
-    lastRestockedDate: {
-      type: Date,
-    },
-    usagePercent: {
-      type: Number,
-      default: 0,
-    },
+    lastRestockedDate: Date,
+    lastUpdated: Date,
     status: {
       type: String,
-      enum: ["Low stock", "Sufficient", "Critical", "Moderate"],
+      enum: ["Low Stock", "Moderate", "Sufficient"],
       default: "Sufficient",
     },
-    lastUpdated: {
-      type: Date,
-      default: Date.now,
-    },
+    usagePercent: Number,
   },
   { timestamps: true }
 );

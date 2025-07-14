@@ -1,5 +1,6 @@
 import Patient from "../models/patientModel.js";
 import Bill from "../models/billModel.js";
+import Consultation from "../models/consultationModel.js";
 
 // Get Patients by Hospital with Sorting
 export const getPatientsByHospital = async (req, res) => {
@@ -41,6 +42,12 @@ export const getPatientsByHospital = async (req, res) => {
     // Process patient data and fetch corresponding bills
     const patientData = await Promise.all(
       patients.map(async (patient) => {
+        const consultations = await Consultation.find({ patient: patient._id })
+            .populate("doctor", "name")
+            .populate("department", "name")
+            .populate("appointment", "caseId tokenDate status")
+            .lean();
+
         const bills = await Bill.find({ patient: patient._id })
           .populate("doctor", "name _id")
           .populate("hospital", "name _id")
@@ -70,6 +77,7 @@ export const getPatientsByHospital = async (req, res) => {
           appointments,
           doctors: doctorNames,
           bills,
+          consultations,
         };
       })
     );
