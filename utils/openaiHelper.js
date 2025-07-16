@@ -17,7 +17,8 @@ const parsePrescriptionTextToObject = (text) => {
     nonDrugRecommendations: [],
     precautions: "",
     lifestyle: [],
-    followUp: {
+    followUp: "",
+    followUpInstructions: {
       reviewDate: "",
       notes: "",
     },
@@ -32,7 +33,8 @@ const parsePrescriptionTextToObject = (text) => {
     "Non-Drug Recommendations": "nonDrugRecommendations",
     Precautions: "precautions",
     "Lifestyle & Diet": "lifestyle",
-    "Follow-Up Instructions": "followUp",
+    "Follow-Up": "followUp",
+    "Follow-Up Instructions": "followUpInstructions",
   };
 
   let currentKey = null;
@@ -62,15 +64,25 @@ const parsePrescriptionTextToObject = (text) => {
       if (/^[-•]\s*/.test(trimmed)) {
         sections[currentKey].push(trimmed.replace(/^[-•]\s*/, "").trim());
       }
-    } else if (currentKey === "followUp") {
+    } else if (currentKey === "followUpInstructions") {
       if (trimmed.startsWith("Review Date:")) {
-        sections.followUp.reviewDate = trimmed
+        sections.followUpInstructions.reviewDate = trimmed
           .replace("Review Date:", "")
           .trim();
       } else if (trimmed.startsWith("Notes:")) {
-        sections.followUp.notes = trimmed.replace("Notes:", "").trim();
+        sections.followUpInstructions.notes = trimmed
+          .replace("Notes:", "")
+          .trim();
       }
-    } else {
+    } else if (
+      [
+        "problemStatement",
+        "icdCode",
+        "therapyPlan",
+        "precautions",
+        "followUp",
+      ].includes(currentKey)
+    ) {
       sections[currentKey] += (sections[currentKey] ? " " : "") + trimmed;
     }
   });
@@ -92,7 +104,9 @@ Use exactly the following SECTIONS as HEADERS (no explanation, no extras):
 6. Non-Drug Recommendations
 7. Precautions
 8. Lifestyle & Diet
-9. Follow-Up Instructions
+9. Follow-Up
+10. Follow-Up Instructions
+
 
 → Keep each section 1-3 lines max, realistic and human-like.
 → Use bullet points (with dashes) for items in Medications, Injections / Therapies, Non-Drug Recommendations, and Lifestyle & Diet.
