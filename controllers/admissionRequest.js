@@ -10,37 +10,53 @@ export const createAdmissionRequest = async (req, res) => {
       return res.status(403).json({ message: "No hospital context found." });
     }
 
-    const { patient, doctor, sendTo, admissionDetails } = req.body;
-    console.log(req.body)
-    const createdBy = req.user._id; // Optional: set via auth middleware
+    const { patientPatId, doctor, sendTo, admissionDetails } = req.body;
+    const createdBy = req.user._id;
 
-    // Validate required fields
-    if (!admissionDetails || !admissionDetails.bed) {
-      return res.status(400).json({ message: "Admission details or bed ID is missing." });
+    // 1. Validate patient using patId
+    const patient = await Patient.findOne({ patId: patientPatId, hospital: hospitalId });
+    if (!patient) {
+      return res.status(404).json({ message: "Patient not found with given patId." });
     }
 
-    // Validate bed availability
-    const bed = await Bed.findOne({ _id: admissionDetails.bed, hospital: hospitalId, status: 'Available' });
-    if (!bed) return res.status(400).json({ message: "Selected bed is not available." });
+    // 2. Validate room by roomID
+    const room = await Room.findOne({ roomID: admissionDetails.room, hospital: hospitalId });
+    if (!room) {
+      return res.status(404).json({ message: "Room not found with given roomId." });
+    }
 
-    // Validate patient exists
-    const existingPatient = await Patient.findById(patient);
-    if (!existingPatient) return res.status(404).json({ message: "Patient not found." });
+    // 3. Validate bed by bedNumber and associated room
+    const bed = await Bed.findOne({
+      bedNumber: admissionDetails.bed,
+      hospital: hospitalId,
+      room: room._id,
+      status: 'Available'
+    });
+    if (!bed) {
+      return res.status(404).json({ message: "Bed not found or not available with given bed number in the specified room." });
+    }
 
-    // Create request
+    // 4. Prepare admissionDetails (convert admissionDate -> date)
+    const admissionData = {
+      ...admissionDetails,
+      room: room._id,
+      bed: bed._id,
+      date: admissionDetails.admissionDate // Map to expected schema field
+    };
+    delete admissionData.admissionDate;
+
+    // 5. Create the admission request
     const request = await AdmissionRequest.create({
-      patient,
+      patient: patient._id,
       hospital: hospitalId,
       doctor,
       createdBy,
       sendTo,
-      admissionDetails
+      admissionDetails: admissionData
     });
 
-    // Set bed to Reserved
-    await Bed.findByIdAndUpdate(admissionDetails.bed, { status: "Reserved" });
+    res.status(201).json({ message: "Admission request created successfully", request });
 
-    res.status(201).json({ message: "Admission request created.", request });
   } catch (error) {
     console.error("Create Admission Request Error:", error);
     res.status(500).json({ message: "Internal Server Error", error: error.message });

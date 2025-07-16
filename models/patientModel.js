@@ -125,7 +125,9 @@ const patientSchema = new mongoose.Schema({
     enum: ["Yes", "No"],
     default: "No"
   },
-
+  patId: {
+    type: String,
+  },
   files: [
     {
       fileName: { type: String, required: true },
@@ -145,5 +147,13 @@ const patientSchema = new mongoose.Schema({
   },
   bills: [{ type: mongoose.Schema.Types.ObjectId, ref: "Bill" }],
 });
+
+patientSchema.pre('save', async function (next) {
+  if (!this.patId) {
+    this.patId = `PAT-${Date.now().toString().slice(-6)}`;
+  }
+  next();
+});
+
 
 export default mongoose.model("Patient", patientSchema);

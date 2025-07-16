@@ -39,7 +39,7 @@ const admissionRequestSchema = new mongoose.Schema({
     date: { type: Date, required: true },
     room: { type: mongoose.Schema.Types.ObjectId, ref: 'Room', required: true },
     bed: { type: mongoose.Schema.Types.ObjectId, ref: 'Bed', required: true },
-    deposit: { type: Number, required: true }
+    deposit: { type: Number }
   },
 }, {
   timestamps: true

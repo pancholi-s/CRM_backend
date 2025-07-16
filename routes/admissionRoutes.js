@@ -10,7 +10,7 @@ import { createAdmissionRequest, approveAdmissionRequest, admitPatient, getAdmis
 const router = express.Router();
 router.use(requireHospitalContext);
 
-router.post('/createAdmissionRequest',authorizeRoles("hospitalAdmin"), createAdmissionRequest);
+router.post('/createAdmissionRequest',authorizeRoles("hospitalAdmin","doctor"), createAdmissionRequest);
 router.put('/approveAdmissionRequest/:requestId', authorizeRoles("hospitalAdmin","doctor"),approveAdmissionRequest);
 router.post('/admitPatient/:requestId', admitPatient);
 router.get('/admissionRequests', getAdmissionRequests);
