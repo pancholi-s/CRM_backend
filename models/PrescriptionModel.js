@@ -25,7 +25,8 @@ const prescriptionSchema = new mongoose.Schema({
     nonDrugRecommendations: [String],
     precautions: String,
     lifestyle: [String],
-    followUp: {
+    followUp: String,
+    followUpInstructions: {
       reviewDate: String,
       notes: String,
     },

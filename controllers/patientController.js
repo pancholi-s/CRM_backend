@@ -1,6 +1,7 @@
 import Patient from "../models/patientModel.js";
 import Bill from "../models/billModel.js";
 import Consultation from "../models/consultationModel.js";
+import Appointment from "../models/appointmentModel.js";
 
 // Get Patients by Hospital with Sorting
 export const getPatientsByHospital = async (req, res) => {
@@ -170,5 +171,92 @@ export const getPatientsByStatus = async (req, res) => {
   } catch (error) {
     console.error("Error fetching patients by status:", error);
     res.status(500).json({ message: "Failed to fetch patients.", error: error.message });
+  }
+};
+
+// Get Appointments by Patient ID
+export const getAppointmentsByPatientId = async (req, res) => {
+  try {
+    const { patientId } = req.params;
+
+    if (!patientId) {
+      return res.status(400).json({ message: "Patient ID is required." });
+    }
+
+    const appointments = await Appointment.find({ patient: patientId })
+      .populate("doctor", "name specialization")
+      .populate("department", "name")
+      .populate("hospital", "name")
+      .sort({ tokenDate: -1 }); // recent first
+
+    if (!appointments || appointments.length === 0) {
+      return res.status(404).json({ message: "No appointments found for this patient." });
+    }
+
+    return res.status(200).json({
+      message: "Appointments retrieved successfully.",
+      count: appointments.length,
+      appointments,
+    });
+  } catch (error) {
+    console.error("Error fetching appointments by patient:", error);
+    return res.status(500).json({
+      message: "Failed to fetch appointments.",
+      error: error.message,
+    });
+  }
+};
+
+// Get Patient Details by ID
+export const getPatientDetailsById = async (req, res) => {
+  try {
+    const { patientId } = req.params;
+
+    if (!patientId) {
+      return res.status(400).json({ message: "Patient ID is required." });
+    }
+
+    const patient = await Patient.findById(patientId)
+      .select("-password") // hide password
+      .populate("doctors", "name email specialization")
+      .populate("department", "name")
+      .populate({
+        path: "appointments",
+        populate: [
+          { path: "doctor", select: "name specialization" },
+          { path: "department", select: "name" },
+          { path: "hospital", select: "name" },
+        ],
+      });
+
+    if (!patient) {
+      return res.status(404).json({ message: "Patient not found." });
+    }
+
+    const consultations = await Consultation.find({ patient: patient._id })
+      .populate("doctor", "name")
+      .populate("department", "name")
+      .populate("appointment", "caseId tokenDate status")
+      .lean();
+
+    const bills = await Bill.find({ patient: patient._id })
+      .populate("doctor", "name _id")
+      .populate("hospital", "name _id")
+      .populate("services.service")
+      .lean();
+
+    return res.status(200).json({
+      message: "Patient details retrieved successfully.",
+      data: {
+        ...patient.toObject(),
+        consultations,
+        bills,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching patient details:", error);
+    return res
+      .status(500)
+      .json({ message: "Failed to fetch patient details.", error: error.message });
   }
 };
