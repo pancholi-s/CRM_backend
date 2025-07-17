@@ -18,13 +18,22 @@ export const submitConsultation = async (req, res) => {
       department,
       consultationData,
       action,
+      referralType,
       referredToDoctor,
       referredToDepartment,
       referralReason,
       preferredDate,
       preferredTime,
+      referralUrgency,
+      referralTracking,
+      primaryDiagnosis,
+      externalFacility,
+      newFacilityName,
+      referredSpecialist,
+      specialtyArea,
+      supportingDocument,
       treatment,
-      followUpRequired // only relevant for 'complete'
+      followUpRequired
     } = req.body;
 
     if (!hospitalId) {
@@ -32,7 +41,7 @@ export const submitConsultation = async (req, res) => {
     }
 
     if (!doctor || !patient || !appointment || !department || !consultationData || !action) {
-      return res.status(400).json({ message: "All fields including action are required." });
+      return res.status(400).json({ message: "All required fields including action must be provided." });
     }
 
     const validActions = ["complete", "refer", "schedule"];
@@ -65,10 +74,8 @@ export const submitConsultation = async (req, res) => {
       return res.status(404).json({ message: "Appointment not found." });
     }
 
-    // Get caseId from appointment
     const caseId = appointmentDoc.caseId;
 
-    // Prepare base consultation data
     const consultationPayload = {
       doctor,
       patient,
@@ -77,23 +84,41 @@ export const submitConsultation = async (req, res) => {
       consultationData,
       status: "completed",
       followUpRequired: false,
-      caseId // used for grouping consultations
+      caseId
     };
 
-    // Handle different actions
     if (action === "complete") {
       consultationPayload.status = "completed";
       consultationPayload.followUpRequired = followUpRequired === true;
     }
 
     if (action === "refer") {
-      consultationPayload.status = "referred";
-      consultationPayload.followUpRequired = true;
-      consultationPayload.referredToDoctor = referredToDoctor;
-      consultationPayload.referredToDepartment = referredToDepartment;
-      consultationPayload.referralReason = referralReason;
-      consultationPayload.preferredDate = preferredDate;
-      consultationPayload.preferredTime = preferredTime;
+      consultationPayload.referralType = referralType;
+      consultationPayload.primaryDiagnosis = primaryDiagnosis;
+
+      if (referralType === "internal") {
+        consultationPayload.status = "referred";
+        consultationPayload.followUpRequired = true;
+        consultationPayload.referredToDoctor = referredToDoctor;
+        consultationPayload.referredToDepartment = referredToDepartment;
+        consultationPayload.referralReason = referralReason;
+        consultationPayload.preferredDate = preferredDate;
+        consultationPayload.preferredTime = preferredTime;
+        consultationPayload.referralUrgency = referralUrgency;
+        consultationPayload.referralTracking = referralTracking; // { id, status, followUpDate }
+      }
+
+      if (referralType === "external") {
+        consultationPayload.status = "completed";
+        consultationPayload.followUpRequired = false;
+        consultationPayload.externalFacility = externalFacility;
+        if (newFacilityName) {
+          consultationPayload.newFacilityName = newFacilityName;
+        }
+        consultationPayload.referredSpecialist = referredSpecialist;
+        consultationPayload.specialtyArea = specialtyArea;
+        consultationPayload.supportingDocument = supportingDocument;
+      }
     }
 
     if (action === "schedule") {
@@ -101,7 +126,6 @@ export const submitConsultation = async (req, res) => {
       consultationPayload.followUpRequired = true;
       consultationPayload.treatment = treatment;
 
-      // Update patient's admission recommendation if included
       const admissionRec = treatment?.admissionRecommendation === true ? "Yes" : "No";
       await Patient.findByIdAndUpdate(
         patient,
@@ -110,10 +134,8 @@ export const submitConsultation = async (req, res) => {
       );
     }
 
-    // Save consultation
     const newConsultation = await Consultation.create([consultationPayload], { session });
 
-    // Mark appointment completed
     await Appointment.findByIdAndUpdate(
       appointment,
       { status: "completed" },
@@ -284,31 +306,57 @@ export const getProgressTracker = async (req, res) => {
   try {
     const { patientId } = req.params;
 
-    // 1. Fetch consultations for patient
-    const consultations = await Consultation.find({ patient: patientId })
+    // 1. Fetch patient
+    const patient = await Patient.findById(patientId);
+    if (!patient) {
+      return res.status(404).json({ message: 'Patient not found' });
+    }
+
+    // 2. Fetch consultations
+    let consultations = await Consultation.find({ patient: patientId })
       .populate('doctor', 'name')
       .populate('department', 'name')
-      .populate('appointment', 'caseId');
+      .populate('appointment', 'caseId')
+      .sort({ date: 1 }); // Ensure sorted by date
 
-    // 2. Extract all unique caseIds from consultations
-    const caseIds = consultations.map(c => c.appointment?.caseId).filter(Boolean);
+    if (!consultations.length) {
+      return res.status(200).json({ message: 'No consultations found', progress: [] });
+    }
 
-    // 3. Fetch progress phases for those caseIds
-    const phases = await ProgressPhase.find({ caseId: { $in: caseIds } })
-      .populate('assignedDoctor', 'name');
+    // 3. Phase classification: mark initial/middle/final
+    const progress = [];
 
-    // 4. Combine and sort by date
-    const progress = [
-      ...consultations.map(c => ({
+    const completedConsultations = consultations.filter(c => c.status === 'completed');
+    const finalConsultation = completedConsultations.at(-1)?._id;
+
+    consultations.forEach((c, index) => {
+      let phaseType = 'middle';
+      if (index === 0) phaseType = 'initial';
+      if (c._id.equals(finalConsultation)) phaseType = 'final';
+
+      progress.push({
         type: 'consultation',
+        phase: phaseType,
         date: c.date,
         doctor: c.doctor,
+        department: c.department,
         data: c.consultationData,
         status: c.status,
         caseId: c.appointment?.caseId
-      })),
-      ...phases.map(p => ({
+      });
+    });
+
+    // 4. Collect caseIds and fetch progress phases
+    const caseIds = consultations.map(c => c.appointment?.caseId).filter(Boolean);
+
+    const phases = await ProgressPhase.find({ caseId: { $in: caseIds } })
+      .populate('assignedDoctor', 'name');
+
+    // 5. Append progress phases
+    for (const p of phases) {
+      progress.push({
         type: 'phase',
+        phase: null,
         date: p.date,
         doctor: p.assignedDoctor,
         data: {
@@ -318,18 +366,23 @@ export const getProgressTracker = async (req, res) => {
         },
         isCompleted: p.isCompleted,
         caseId: p.caseId
-      }))
-    ].sort((a, b) => new Date(a.date) - new Date(b.date));
+      });
+    }
+
+    // 6. Final sort
+    progress.sort((a, b) => new Date(a.date) - new Date(b.date));
 
     res.status(200).json({
       message: 'Progress tracker data fetched successfully.',
       progress
     });
+
   } catch (error) {
     console.error('Error fetching progress tracker:', error);
     res.status(500).json({ message: 'Internal server error', error: error.message });
   }
 };
+
 
 
 export const addProgressPhase = async (req, res) => {
