@@ -6,11 +6,11 @@ const medicalRecordSchema = new mongoose.Schema({
   dose: { type: String, required: true },
   route: { type: String, required: true },
   time: { type: String, required: true },
-  givenBy: { type: String, required: true },
+  givenBy: { type: String },
   notes: { type: String },
   status: {
     type: String,
-    enum: ["Scheduled", "Next", "Given"],
+    enum: ["Scheduled", "Rescheduled", "Given"],
     default: "Scheduled"
   }
 }, { timestamps: true });

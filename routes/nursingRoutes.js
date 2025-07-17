@@ -1,5 +1,5 @@
 import express from "express";
-import {recordVitals, getVitalsByPatient, addMedicalRecord, getMedicalRecords} from "../controllers/nursingSection.js";
+import {recordVitals, getVitalsByPatient, addMedicalRecord,updateMedicationAction, getMedicalRecords} from "../controllers/nursingSection.js";
 
 const router = express.Router();
 
@@ -9,6 +9,7 @@ router.get("/getVitalsByPatient/:patientId", getVitalsByPatient);
 
 // Medications
 router.post("/addMedicalRecord", addMedicalRecord);
+router.post("/updateMedicationAction", updateMedicationAction);
 router.get("/getMedicalRecords/:patientId", getMedicalRecords);
 
 export default router;

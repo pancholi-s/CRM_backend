@@ -48,29 +48,85 @@ export const getVitalsByPatient = async (req, res) => {
 
 export const addMedicalRecord = async (req, res) => {
   try {
-    const { patient, medication, dose, route, time, givenBy, notes, status } = req.body;
+    const { patient, medications } = req.body;
 
-    if (!patient || !medication || !dose || !route || !time || !givenBy || !status) {
-      return res.status(400).json({ message: "All medical record fields are required." });
+    if (!patient || !Array.isArray(medications) || medications.length === 0) {
+      return res.status(400).json({ message: "Patient and medications are required." });
     }
 
-    const record = await MedicalRecord.create({
-      patient,
-      medication,
-      dose,
-      route,
-      time,
-      givenBy,
-      notes,
-      status
+    const records = medications.map((med) => {
+      if (!med.medication || !med.dose || !med.route || !med.time) {
+        throw new Error("Each medication must include medication, dose, route, and time.");
+      }
+
+      return {
+        patient,
+        medication: med.medication,
+        dose: med.dose,
+        route: med.route,
+        time: med.time,
+        givenBy: med.givenBy || "",
+        notes: med.notes || "",
+        status: med.status || "Scheduled"
+      };
     });
 
-    res.status(201).json({ message: "Medical record added", data: record });
+    const inserted = await MedicalRecord.insertMany(records);
+
+    res.status(201).json({
+      message: "Medical records added successfully",
+      data: inserted
+    });
   } catch (error) {
-    console.error("Medical record error:", error);
+    console.error("Medical record insert error:", error);
     res.status(500).json({ message: "Internal server error", error: error.message });
   }
 };
+
+
+export const updateMedicationAction = async (req, res) => {
+  try {
+    const { recordId, action, givenBy, newTime, notes } = req.body;
+
+    const record = await MedicalRecord.findById(recordId);
+    if (!record) {
+      return res.status(404).json({ message: "Medical record not found." });
+    }
+
+    if (action === "Given") {
+      if (!givenBy) {
+        return res.status(400).json({ message: "'givenBy' is required when marking as Given." });
+      }
+
+      record.status = "Given";
+      record.givenBy = givenBy;
+      if (notes) record.notes = notes;
+
+    } else if (action === "Reschedule") {
+      if (!newTime) {
+        return res.status(400).json({ message: "'newTime' is required when rescheduling." });
+      }
+
+      record.time = newTime;
+      record.status = "Scheduled"; // optional: you can use "Rescheduled" if you want to track this
+      if (notes) record.notes = notes;
+    } else {
+      return res.status(400).json({ message: "Invalid action type. Must be 'Given' or 'Reschedule'." });
+    }
+
+    await record.save();
+
+    res.status(200).json({
+      message: `Medication successfully ${action === "Given" ? "marked as given" : "rescheduled"}.`,
+      data: record
+    });
+
+  } catch (error) {
+    console.error("Error updating medication action:", error);
+    res.status(500).json({ message: "Internal server error", error: error.message });
+  }
+};
+
 
 export const getMedicalRecords = async (req, res) => {
   try {
