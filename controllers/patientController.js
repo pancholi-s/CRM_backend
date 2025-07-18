@@ -187,6 +187,7 @@ export const getAppointmentsByPatientId = async (req, res) => {
       .populate("doctor", "name specialization")
       .populate("department", "name")
       .populate("hospital", "name")
+      .populate("patient", "patId name")
       .sort({ tokenDate: -1 }); // recent first
 
     if (!appointments || appointments.length === 0) {
@@ -245,12 +246,32 @@ export const getPatientDetailsById = async (req, res) => {
       .populate("services.service")
       .lean();
 
+      // Extract from latest consultation
+      const latestConsultationData =
+      consultations?.length > 0
+        ? consultations[consultations.length - 1]?.consultationData || null
+        : null;
+
+      // Prepare extra fields
+      const additionalFields = {
+        bloodGroup: latestConsultationData?.bloodGroup ?? null,
+        visitType: latestConsultationData?.visitType ?? null,
+        condition: latestConsultationData?.condition ?? null,
+        emergencyContact: latestConsultationData?.emergencyContact ?? null,
+        relationship: latestConsultationData?.relationship ?? null,
+        emergencyContactName: latestConsultationData?.emergencyContactName ?? null,
+        MRN: latestConsultationData?.MRN ?? null,
+        admittingBy: latestConsultationData?.admittingBy ?? null,
+        admissionDateTime: latestConsultationData?.admissionDateTime ?? null,
+      };
+
     return res.status(200).json({
       message: "Patient details retrieved successfully.",
       data: {
         ...patient.toObject(),
         consultations,
         bills,
+        ...additionalFields, // Include additional fields
       },
     });
   } catch (error) {

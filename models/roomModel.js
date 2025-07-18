@@ -68,20 +68,28 @@ roomSchema.virtual('beds', {
 // Update available beds count when beds change
 roomSchema.methods.updateAvailableBeds = async function() {
   const Bed = mongoose.model('Bed');
+  
+  // Get total beds in this room (regardless of status)
+  const totalBedsInRoom = await Bed.countDocuments({ room: this._id });
+  
+  // Get available beds
   const availableBeds = await Bed.countDocuments({
     room: this._id,
     status: 'Available'
   });
   
+  // Update available beds count (can't be more than total beds in room)
   this.capacity.availableBeds = availableBeds;
   
-  // Update room status based on bed availability
-  if (availableBeds === 0) {
-    this.status = 'Full';
-  } else if (availableBeds === this.capacity.totalBeds) {
-    this.status = 'Available';
+  // Update room status
+  if (totalBedsInRoom === 0) {
+    this.status = 'Available'; // No beds added yet
+  } else if (availableBeds === 0) {
+    this.status = 'Full'; // All beds are occupied
+  } else if (availableBeds === totalBedsInRoom) {
+    this.status = 'Available'; // All beds are available
   } else {
-    this.status = 'Occupied';
+    this.status = 'Occupied'; // Some beds available, some occupied
   }
   
   await this.save();

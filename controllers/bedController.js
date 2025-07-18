@@ -8,26 +8,26 @@ export const addBedsToRoom = async (req, res) => {
 
   const hospitalId = req.session.hospitalId;
   if (!hospitalId) {
-    return res
-      .status(403)
-      .json({
-        message: "Unauthorized access. Hospital ID not found in session.",
-      });
+    return res.status(403).json({
+      message: "Unauthorized access. Hospital ID not found in session.",
+    });
   }
 
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    const room = await Room.findOne({ _id: roomId, hospital: hospitalId });
+    const room = await Room.findOne({ _id: roomId, hospital: hospitalId }).session(session);
     if (!room) {
-      return res
-        .status(404)
-        .json({ message: "Room not found in your hospital." });
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({ message: "Room not found in your hospital." });
     }
 
-    const existingBedCount = await Bed.countDocuments({ room: roomId });
+    const existingBedCount = await Bed.countDocuments({ room: roomId }).session(session);
     if (existingBedCount + beds.length > room.capacity.totalBeds) {
+      await session.abortTransaction();
+      session.endSession();
       return res.status(400).json({
         message: `Cannot add ${beds.length} beds. Room capacity: ${room.capacity.totalBeds}, Current beds: ${existingBedCount}`,
       });
@@ -53,10 +53,12 @@ export const addBedsToRoom = async (req, res) => {
       newBeds.push(newBed);
     }
 
-    await room.updateAvailableBeds();
-
+    // Commit transaction first to make beds visible
     await session.commitTransaction();
     session.endSession();
+
+    // Now update available beds with committed data
+    await room.updateAvailableBeds();
 
     const populatedBeds = await Bed.find({
       _id: { $in: newBeds.map((b) => b._id) },
@@ -73,9 +75,7 @@ export const addBedsToRoom = async (req, res) => {
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    res
-      .status(500)
-      .json({ message: "Error adding beds.", error: error.message });
+    res.status(500).json({ message: "Error adding beds.", error: error.message });
   }
 };
 
