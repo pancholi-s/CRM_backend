@@ -205,27 +205,40 @@ export const admitPatient = async (req, res) => {
   }
 };
 
-
-
 export const getAdmissionRequests = async (req, res) => {
   try {
     const hospitalId = req.session.hospitalId;
-    if (!hospitalId) return res.status(403).json({ message: "No hospital context found." });
+    if (!hospitalId) {
+      return res.status(403).json({ message: "No hospital context found." });
+    }
 
-    const statusFilter = req.query.status; // optional: 'Pending', 'Approved', 'Rejected'
-    const filter = { hospital: hospitalId };
-    if (statusFilter) filter.status = statusFilter;
+    const statusFilter = req.query.status;
+
+    const filter = {
+      hospital: hospitalId,
+    };
+
+    if (statusFilter && statusFilter !== "all" && statusFilter !== "") {
+      filter.status = statusFilter;
+    }
 
     const requests = await AdmissionRequest.find(filter)
-      .populate("patient", "name age contact admissionStatus")
+      .populate({
+        path: "patient",
+        select: "name age contact admissionStatus",
+        match: { admissionStatus: { $ne: "Admitted" } }, // 💥 exclude admitted patients
+      })
       .populate("doctor", "name email")
       .populate("admissionDetails.room", "name roomType")
       .populate("admissionDetails.bed", "bedNumber bedType status");
 
+    // Filter out null patients (those who were excluded by match)
+    const filteredRequests = requests.filter(r => r.patient !== null);
+
     res.status(200).json({
       message: "Admission requests fetched successfully.",
-      count: requests.length,
-      requests,
+      count: filteredRequests.length,
+      requests: filteredRequests,
     });
   } catch (error) {
     console.error("Error fetching admission requests:", error);
