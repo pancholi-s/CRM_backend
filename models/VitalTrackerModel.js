@@ -4,7 +4,6 @@ const vitalsSchema = new mongoose.Schema({
   recordedBy: { type: String, required: true },
   vitals: { type: mongoose.Schema.Types.Mixed, required: true },
   recordedAt: { type: Date, default: Date.now}, 
-  caseId: {type: String, required: true}
 });
 
 export default mongoose.model('Vitals', vitalsSchema);

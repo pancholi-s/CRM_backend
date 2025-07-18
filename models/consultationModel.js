@@ -16,14 +16,31 @@ const consultationSchema = new mongoose.Schema({
   },
   followUpRequired: { type: Boolean, default: false },
 
-  // Fields for "refer"
+  // Used for "refer"
+  tab: { type: String, enum: ["internal", "external"] },
+  referralUrgency: { type: String },
+
+  // Internal referral
   referredToDoctor: { type: mongoose.Schema.Types.ObjectId, ref: 'Doctor' },
   referredToDepartment: { type: mongoose.Schema.Types.ObjectId, ref: 'Department' },
   referralReason: { type: String },
   preferredDate: { type: Date },
   preferredTime: { type: String },
+  referralTracking: {
+    id: { type: String },
+    status: { type: String },
+    followUpDate: { type: Date }
+  },
 
-  // Fields for "schedule treatment"
+  // External referral
+  primaryDiagnosis: { type: String },
+  externalFacility: { type: String },
+  newFacilityName: { type: String },
+  referredSpecialist: { type: String },
+  specialtyArea: { type: String },
+  supportingDocument: { type: String },
+
+  // Schedule treatment
   treatment: {
     patientName: { type: String },
     age: { type: Number },

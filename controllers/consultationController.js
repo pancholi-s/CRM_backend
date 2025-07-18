@@ -18,13 +18,13 @@ export const submitConsultation = async (req, res) => {
       department,
       consultationData,
       action,
-      referralType,
+      tab, // renamed from referralType
       referredToDoctor,
       referredToDepartment,
       referralReason,
       preferredDate,
       preferredTime,
-      referralUrgency,
+      referralUrgency, // added
       referralTracking,
       primaryDiagnosis,
       externalFacility,
@@ -93,10 +93,11 @@ export const submitConsultation = async (req, res) => {
     }
 
     if (action === "refer") {
-      consultationPayload.referralType = referralType;
+      consultationPayload.tab = tab;
       consultationPayload.primaryDiagnosis = primaryDiagnosis;
+      consultationPayload.referralUrgency = referralUrgency;
 
-      if (referralType === "internal") {
+      if (tab === "internal") {
         consultationPayload.status = "referred";
         consultationPayload.followUpRequired = true;
         consultationPayload.referredToDoctor = referredToDoctor;
@@ -104,11 +105,10 @@ export const submitConsultation = async (req, res) => {
         consultationPayload.referralReason = referralReason;
         consultationPayload.preferredDate = preferredDate;
         consultationPayload.preferredTime = preferredTime;
-        consultationPayload.referralUrgency = referralUrgency;
-        consultationPayload.referralTracking = referralTracking; // { id, status, followUpDate }
+        consultationPayload.referralTracking = referralTracking;
       }
 
-      if (referralType === "external") {
+      if (tab === "external") {
         consultationPayload.status = "completed";
         consultationPayload.followUpRequired = false;
         consultationPayload.externalFacility = externalFacility;
@@ -159,6 +159,7 @@ export const submitConsultation = async (req, res) => {
     });
   }
 };
+
 
 
 export const getConsultationByAppointment = async (req, res) => {
@@ -306,70 +307,96 @@ export const getProgressTracker = async (req, res) => {
   try {
     const { patientId } = req.params;
 
-    // 1. Fetch patient
     const patient = await Patient.findById(patientId);
     if (!patient) {
       return res.status(404).json({ message: 'Patient not found' });
     }
 
-    // 2. Fetch consultations
+    // Fetch consultations
     let consultations = await Consultation.find({ patient: patientId })
       .populate('doctor', 'name')
       .populate('department', 'name')
       .populate('appointment', 'caseId')
-      .sort({ date: 1 }); // Ensure sorted by date
+      .sort({ date: 1 });
 
     if (!consultations.length) {
       return res.status(200).json({ message: 'No consultations found', progress: [] });
     }
 
-    // 3. Phase classification: mark initial/middle/final
     const progress = [];
 
-    const completedConsultations = consultations.filter(c => c.status === 'completed');
-    const finalConsultation = completedConsultations.at(-1)?._id;
+    // Group consultations by caseId
+    const grouped = {};
+    consultations.forEach(c => {
+      const caseId = c.appointment?.caseId;
+      if (!caseId) return;
 
-    consultations.forEach((c, index) => {
-      let phaseType = 'middle';
-      if (index === 0) phaseType = 'initial';
-      if (c._id.equals(finalConsultation)) phaseType = 'final';
-
-      progress.push({
-        type: 'consultation',
-        phase: phaseType,
-        date: c.date,
-        doctor: c.doctor,
-        department: c.department,
-        data: c.consultationData,
-        status: c.status,
-        caseId: c.appointment?.caseId
-      });
+      if (!grouped[caseId]) grouped[caseId] = [];
+      grouped[caseId].push(c);
     });
 
-    // 4. Collect caseIds and fetch progress phases
-    const caseIds = consultations.map(c => c.appointment?.caseId).filter(Boolean);
+    for (const caseId in grouped) {
+      const group = grouped[caseId];
 
-    const phases = await ProgressPhase.find({ caseId: { $in: caseIds } })
-      .populate('assignedDoctor', 'name');
+      group.forEach((c, index) => {
+        let phaseType = 'middle';
+        if (index === 0) phaseType = 'initial';
+        if (index === group.length - 1) phaseType = 'final';
 
-    // 5. Append progress phases
-    for (const p of phases) {
-      progress.push({
-        type: 'phase',
-        phase: null,
-        date: p.date,
-        doctor: p.assignedDoctor,
-        data: {
-          title: p.title,
-          description: p.description,
-          files: p.files,
-        },
-        isCompleted: p.isCompleted,
-        caseId: p.caseId
+        // Mark latest consultation as "ongoing", others as "completed"
+        const logicalStatus = index === group.length - 1 ? 'ongoing' : 'completed';
+
+        progress.push({
+          type: 'consultation',
+          phase: phaseType,
+          date: c.date,
+          doctor: c.doctor,
+          department: c.department,
+          data: c.consultationData,
+          status: logicalStatus,
+          caseId
+        });
       });
     }
 
-    // 6. Final sort
+    // Get all unique caseIds from consultations
+    const caseIds = Object.keys(grouped);
+
+    // Fetch progress phases
+    const phases = await ProgressPhase.find({ caseId: { $in: caseIds } })
+      .populate('assignedDoctor', 'name')
+      .sort({ date: 1 }); // ensure phases are sorted for each caseId
+
+    // Group phases by caseId
+    const phaseGrouped = {};
+    phases.forEach(p => {
+      if (!phaseGrouped[p.caseId]) phaseGrouped[p.caseId] = [];
+      phaseGrouped[p.caseId].push(p);
+    });
+
+    // Append phases to progress with status logic
+    for (const caseId in phaseGrouped) {
+      const casePhases = phaseGrouped[caseId];
+
+      casePhases.forEach((p, index) => {
+        const status = index === casePhases.length - 1 ? 'ongoing' : 'completed';
+
+        progress.push({
+          type: 'phase',
+          date: p.date,
+          doctor: p.assignedDoctor,
+          data: {
+            title: p.title,
+            description: p.description,
+            files: p.files,
+          },
+          status,
+          caseId
+        });
+      });
+    }
+
+    // Final sort by date across all items
     progress.sort((a, b) => new Date(a.date) - new Date(b.date));
 
     res.status(200).json({
@@ -393,7 +420,6 @@ export const addProgressPhase = async (req, res) => {
       title,
       date,
       assignedDoctor,
-      isDone,
       description,
       files
     } = req.body;
@@ -402,13 +428,23 @@ export const addProgressPhase = async (req, res) => {
       return res.status(400).json({ message: 'Required fields are missing' });
     }
 
+    // Step 1: Complete the last existing phase for this caseId
+    const lastPhase = await ProgressPhase.findOne({ caseId })
+      .sort({ date: -1 }); // latest first
+
+    if (lastPhase && !lastPhase.isCompleted) {
+      lastPhase.isCompleted = true;
+      await lastPhase.save();
+    }
+
+    // Step 2: Create the new phase as ongoing (isCompleted: false)
     const newPhase = await ProgressPhase.create({
       caseId,
       patient,
       title,
       date,
       assignedDoctor,
-      isDone,
+      isCompleted: false, // new phase is ongoing
       description,
       files
     });
@@ -423,6 +459,7 @@ export const addProgressPhase = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 
 export const updateConsultation = async (req, res) => {
   try {

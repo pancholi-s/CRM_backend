@@ -4,16 +4,15 @@ import MedicalRecord from "../models/medicalRecordsModel.js";
 // Record vitals dynamically
 export const recordVitals = async (req, res) => {
   try {
-    const { patient, recordedBy, caseId, vitals } = req.body;
+    const { patient, recordedBy, vitals } = req.body;
 
-    if (!patient || !recordedBy || !caseId || !vitals || typeof vitals !== 'object') {
-      return res.status(400).json({ message: "Patient, recordedBy, caseId, and vitals (object) are required." });
+    if (!patient || !recordedBy || !vitals || typeof vitals !== 'object') {
+      return res.status(400).json({ message: "Patient, recordedBy, and vitals (object) are required." });
     }
 
     const newVitals = await Vitals.create({
       patient,
       recordedBy,
-      caseId,
       vitals,
       recordedAt: new Date()
     });

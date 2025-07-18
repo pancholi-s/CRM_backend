@@ -13,7 +13,7 @@ router.use(requireHospitalContext);
 router.post('/createAdmissionRequest',authorizeRoles("hospitalAdmin","doctor"), createAdmissionRequest);
 router.put('/approveAdmissionRequest/:requestId', authorizeRoles("hospitalAdmin","doctor"),approveAdmissionRequest);
 router.post('/admitPatient/:requestId', admitPatient);
-router.get('/admissionRequests', getAdmissionRequests);
+router.get('/getAdmissionRequests', getAdmissionRequests);
 router.get('/approvedAdmissions', getApprovedAdmissions);
 router.get('/admittedPatients', getAdmittedPatients);
 
