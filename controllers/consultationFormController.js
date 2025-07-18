@@ -1,51 +1,37 @@
 import ConsultationForm from "../models/consultationFormModel.js";
 
+// Create
 export const createConsultationForm = async (req, res) => {
   try {
-    const { patientId, title, sampleQuestion, predefinedFields = {}, customFields = [] } = req.body;
-
+    const { title, sections } = req.body;
     const hospitalId = req.session?.hospitalId;
     const doctorId = req.user?._id;
 
-    if (!hospitalId || !doctorId || !patientId || !title) {
-      return res.status(400).json({ message: "Missing required fields." });
+    if (!hospitalId || !doctorId || !title || !Array.isArray(sections)) {
+      return res.status(400).json({ message: "Missing required fields or sections format." });
     }
-
-    // Default fields: can be overridden or extended
-    const defaultPredefinedFields = {
-      symptoms: [],
-      diagnosis: ""
-    };
-
-    const mergedPredefinedFields = {
-      ...defaultPredefinedFields,
-      ...predefinedFields
-    };
 
     const newForm = await ConsultationForm.create({
       hospital: hospitalId,
       doctor: doctorId,
-      patient: patientId,
       title,
-      sampleQuestion,
-      predefinedFields: mergedPredefinedFields,
-      customFields,
+      sections,
     });
 
     res.status(201).json({
       message: "Form created successfully",
       form: newForm,
     });
-
   } catch (error) {
-    console.error("Error creating form:", error);
+    console.error("Error creating consultation form:", error);
     res.status(500).json({ message: "Failed to create form." });
   }
 };
 
+// Get All (with filters and pagination)
 export const getConsultationForms = async (req, res) => {
   try {
-    const { patientId, doctorId, page = 1, limit = 10 } = req.query;
+    const { doctorId, page = 1, limit = 10 } = req.query;
     const hospitalId = req.session?.hospitalId;
 
     if (!hospitalId) {
@@ -54,7 +40,6 @@ export const getConsultationForms = async (req, res) => {
 
     const filter = { hospital: hospitalId };
     if (doctorId) filter.doctor = doctorId;
-    if (patientId) filter.patient = patientId;
 
     const pageNumber = parseInt(page);
     const limitNumber = parseInt(limit);
@@ -63,7 +48,6 @@ export const getConsultationForms = async (req, res) => {
     const total = await ConsultationForm.countDocuments(filter);
     const forms = await ConsultationForm.find(filter)
       .populate("doctor", "name email")
-      .populate("patient", "name age gender")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limitNumber);
@@ -81,11 +65,11 @@ export const getConsultationForms = async (req, res) => {
   }
 };
 
+// Get By ID
 export const getConsultationFormById = async (req, res) => {
   try {
     const form = await ConsultationForm.findById(req.params.id)
-      .populate("doctor", "name email")
-      .populate("patient", "name age gender");
+      .populate("doctor", "name email");
 
     if (!form) {
       return res.status(404).json({ message: "Form not found" });
@@ -98,15 +82,11 @@ export const getConsultationFormById = async (req, res) => {
   }
 };
 
+// Update
 export const updateConsultationForm = async (req, res) => {
   try {
     const formId = req.params.id;
-    const {
-      title,
-      predefinedFields,
-      customFields,
-      patientId
-    } = req.body;
+    const { title, sections } = req.body;
 
     const form = await ConsultationForm.findById(formId);
 
@@ -115,48 +95,34 @@ export const updateConsultationForm = async (req, res) => {
     }
 
     if (title !== undefined) form.title = title;
-
-    if (patientId !== undefined) form.patient = patientId;
-
-    if (predefinedFields && typeof predefinedFields === "object") {
-      for (const [key, value] of Object.entries(predefinedFields)) {
-        form.predefinedFields.set(key, value);
-      }
-    }
-
-    if (Array.isArray(customFields)) {
-      form.customFields = customFields;
+    if (sections !== undefined && Array.isArray(sections)) {
+      form.sections = sections;
     }
 
     const updatedForm = await form.save();
 
     const populatedForm = await ConsultationForm.findById(updatedForm._id)
-      .populate("doctor", "name email")
-      .populate("patient", "name age gender");
+      .populate("doctor", "name email");
 
     res.status(200).json({
       message: "Form updated successfully",
-      form: populatedForm
+      form: populatedForm,
     });
-
   } catch (error) {
     console.error("Error updating form:", error);
     res.status(500).json({ message: "Failed to update form." });
   }
 };
 
+// Delete
 export const deleteConsultationForm = async (req, res) => {
   try {
-    const formId = req.params.id;
-
-    const form = await ConsultationForm.findById(formId);
-
+    const form = await ConsultationForm.findById(req.params.id);
     if (!form) {
       return res.status(404).json({ message: "Form not found." });
     }
 
-    await ConsultationForm.findByIdAndDelete(formId);
-
+    await ConsultationForm.findByIdAndDelete(req.params.id);
     res.status(200).json({ message: "Form deleted successfully." });
   } catch (error) {
     console.error("Error deleting form:", error);
