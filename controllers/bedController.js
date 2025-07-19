@@ -445,3 +445,75 @@ export const getHospitalStatistics = async (req, res) => {
     });
   }
 };
+
+export const getPatientBedInfo = async (req, res) => {
+  const { patientId } = req.params;
+  const hospitalId = req.session.hospitalId;
+
+  if (!hospitalId) {
+    return res.status(403).json({
+      message: "Unauthorized access. Hospital ID not found in session.",
+    });
+  }
+
+  try {
+    const bed = await Bed.findOne({
+      hospital: hospitalId,
+      assignedPatient: patientId,
+      status: "Occupied",
+    })
+      .populate("room")
+      .populate("assignedPatient")
+      .lean();
+
+    if (!bed) {
+      return res.status(404).json({
+        message: "No active bed assignment found for this patient.",
+      });
+    }
+
+    const {
+      bedNumber,
+      bedType,
+      features,
+      assignedDate,
+      room,
+      assignedPatient,
+    } = bed;
+
+    const bedInfo = {
+      bedNumber,
+      bedType,
+      features,
+      assignedDate,
+    };
+
+    const roomInfo = {
+      roomID: room.roomID,
+      name: room.name,
+      roomType: room.roomType,
+      ward: room.ward,
+      floor: room.floor,
+    };
+
+    const patientInfo = {
+      name: assignedPatient.name,
+      patientID: assignedPatient.patientID,
+      age: assignedPatient.age,
+      gender: assignedPatient.gender,
+    };
+
+    res.status(200).json({
+      message: "Patient bed and room info retrieved successfully.",
+      patientInfo,
+      bedInfo,
+      roomInfo,
+    });
+  } catch (error) {
+    console.error("Error retrieving bed info:", error);
+    res.status(500).json({
+      message: "Internal server error.",
+      error: error.message,
+    });
+  }
+};

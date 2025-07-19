@@ -5,6 +5,7 @@ import {
   assignPatientToBed,
   dischargePatientFromBed,
   getHospitalStatistics,
+  getPatientBedInfo,
 } from "../controllers/bedController.js";
 import { authorizeRoles } from "../middleware/roleMiddleware.js";
 import { requireHospitalContext } from "../middleware/hospitalContext.js";
@@ -45,5 +46,13 @@ router.get(
   authorizeRoles("hospitalAdmin", "doctor", "receptionist"),
   getHospitalStatistics
 );
+
+router.get(
+  "/patients/:patientId/bed-info",
+  requireHospitalContext,
+  authorizeRoles("hospitalAdmin", "doctor", "receptionist"),
+  getPatientBedInfo
+);
+
 
 export default router;
