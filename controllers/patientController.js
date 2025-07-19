@@ -17,7 +17,9 @@ export const getPatientsByHospital = async (req, res) => {
     const sortOrder = req.query.sort === "asc" ? 1 : -1; // Default: Newest first (desc)
 
     // Fetch total count of patients
-    const totalPatients = await Patient.countDocuments({ hospital: hospitalId });
+    const totalPatients = await Patient.countDocuments({
+      hospital: hospitalId,
+    });
 
     // Fetch and sort patients before pagination
     const patients = await Patient.find({ hospital: hospitalId })
@@ -35,7 +37,9 @@ export const getPatientsByHospital = async (req, res) => {
       .limit(limit);
 
     if (!patients || patients.length === 0) {
-      return res.status(404).json({ message: "No patients found for this hospital" });
+      return res
+        .status(404)
+        .json({ message: "No patients found for this hospital" });
     }
 
     console.log("Fetched Patients:", JSON.stringify(patients, null, 2));
@@ -44,10 +48,10 @@ export const getPatientsByHospital = async (req, res) => {
     const patientData = await Promise.all(
       patients.map(async (patient) => {
         const consultations = await Consultation.find({ patient: patient._id })
-            .populate("doctor", "name")
-            .populate("department", "name")
-            .populate("appointment", "caseId tokenDate status")
-            .lean();
+          .populate("doctor", "name")
+          .populate("department", "name")
+          .populate("appointment", "caseId tokenDate status")
+          .lean();
 
         const bills = await Bill.find({ patient: patient._id })
           .populate("doctor", "name _id")
@@ -93,7 +97,9 @@ export const getPatientsByHospital = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching patients:", error);
-    res.status(500).json({ message: "Failed to fetch patients", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Failed to fetch patients", error: error.message });
   }
 };
 
@@ -104,19 +110,23 @@ export const getPatientsByStatus = async (req, res) => {
     const hospitalId = req.session.hospitalId;
 
     if (!hospitalId) {
-      return res.status(403).json({ message: "Access denied. No hospital context found." });
+      return res
+        .status(403)
+        .json({ message: "Access denied. No hospital context found." });
     }
 
     // Construct dynamic filter
     const filter = { hospital: hospitalId };
-    
+
     if (status) {
-      if (!['active', 'inactive'].includes(status)) {
-        return res.status(400).json({ message: "Invalid status. Use 'active' or 'inactive'." });
+      if (!["active", "inactive"].includes(status)) {
+        return res
+          .status(400)
+          .json({ message: "Invalid status. Use 'active' or 'inactive'." });
       }
       filter.status = status;
     }
-    
+
     if (typeVisit) {
       filter.typeVisit = typeVisit;
     }
@@ -170,7 +180,9 @@ export const getPatientsByStatus = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching patients by status:", error);
-    res.status(500).json({ message: "Failed to fetch patients.", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Failed to fetch patients.", error: error.message });
   }
 };
 
@@ -191,7 +203,9 @@ export const getAppointmentsByPatientId = async (req, res) => {
       .sort({ tokenDate: -1 }); // recent first
 
     if (!appointments || appointments.length === 0) {
-      return res.status(404).json({ message: "No appointments found for this patient." });
+      return res
+        .status(404)
+        .json({ message: "No appointments found for this patient." });
     }
 
     return res.status(200).json({
@@ -209,6 +223,79 @@ export const getAppointmentsByPatientId = async (req, res) => {
 };
 
 // Get Patient Details by ID
+// export const getPatientDetailsById = async (req, res) => {
+//   try {
+//     const { patientId } = req.params;
+
+//     if (!patientId) {
+//       return res.status(400).json({ message: "Patient ID is required." });
+//     }
+
+//     const patient = await Patient.findById(patientId)
+//       .select("-password") // hide password
+//       .populate("doctors", "name email specialization")
+//       .populate("department", "name")
+//       .populate({
+//         path: "appointments",
+//         populate: [
+//           { path: "doctor", select: "name specialization" },
+//           { path: "department", select: "name" },
+//           { path: "hospital", select: "name" },
+//         ],
+//       });
+
+//     if (!patient) {
+//       return res.status(404).json({ message: "Patient not found." });
+//     }
+
+//     const consultations = await Consultation.find({ patient: patient._id })
+//       .populate("doctor", "name")
+//       .populate("department", "name")
+//       .populate("appointment", "caseId tokenDate status")
+//       .lean();
+
+//     // const bills = await Bill.find({ patient: patient._id })
+//     //   .populate("doctor", "name _id")
+//     //   .populate("hospital", "name _id")
+//     //   .populate("services.service")
+//     //   .lean();
+
+//       // Extract from latest consultation
+//       const latestConsultationData =
+//       consultations?.length > 0
+//         ? consultations[consultations.length - 1]?.consultationData || null
+//         : null;
+
+//       // Prepare extra fields
+//       const additionalFields = {
+//         bloodGroup: latestConsultationData?.bloodGroup ?? null,
+//         visitType: latestConsultationData?.visitType ?? null,
+//         condition: latestConsultationData?.condition ?? null,
+//         emergencyContact: latestConsultationData?.emergencyContact ?? null,
+//         relationship: latestConsultationData?.relationship ?? null,
+//         emergencyContactName: latestConsultationData?.emergencyContactName ?? null,
+//         MRN: latestConsultationData?.MRN ?? null,
+//         admittingBy: latestConsultationData?.admittingBy ?? null,
+//         admissionDateTime: latestConsultationData?.admissionDateTime ?? null,
+//       };
+
+//     return res.status(200).json({
+//       message: "Patient details retrieved successfully.",
+//       data: {
+//         ...patient.toObject(),
+//         consultations,
+//         bills,
+//         ...additionalFields, // Include additional fields
+//       },
+//     });
+//   } catch (error) {
+//     console.error("Error fetching patient details:", error);
+//     return res
+//       .status(500)
+//       .json({ message: "Failed to fetch patient details.", error: error.message });
+//   }
+// };
+
 export const getPatientDetailsById = async (req, res) => {
   try {
     const { patientId } = req.params;
@@ -218,67 +305,52 @@ export const getPatientDetailsById = async (req, res) => {
     }
 
     const patient = await Patient.findById(patientId)
-      .select("-password") // hide password
+      .select("-password -appointments -files -__v")
       .populate("doctors", "name email specialization")
       .populate("department", "name")
-      .populate({
-        path: "appointments",
-        populate: [
-          { path: "doctor", select: "name specialization" },
-          { path: "department", select: "name" },
-          { path: "hospital", select: "name" },
-        ],
-      });
+      .lean();
 
     if (!patient) {
       return res.status(404).json({ message: "Patient not found." });
     }
 
-    const consultations = await Consultation.find({ patient: patient._id })
+    const consultations = await Consultation.find({ patient: patientId })
       .populate("doctor", "name")
       .populate("department", "name")
-      .populate("appointment", "caseId tokenDate status")
+      .sort({ date: -1 })
       .lean();
 
-    const bills = await Bill.find({ patient: patient._id })
-      .populate("doctor", "name _id")
-      .populate("hospital", "name _id")
-      .populate("services.service")
-      .lean();
+    const latestConsultation =
+      consultations.length > 0 ? consultations[0] : null;
+    const latestConsultationData = latestConsultation?.consultationData || null;
 
-      // Extract from latest consultation
-      const latestConsultationData =
-      consultations?.length > 0
-        ? consultations[consultations.length - 1]?.consultationData || null
-        : null;
-
-      // Prepare extra fields
-      const additionalFields = {
-        bloodGroup: latestConsultationData?.bloodGroup ?? null,
-        visitType: latestConsultationData?.visitType ?? null,
-        condition: latestConsultationData?.condition ?? null,
-        emergencyContact: latestConsultationData?.emergencyContact ?? null,
-        relationship: latestConsultationData?.relationship ?? null,
-        emergencyContactName: latestConsultationData?.emergencyContactName ?? null,
-        MRN: latestConsultationData?.MRN ?? null,
-        admittingBy: latestConsultationData?.admittingBy ?? null,
-        admissionDateTime: latestConsultationData?.admissionDateTime ?? null,
-      };
+    const additionalFields = {
+      bloodGroup: latestConsultationData?.bloodGroup ?? null,
+      visitType: latestConsultationData?.visitType ?? null,
+      condition: latestConsultationData?.condition ?? null,
+      emergencyContact: latestConsultationData?.emergencyContact ?? null,
+      relationship: latestConsultationData?.relationship ?? null,
+      emergencyContactName:
+        latestConsultationData?.emergencyContactName ?? null,
+      MRN: latestConsultationData?.MRN ?? null,
+      admittingBy: latestConsultationData?.admittingBy ?? null,
+      admissionDateTime: latestConsultationData?.admissionDateTime ?? null,
+    };
 
     return res.status(200).json({
       message: "Patient details retrieved successfully.",
       data: {
-        ...patient.toObject(),
+        ...patient,
         consultations,
-        bills,
-        ...additionalFields, // Include additional fields
+        ...additionalFields,
       },
     });
   } catch (error) {
     console.error("Error fetching patient details:", error);
-    return res
-      .status(500)
-      .json({ message: "Failed to fetch patient details.", error: error.message });
+    return res.status(500).json({
+      message: "Failed to fetch patient details.",
+      error: error.message,
+    });
   }
 };
 
@@ -311,3 +383,4 @@ export const updateHealthStatus = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+

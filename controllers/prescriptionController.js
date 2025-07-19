@@ -3,25 +3,27 @@ import { getAIPrescription } from "../utils/openaiHelper.js";
 
 export const generatePrescription = async (req, res) => {
   try {
-    const { patientId, medicalHistory, currentMedications, diagnosisVitals } =
+    const { patientId, medicalHistory} =
       req.body;
     const doctorId = req.user._id;
     const hospitalId = req.session.hospitalId;
 
     if (
       !patientId ||
-      !medicalHistory ||
-      !currentMedications ||
-      !diagnosisVitals
+      !medicalHistory
     ) {
-      return res.status(400).json({ message: "All fields are required." });
+      return res.status(400).json({ message: "Patient ID and medical history are required." });
     }
 
     const inputData = {
       medicalHistory,
-      currentMedications,
-      diagnosisVitals,
     };
+
+    Object.entries(req.body).forEach(([key, value]) => {
+      if (!inputData[key] && key !== "patientId") {
+        inputData[key] = value;
+      }
+    });
 
     const aiResponse = await getAIPrescription(inputData);
 

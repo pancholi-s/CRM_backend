@@ -817,7 +817,7 @@ export const getAppointments = async (req, res) => {
 
       const total = await RejectedAppointment.countDocuments(filter);
       const appointments = await RejectedAppointment.find(filter)
-        .populate("patient", "name email phone")
+        .populate("patient", "patId name email phone")
         .populate("doctor", "name specialization email")
         .populate("department", "name")
         .populate("hospital", "name address")
@@ -879,6 +879,54 @@ export const getAppointments = async (req, res) => {
   } catch (error) {
     console.error("Error fetching appointments:", error);
     res.status(500).json({ message: "Error fetching appointments", error: error.message });
+  }
+};
+
+export const getAppointmentHistory = async (req, res) => {
+  try {
+    const hospitalId = req.session.hospitalId;
+    if (!hospitalId) {
+      return res.status(403).json({ message: "Access denied. No hospital context found." });
+    }
+
+    const { page = 1, limit = 10 } = req.query;
+    const skip = (page - 1) * limit;
+
+    // Get all appointments for the hospital, sorted by date (newest first)
+    const appointments = await Appointment.find({ hospital: hospitalId })
+      .populate("patient", "name phone")
+      .populate("doctor", "phone")
+      .sort({ tokenDate: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    // Format the data to match the UI requirements
+    const formattedAppointments = appointments.map(appointment => ({
+      caseId: appointment.caseId,
+      name: appointment.patient?.name || 'N/A',
+      phone: appointment.doctor?.phone || 'N/A',
+      typeVisit: appointment.typeVisit,
+      token: appointment.tokenNumber || 'N/A',
+      date: moment(appointment.tokenDate).format('DD-MM-YYYY'),
+      status: appointment.status
+    }));
+
+    const totalAppointments = await Appointment.countDocuments({ hospital: hospitalId });
+
+    res.status(200).json({
+      message: "Appointment history retrieved successfully",
+      appointments: formattedAppointments,
+      totalAppointments,
+      totalPages: Math.ceil(totalAppointments / limit),
+      currentPage: parseInt(page)
+    });
+
+  } catch (error) {
+    console.error("Error fetching appointment history:", error);
+    res.status(500).json({ 
+      message: "Error fetching appointment history",
+      error: error.message 
+    });
   }
 };
 
