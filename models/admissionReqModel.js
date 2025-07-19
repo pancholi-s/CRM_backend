@@ -8,7 +8,7 @@ const admissionRequestSchema = new mongoose.Schema({
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // staff who submitted
   status: {
     type: String,
-    enum: ['Pending', 'Approved', 'Rejected',"Admitted"],
+    enum: ['Pending', 'Approved', 'Rejected',"Admitted","discharged"],
     default: 'Pending'
   },
   sendTo: {

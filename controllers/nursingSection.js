@@ -64,6 +64,7 @@ export const addMedicalRecord = async (req, res) => {
         dose: med.dose,
         route: med.route,
         time: med.time,
+        date: med.date || new Date(),
         givenBy: med.givenBy || "",
         notes: med.notes || "",
         status: med.status || "Scheduled"
@@ -81,6 +82,7 @@ export const addMedicalRecord = async (req, res) => {
     res.status(500).json({ message: "Internal server error", error: error.message });
   }
 };
+
 
 
 export const updateMedicationAction = async (req, res) => {

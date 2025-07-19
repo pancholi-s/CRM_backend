@@ -353,3 +353,34 @@ export const getPatientDetailsById = async (req, res) => {
     });
   }
 };
+
+export const updateHealthStatus = async (req, res) => {
+  try {
+    const { patientId } = req.params;
+    const { status } = req.body; // Expected: "Normal" or "Critical"
+
+    if (!["Normal", "Critical"].includes(status)) {
+      return res.status(400).json({ message: "Invalid status value" });
+    }
+
+    const patient = await Patient.findByIdAndUpdate(
+      patientId,
+      { healthStatus: status },
+      { new: true }
+    );
+
+    if (!patient) {
+      return res.status(404).json({ message: "Patient not found" });
+    }
+
+    res.status(200).json({
+      message: `Patient health status updated to ${status}`,
+      patient
+    });
+
+  } catch (error) {
+    console.error("Error updating health status:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
