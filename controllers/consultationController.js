@@ -340,11 +340,16 @@ export const getProgressTracker = async (req, res) => {
 
       group.forEach((c, index) => {
         let phaseType = 'middle';
-        if (index === 0) phaseType = 'initial';
-        if (index === group.length - 1) phaseType = 'final';
+        const isFirst = index === 0;
+        const isLast = index === group.length - 1;
 
-        // Mark latest consultation as "ongoing", others as "completed"
-        const logicalStatus = index === group.length - 1 ? 'ongoing' : 'completed';
+        if (isFirst) {
+          phaseType = 'initial';
+        } else if (isLast && c.status === 'completed') {
+          phaseType = 'final';
+        }
+
+        const logicalStatus = c.status === 'completed' ? 'completed' : 'ongoing';
 
         progress.push({
           type: 'consultation',
@@ -410,8 +415,6 @@ export const getProgressTracker = async (req, res) => {
   }
 };
 
-
-
 export const addProgressPhase = async (req, res) => {
   try {
     const {
@@ -421,30 +424,38 @@ export const addProgressPhase = async (req, res) => {
       date,
       assignedDoctor,
       description,
-      files
+      files,
+      isFinalPhase // <- boolean flag to mark final
     } = req.body;
 
     if (!caseId || !patient || !title || !assignedDoctor) {
       return res.status(400).json({ message: 'Required fields are missing' });
     }
 
-    // Step 1: Complete the last existing phase for this caseId
-    const lastPhase = await ProgressPhase.findOne({ caseId })
-      .sort({ date: -1 }); // latest first
+    // Step 1: Check if a "final" phase already exists for this caseId
+    const finalExists = await ProgressPhase.exists({ caseId, title: "final" });
+    if (finalExists) {
+      return res.status(400).json({ message: 'Cannot add more phases. Final phase already exists.' });
+    }
 
+    // Step 2: Mark previous phase as completed
+    const lastPhase = await ProgressPhase.findOne({ caseId }).sort({ date: -1 });
     if (lastPhase && !lastPhase.isCompleted) {
       lastPhase.isCompleted = true;
       await lastPhase.save();
     }
 
-    // Step 2: Create the new phase as ongoing (isCompleted: false)
+    // Step 3: Determine title
+    const phaseTitle = isFinalPhase ? 'final' : title;
+
+    // Step 4: Create new phase
     const newPhase = await ProgressPhase.create({
       caseId,
       patient,
-      title,
+      title: phaseTitle,
       date,
       assignedDoctor,
-      isCompleted: false, // new phase is ongoing
+      isCompleted: false,
       description,
       files
     });
@@ -459,6 +470,7 @@ export const addProgressPhase = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 
 
 export const updateConsultation = async (req, res) => {
