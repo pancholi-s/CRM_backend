@@ -91,6 +91,18 @@ const parsePrescriptionTextToObject = (text) => {
 };
 
 export const getAIPrescription = async (inputData) => {
+  let patientInfo = `Medical History: ${JSON.stringify(
+    inputData.medicalHistory
+  )}\n`;
+
+  Object.entries(inputData).forEach(([key, value]) => {
+    if (key !== "medicalHistory" && value) {
+      patientInfo += `${key.replace(/([A-Z])/g, " $1")}: ${JSON.stringify(
+        value
+      )}\n`;
+    }
+  });
+
   const prompt = `
 You are a clinical assistant AI. Based on the following patient details, generate a short but complete structured prescription note.
 
@@ -113,9 +125,7 @@ Use exactly the following SECTIONS as HEADERS (no explanation, no extras):
 → For Follow-Up Instructions, clearly include "Review Date:" and "Notes:".
 
 Patient Info:
-Medical History: ${JSON.stringify(inputData.medicalHistory)}
-Current Medications: ${JSON.stringify(inputData.currentMedications)}
-Diagnosis & Vitals: ${JSON.stringify(inputData.diagnosisVitals)}
+${patientInfo}
 
 Only generate the structured draft. No explanation, no extra text.
 `;
