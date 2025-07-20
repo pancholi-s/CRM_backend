@@ -259,6 +259,11 @@ export const getMostCommonDiagnoses = async (req, res) => {
           date: { $gte: thisYearStart },
           "consultationData.diagnosis": { $exists: true, $ne: null },
         },
+            // $match: {
+            //   department: { $exists: true },
+            //   date: { $gte: thisYearStart },
+            //   "consultationData.referralTracking.primaryDiagnosis": { $exists: true, $ne: null },
+            // },
       },
       {
         $facet: {
@@ -268,6 +273,10 @@ export const getMostCommonDiagnoses = async (req, res) => {
                 _id: "$consultationData.diagnosis",
                 count: { $sum: 1 },
               },
+                  // $group: {
+                  //   _id: "$consultationData.referralTracking.primaryDiagnosis",
+                  //   count: { $sum: 1 }
+                  // },
             },
             { $sort: { count: -1 } },
             { $limit: 5 },
@@ -277,6 +286,9 @@ export const getMostCommonDiagnoses = async (req, res) => {
               $group: {
                 _id: "$consultationData.diagnosis",
               },
+                  // $group: {
+                  //   _id: "$consultationData.referralTracking.primaryDiagnosis",
+                  // },
             },
             {
               $count: "total",

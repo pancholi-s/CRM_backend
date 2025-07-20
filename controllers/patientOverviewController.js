@@ -1,6 +1,7 @@
 import Patient from "../models/patientModel.js";
 import Appointment from "../models/appointmentModel.js";
 import Bed from "../models/bedModel.js";
+import Consultation from "../models/consultationModel.js";
 import mongoose from "mongoose";
 
 // Dashboard Overview Controller
@@ -46,6 +47,42 @@ export const getPatientOverview = async (req, res) => {
     const patientMatchConditions = { hospital: hospitalId };
     if (departmentId) patientMatchConditions.department = departmentId;
 
+    // Count inpatients using the same logic as getInpatients()
+    const [admittedPatients, followUpConsultations] = await Promise.all([
+      Patient.find({
+        ...patientMatchConditions,
+        admissionStatus: "Admitted"
+      }).select("_id").lean(),
+      
+      Consultation.find({
+        followUpRequired: true
+      })
+      .populate({
+        path: "patient",
+        match: patientMatchConditions,
+        select: "_id"
+      })
+      .select("patient")
+      .lean()
+    ]);
+
+    // Get unique inpatient IDs (same logic as getInpatients)
+    const inpatientSet = new Set();
+    
+    // Add admitted patients
+    admittedPatients.forEach(patient => {
+      inpatientSet.add(patient._id.toString());
+    });
+    
+    // Add follow-up patients
+    followUpConsultations
+      .filter(consultation => consultation.patient)
+      .forEach(consultation => {
+        inpatientSet.add(consultation.patient._id.toString());
+      });
+
+    const totalInpatients = inpatientSet.size;
+
     const [admitted, discharged, scheduled, opd, totalCases] =
       await Promise.all([
         Patient.countDocuments({
@@ -75,7 +112,7 @@ export const getPatientOverview = async (req, res) => {
         toDate,
       },
       totalCases,
-      totalInpatients: admitted,
+      totalInpatients, // Now matches getInpatients() logic
       totalOutpatients: opd,
       overview: {
         admitted,
