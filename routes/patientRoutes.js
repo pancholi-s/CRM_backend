@@ -4,7 +4,7 @@ import { authorizeRoles } from "../middleware/roleMiddleware.js";
 import { requireHospitalContext } from '../middleware/hospitalContext.js';
 import { paginationMiddleware } from '../middleware/paginationMiddleware.js';
 
-import { getPatientsByHospital, getPatientsByStatus,getAppointmentsByPatientId, getPatientDetailsById,updateHealthStatus  } from "../controllers/patientController.js"
+import { getPatientsByHospital, getPatientsByStatus,getAppointmentsByPatientId, getPatientDetailsById,getInpatients, getPatientsInSurgery,updateHealthStatus  } from "../controllers/patientController.js"
 
 const router = express.Router()
 router.use(requireHospitalContext);
@@ -22,4 +22,19 @@ router.get(
   authorizeRoles("receptionist", "hospitalAdmin", "doctor"),
   getPatientDetailsById
 );
+
+router.get(
+  "/getInpatients", 
+  authorizeRoles("doctor", "receptionist", "hospitalAdmin"), 
+  getInpatients,
+  paginationMiddleware
+);
+
+router.get(
+  "/getpatientsinsurgery", 
+  authorizeRoles("doctor", "receptionist", "hospitalAdmin"), 
+  getPatientsInSurgery,
+  paginationMiddleware
+);
+
 export default router;
