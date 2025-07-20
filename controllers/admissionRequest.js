@@ -12,11 +12,11 @@ export const createAdmissionRequest = async (req, res) => {
       return res.status(403).json({ message: "No hospital context found." });
     }
 
-    const { patientPatId, doctor, sendTo, admissionDetails } = req.body;
+    const { patId, doctor, sendTo, admissionDetails } = req.body;
     const createdBy = req.user._id;
 
     // 1. Validate patient using patId
-    const patient = await Patient.findOne({ patId: patientPatId, hospital: hospitalId });
+    const patient = await Patient.findOne({ patId: patId, hospital: hospitalId });
     if (!patient) {
       return res.status(404).json({ message: "Patient not found with given patId." });
     }
@@ -151,8 +151,8 @@ export const admitPatient = async (req, res) => {
       return res.status(400).json({ message: 'Admission request is not yet approved.' });
     }
 
-    const roomId = admissionRequest.admissionDetails.room;
-    const bedId = admissionRequest.admissionDetails.bed;
+    const roomId = admissionRequest.admissionDetails.room?._id || admissionRequest.admissionDetails.room;
+    const bedId = admissionRequest.admissionDetails.bed?._id || admissionRequest.admissionDetails.bed;
 
     if (!roomId || !bedId) {
       await session.abortTransaction();
@@ -172,21 +172,28 @@ export const admitPatient = async (req, res) => {
       return res.status(400).json({ message: 'Bed is not available or reserved.' });
     }
 
-    // Update patient admission status
-    await Patient.findByIdAndUpdate(admissionRequest.patient._id, {
-      admissionStatus: 'Admitted'
-    }, { session });
+    // ✅ Update patient admission status
+    const updatedPatient = await Patient.findOneAndUpdate(
+      { _id: admissionRequest.patient._id },
+      { admissionStatus: 'Admitted' },
+      { session, new: true }
+    );
 
-    // Assign bed
+    if (!updatedPatient) {
+      await session.abortTransaction();
+      return res.status(500).json({ message: 'Failed to update patient admission status.' });
+    }
+
+    // ✅ Assign bed to patient
     bed.status = 'Occupied';
     bed.assignedPatient = admissionRequest.patient._id;
     bed.assignedDate = new Date();
     await bed.save({ session });
 
-    // Update room status
+    // ✅ Update room bed availability
     await room.updateAvailableBeds();
 
-    // Finalize admission
+    // ✅ Finalize admission request
     admissionRequest.status = 'Admitted';
     await admissionRequest.save({ session });
 
@@ -195,6 +202,11 @@ export const admitPatient = async (req, res) => {
     res.status(200).json({
       message: 'Patient successfully admitted.',
       admissionRequestId: admissionRequest._id,
+      updatedPatient: {
+        id: updatedPatient._id,
+        name: updatedPatient.name,
+        admissionStatus: updatedPatient.admissionStatus,
+      }
     });
 
   } catch (error) {
@@ -205,6 +217,7 @@ export const admitPatient = async (req, res) => {
     session.endSession();
   }
 };
+
 
 export const getAdmissionRequests = async (req, res) => {
   try {
