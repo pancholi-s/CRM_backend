@@ -3,6 +3,7 @@ import Bed from '../models/bedModel.js';
 import Room from '../models/roomModel.js';
 import Patient from '../models/patientModel.js';
 import Consultation from '../models/consultationModel.js';
+import Discharge from '../models/DischargeModel.js';
 
 export const createAdmissionRequest = async (req, res) => {
   try {
@@ -11,11 +12,11 @@ export const createAdmissionRequest = async (req, res) => {
       return res.status(403).json({ message: "No hospital context found." });
     }
 
-    const { patientPatId, doctor, sendTo, admissionDetails } = req.body;
+    const { patId, doctor, sendTo, admissionDetails } = req.body;
     const createdBy = req.user._id;
 
     // 1. Validate patient using patId
-    const patient = await Patient.findOne({ patId: patientPatId, hospital: hospitalId });
+    const patient = await Patient.findOne({ patId: patId, hospital: hospitalId });
     if (!patient) {
       return res.status(404).json({ message: "Patient not found with given patId." });
     }
@@ -150,8 +151,8 @@ export const admitPatient = async (req, res) => {
       return res.status(400).json({ message: 'Admission request is not yet approved.' });
     }
 
-    const roomId = admissionRequest.admissionDetails.room;
-    const bedId = admissionRequest.admissionDetails.bed;
+    const roomId = admissionRequest.admissionDetails.room?._id || admissionRequest.admissionDetails.room;
+    const bedId = admissionRequest.admissionDetails.bed?._id || admissionRequest.admissionDetails.bed;
 
     if (!roomId || !bedId) {
       await session.abortTransaction();
@@ -171,21 +172,28 @@ export const admitPatient = async (req, res) => {
       return res.status(400).json({ message: 'Bed is not available or reserved.' });
     }
 
-    // Update patient admission status
-    await Patient.findByIdAndUpdate(admissionRequest.patient._id, {
-      admissionStatus: 'Admitted'
-    }, { session });
+    // ✅ Update patient admission status
+    const updatedPatient = await Patient.findOneAndUpdate(
+      { _id: admissionRequest.patient._id },
+      { admissionStatus: 'Admitted' },
+      { session, new: true }
+    );
 
-    // Assign bed
+    if (!updatedPatient) {
+      await session.abortTransaction();
+      return res.status(500).json({ message: 'Failed to update patient admission status.' });
+    }
+
+    // ✅ Assign bed to patient
     bed.status = 'Occupied';
     bed.assignedPatient = admissionRequest.patient._id;
     bed.assignedDate = new Date();
     await bed.save({ session });
 
-    // Update room status
+    // ✅ Update room bed availability
     await room.updateAvailableBeds();
 
-    // Finalize admission
+    // ✅ Finalize admission request
     admissionRequest.status = 'Admitted';
     await admissionRequest.save({ session });
 
@@ -194,6 +202,11 @@ export const admitPatient = async (req, res) => {
     res.status(200).json({
       message: 'Patient successfully admitted.',
       admissionRequestId: admissionRequest._id,
+      updatedPatient: {
+        id: updatedPatient._id,
+        name: updatedPatient.name,
+        admissionStatus: updatedPatient.admissionStatus,
+      }
     });
 
   } catch (error) {
@@ -204,6 +217,7 @@ export const admitPatient = async (req, res) => {
     session.endSession();
   }
 };
+
 
 export const getAdmissionRequests = async (req, res) => {
   try {
@@ -278,18 +292,46 @@ export const getAdmittedPatients = async (req, res) => {
       return res.status(403).json({ message: "No hospital context found." });
     }
 
+    const patientMap = {};
+
     // 1. Get all admitted patients
     const admitted = await Patient.find({
       hospital: hospitalId,
       admissionStatus: "Admitted"
-    }).select("name age gender contact admissionStatus");
+    }).select("name age gender contact admissionStatus healthStatus");
 
-    const admittedMap = {};
-    admitted.forEach(p => {
-      admittedMap[p._id.toString()] = { ...p.toObject(), type: "admitted" };
+    // 2. Get their IDs
+    const admittedPatientIds = admitted.map(p => p._id);
+
+    // 3. Fetch related admission requests
+    const admissionRequests = await AdmissionRequest.find({
+      patient: { $in: admittedPatientIds },
+      status: "Admitted"
+    })
+    .sort({ createdAt: -1 }) // get the latest
+    .select("patient admissionDetails.medicalNote admissionDetails.date")
+    .lean();
+
+    // 4. Create map for admissionDetails
+    const admissionDataMap = {};
+    admissionRequests.forEach(req => {
+      admissionDataMap[req.patient.toString()] = {
+        medicalNote: req.admissionDetails?.medicalNote || null,
+        date: req.admissionDetails?.date || null
+      };
     });
 
-    // 2. Get patients with follow-up consultations
+    // 5. Construct admitted map
+    admitted.forEach(p => {
+      const id = p._id.toString();
+      patientMap[id] = {
+        ...p.toObject(),
+        ...admissionDataMap[id],  // adds medicalNote and date
+        type: "admitted"
+      };
+    });
+
+    // 6. Follow-up consultations
     const followUpConsultations = await Consultation.find({
       followUpRequired: true
     }).select("patient");
@@ -298,28 +340,41 @@ export const getAdmittedPatients = async (req, res) => {
       followUpConsultations.map(c => c.patient.toString())
     )];
 
-    // 3. Get those patients from DB
     const followUpPatients = await Patient.find({
       hospital: hospitalId,
       _id: { $in: followUpPatientIds }
-    }).select("name age gender contact admissionStatus");
-
-    // 4. Merge results and tag
-    const patientMap = { ...admittedMap };
+    }).select("name age gender contact admissionStatus healthStatus");
 
     followUpPatients.forEach(p => {
       const id = p._id.toString();
       if (patientMap[id]) {
-        patientMap[id].type = "admitted+followup";
+        patientMap[id].type += "+followup";
       } else {
         patientMap[id] = { ...p.toObject(), type: "followup" };
+      }
+    });
+
+    // 7. Critical patients
+    const criticalPatients = await Patient.find({
+      hospital: hospitalId,
+      healthStatus: "Critical"
+    }).select("name age gender contact admissionStatus healthStatus");
+
+    criticalPatients.forEach(p => {
+      const id = p._id.toString();
+      if (patientMap[id]) {
+        if (!patientMap[id].type.includes("critical")) {
+          patientMap[id].type += "+critical";
+        }
+      } else {
+        patientMap[id] = { ...p.toObject(), type: "critical" };
       }
     });
 
     const finalPatients = Object.values(patientMap);
 
     res.status(200).json({
-      message: "Admitted and follow-up patients fetched successfully.",
+      message: "Admitted, follow-up, and critical patients fetched successfully.",
       count: finalPatients.length,
       patients: finalPatients
     });
@@ -331,3 +386,61 @@ export const getAdmittedPatients = async (req, res) => {
 
 
 
+export const dischargePatient = async (req, res) => {
+  try {
+    const {
+      patientId,
+      admissionDate,
+      dischargeDate,
+      onAdmissionNotes,
+      onDischargeNotes,
+      diagnosis,
+      followUpDay,
+      followUpTime
+    } = req.body;
+
+    const patient = await Patient.findById(patientId);
+    if (!patient) return res.status(404).json({ message: 'Patient not found' });
+
+    // Save discharge summary
+    const discharge = new Discharge({
+      patient: patientId,
+      admissionDate,
+      dischargeDate,
+      onAdmissionNotes,
+      onDischargeNotes,
+      diagnosis,
+      followUpDay,
+      followUpTime
+    });
+    await discharge.save();
+
+    // Dereference bed
+    const bed = await Bed.findOne({ assignedPatient: patientId });
+    if (bed) {
+      bed.status = 'Available';
+      bed.assignedPatient = null;
+      await bed.save();
+    }
+
+    // Update patient status
+    patient.admissionStatus = 'Not Admitted';
+    await patient.save();
+
+    // Update admission request
+    const admissionRequest = await AdmissionRequest.findOne({
+      patient: patientId,
+      status: 'Admitted'
+    });
+
+    if (admissionRequest) {
+      admissionRequest.status = 'discharged';
+      await admissionRequest.save();
+    }
+
+    res.status(200).json({ message: 'Patient discharged successfully', discharge });
+  } catch (error) {
+    console.error('Error discharging patient:', error);
+    res.status(500).json({ message: 'Internal server error', error: error.message });
+  }
+};

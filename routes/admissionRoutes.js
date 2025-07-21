@@ -5,12 +5,13 @@ import { requireHospitalContext } from '../middleware/hospitalContext.js';
 import { updateStatusesMiddleware } from '../middleware/statusMiddleware.js';
 import { paginationMiddleware } from '../middleware/paginationMiddleware.js';
 
-import { createAdmissionRequest, approveAdmissionRequest, admitPatient, getAdmissionRequests, getApprovedAdmissions, getAdmittedPatients} from '../controllers/admissionRequest.js';
+import { createAdmissionRequest, approveAdmissionRequest, admitPatient, getAdmissionRequests, getApprovedAdmissions, getAdmittedPatients,dischargePatient} from '../controllers/admissionRequest.js';
 
 const router = express.Router();
 router.use(requireHospitalContext);
 
 router.post('/createAdmissionRequest',authorizeRoles("hospitalAdmin","doctor"), createAdmissionRequest);
+router.post('/dischargePatient',authorizeRoles("hospitalAdmin","doctor"), dischargePatient);
 router.put('/approveAdmissionRequest/:requestId', authorizeRoles("hospitalAdmin","doctor"),approveAdmissionRequest);
 router.post('/admitPatient/:requestId', admitPatient);
 router.get('/getAdmissionRequests', getAdmissionRequests);

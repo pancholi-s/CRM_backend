@@ -4,6 +4,8 @@ import cors from 'cors';
 import mongoose from 'mongoose';
 import session from 'express-session';
 
+import './middleware/statusMiddleware.js'; // This starts the cron job
+
 import authRoutes from './routes/authRoutes.js';
 import appointmentRoutes from './routes/appointmentRoutes.js';
 import departmentRoutes from './routes/departmentRoutes.js';

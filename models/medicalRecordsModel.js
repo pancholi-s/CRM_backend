@@ -6,6 +6,7 @@ const medicalRecordSchema = new mongoose.Schema({
   dose: { type: String, required: true },
   route: { type: String, required: true },
   time: { type: String, required: true },
+  date: { type: Date, default: Date.now },
   givenBy: { type: String },
   notes: { type: String },
   status: {
