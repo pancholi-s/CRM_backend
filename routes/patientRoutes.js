@@ -10,7 +10,7 @@ const router = express.Router()
 router.use(requireHospitalContext);
 
 router.post("/updateHealthStatus/:patientId", authorizeRoles("doctor", "hospitalAdmin"), updateHealthStatus,updateHealthStatus)
-router.get("/getPatientsByHospital", authorizeRoles("receptionist", "hospitalAdmin"), getPatientsByHospital,paginationMiddleware)
+router.get("/getPatientsByHospital", authorizeRoles("receptionist", "hospitalAdmin", "doctor"), getPatientsByHospital,paginationMiddleware)
 router.get("/getPatientsByStatus", authorizeRoles("receptionist", "hospitalAdmin"), getPatientsByStatus ,paginationMiddleware);
 router.get(
   "/:patientId/appointments",
