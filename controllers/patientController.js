@@ -550,3 +550,28 @@ export const updateHealthStatus = async (req, res) => {
   }
 };
 
+// Get count of active patients
+export const getActivePatientCount = async (req, res) => {
+  try {
+    const hospitalId = req.session.hospitalId;
+    if (!hospitalId) {
+      return res.status(400).json({ message: "Hospital ID is required" });
+    }
+
+    const count = await Patient.countDocuments({
+      hospital: hospitalId,
+      status: "active",
+    });
+
+    return res.status(200).json({
+      message: "Active patient count retrieved successfully",
+      activePatientCount: count,
+    });
+  } catch (error) {
+    console.error("Error fetching active patient count:", error);
+    res.status(500).json({
+      message: "Failed to fetch active patient count",
+      error: error.message,
+    });
+  }
+};
