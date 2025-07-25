@@ -17,35 +17,46 @@ export const getPatientOverview = async (req, res) => {
       });
     }
 
-    const appointmentMatchConditions = {
-      hospital: new mongoose.Types.ObjectId(String(hospitalId)),
-    };
-
-    if (req.user?.role === "doctor" && req.user?._id) {
-      appointmentMatchConditions.doctor = new mongoose.Types.ObjectId(
-        req.user._id
-      );
-    }
-
+    // Patient match conditions
+    const patientMatchConditions = { hospital: hospitalId };
     if (departmentId) {
-      appointmentMatchConditions.department = new mongoose.Types.ObjectId(
-        String(departmentId)
-      );
+      patientMatchConditions.department = new mongoose.Types.ObjectId(String(departmentId));
     }
 
+    // Add date filters to patient conditions if provided (based on registrationDate)
     if (fromDate || toDate) {
-      appointmentMatchConditions.tokenDate = {};
-      if (fromDate)
-        appointmentMatchConditions.tokenDate.$gte = new Date(fromDate);
+      patientMatchConditions.registrationDate = {};
+      if (fromDate) patientMatchConditions.registrationDate.$gte = new Date(fromDate);
       if (toDate) {
         const end = new Date(toDate);
         end.setHours(23, 59, 59, 999);
-        appointmentMatchConditions.tokenDate.$lte = end;
+        patientMatchConditions.registrationDate.$lte = end;
       }
     }
 
-    const patientMatchConditions = { hospital: hospitalId };
-    if (departmentId) patientMatchConditions.department = departmentId;
+    // Consultation match conditions
+    const consultationMatchConditions = {
+      status: "scheduled"
+    };
+    if (departmentId) {
+      consultationMatchConditions.department = new mongoose.Types.ObjectId(String(departmentId));
+    }
+
+    // Add date filters for consultations if provided
+    if (fromDate || toDate) {
+      consultationMatchConditions.date = {};
+      if (fromDate) consultationMatchConditions.date.$gte = new Date(fromDate);
+      if (toDate) {
+        const end = new Date(toDate);
+        end.setHours(23, 59, 59, 999);
+        consultationMatchConditions.date.$lte = end;
+      }
+    }
+
+    // Add doctor filter if user is a doctor
+    if (req.user?.role === "doctor" && req.user?._id) {
+      consultationMatchConditions.doctor = new mongoose.Types.ObjectId(req.user._id);
+    }
 
     // Count inpatients using the same logic as getInpatients()
     const [admittedPatients, followUpConsultations] = await Promise.all([
@@ -83,36 +94,26 @@ export const getPatientOverview = async (req, res) => {
 
     const totalInpatients = inpatientSet.size;
 
-    const [admitted, discharged, scheduled, opd, totalCases] =
-      await Promise.all([
-        Patient.countDocuments({
-          ...patientMatchConditions,
-          admissionStatus: "Admitted",
-        }),
-        Patient.countDocuments({
-          ...patientMatchConditions,
-          admissionStatus: "Discharged",
-        }),
-        Appointment.countDocuments({
-          ...appointmentMatchConditions,
-          status: "Scheduled",
-        }),
-        Patient.countDocuments({
-          ...patientMatchConditions,
-          admissionStatus: { $ne: "Admitted" },
-        }),
-        Appointment.countDocuments(appointmentMatchConditions),
-      ]);
+    // Get all required counts
+    const [admitted, discharged, scheduled, opd] = await Promise.all([
+      Patient.countDocuments({
+        ...patientMatchConditions,
+        admissionStatus: "Admitted",
+      }),
+      Patient.countDocuments({
+        ...patientMatchConditions,
+        admissionStatus: "Discharged",
+      }),
+      Consultation.countDocuments(consultationMatchConditions),
+      Patient.countDocuments({
+        ...patientMatchConditions,
+        admissionStatus: { $ne: "Admitted" },
+      }),
+    ]);
 
     res.status(200).json({
       success: true,
-      filtersApplied: {
-        departmentId,
-        fromDate,
-        toDate,
-      },
-      totalCases,
-      totalInpatients, // Now matches getInpatients() logic
+      totalInpatients,
       totalOutpatients: opd,
       overview: {
         admitted,
