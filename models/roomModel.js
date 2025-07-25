@@ -9,9 +9,8 @@ const roomSchema = new mongoose.Schema({
     type: String,
     required: true,
   },
-   roomType: {
-    type: String,
-    enum: ['ICU', 'General Ward', 'Private Room', 'Semi-Private', 'Operation Theater', 'Emergency', 'Pediatric Ward', 'Maternity Ward'],
+  roomType: {
+    type: mongoose.Schema.Types.Mixed, // Dynamic room type
     required: true,
   },
   hospital: {
@@ -35,16 +34,6 @@ const roomSchema = new mongoose.Schema({
     default: 'Available',
     required: true,
   },
-  capacity: {
-    totalBeds: { type: Number, required: true, min: 1 },
-    availableBeds: { type: Number, default: 0 },
-  },
-  features: {
-    hasAC: { type: Boolean, default: false },
-    hasTV: { type: Boolean, default: false },
-    hasWiFi: { type: Boolean, default: false },
-    hasAttachedBathroom: { type: Boolean, default: true },
-  },
   floor: {
     type: Number,
     required: true,
@@ -54,8 +43,17 @@ const roomSchema = new mongoose.Schema({
     enum: ['North', 'South', 'East', 'West', 'Central'],
     required: true,
   },
-}, {
-  timestamps: true,
+  capacity: {
+    totalBeds: { type: Number },
+    availableBeds: { type: Number, default: 0 },
+  },
+  features: {
+    hasAC: { type: Boolean, default: false },
+    hasTV: { type: Boolean, default: false },
+    hasWiFi: { type: Boolean, default: false },
+    hasAttachedBathroom: { type: Boolean, default: true },
+  },
+
 });
 
 // Virtual to get beds in this room

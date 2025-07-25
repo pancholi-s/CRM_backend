@@ -2,7 +2,7 @@ import express from 'express';
 
 import { authorizeRoles } from '../middleware/roleMiddleware.js';
 import { requireHospitalContext } from '../middleware/hospitalContext.js';
-import { submitConsultation, getConsultationByAppointment,getPatientConsultationHistory,getMostCommonDiagnoses, getProgressTracker, addProgressPhase, updateConsultation } from '../controllers/consultationController.js';
+import { submitConsultation, getConsultationByAppointment,getPatientConsultationHistory,getMostCommonDiagnoses, getProgressTracker, addProgressPhase, updateConsultation, updatePhase } from '../controllers/consultationController.js';
 
 const router = express.Router();
 router.use(requireHospitalContext);
@@ -14,5 +14,6 @@ router.get('/getConsultationByAppointment/:appointmentId', authorizeRoles('docto
 router.get('/getPatientConsultationHistory/:patientId', authorizeRoles('doctor', 'hospitalAdmin'), getPatientConsultationHistory);
 router.get('/diagnosis/most-common', authorizeRoles('hospitalAdmin', 'doctor', 'receptionist'), getMostCommonDiagnoses);
 router.put('/updateConsultation/:consultationId', authorizeRoles('doctor'), updateConsultation);
+router.put('/updatePhase/:phaseId', authorizeRoles('doctor'), updatePhase);
 
 export default router;
