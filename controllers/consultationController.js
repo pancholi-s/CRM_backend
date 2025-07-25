@@ -347,6 +347,7 @@ export const getProgressTracker = async (req, res) => {
       grouped[caseId].push(c);
     });
 
+    // Process consultations
     for (const caseId in grouped) {
       const group = grouped[caseId];
 
@@ -361,7 +362,8 @@ export const getProgressTracker = async (req, res) => {
           phaseType = 'final';
         }
 
-        const logicalStatus = c.status === 'completed' ? 'completed' : 'ongoing';
+        // Normalize consultation status
+        const status = c.status === 'completed' ? 'completed' : 'ongoing';
 
         progress.push({
           type: 'consultation',
@@ -370,7 +372,7 @@ export const getProgressTracker = async (req, res) => {
           doctor: c.doctor,
           department: c.department,
           data: c.consultationData,
-          status: logicalStatus,
+          status,
           caseId
         });
       });
@@ -382,7 +384,8 @@ export const getProgressTracker = async (req, res) => {
     // Fetch progress phases
     const phases = await ProgressPhase.find({ caseId: { $in: caseIds } })
       .populate('assignedDoctor', 'name')
-      .sort({ date: 1 }); // ensure phases are sorted for each caseId
+      .populate('consultation', 'title date')
+      .sort({ date: 1 });
 
     // Group phases by caseId
     const phaseGrouped = {};
@@ -391,29 +394,39 @@ export const getProgressTracker = async (req, res) => {
       phaseGrouped[p.caseId].push(p);
     });
 
-    // Append phases to progress with status logic
+    // Append normalized phases to progress
     for (const caseId in phaseGrouped) {
       const casePhases = phaseGrouped[caseId];
 
-      casePhases.forEach((p, index) => {
-        const status = index === casePhases.length - 1 ? 'ongoing' : 'completed';
+      casePhases.forEach(p => {
+        if (!p.date) return; // Skip entries with missing dates
+
+        // Normalize status for phase
+        let status = 'ongoing'; // default
+        if (p.isFinal === true) {
+          status = 'final';
+        } else if (p.isDone === true) {
+          status = 'completed';
+        }
 
         progress.push({
           type: 'phase',
+          id: p._id,
           date: p.date,
           doctor: p.assignedDoctor,
+          title: p.title,
           data: {
-            title: p.title,
             description: p.description,
             files: p.files,
           },
           status,
-          caseId
+          caseId,
+          consultationId: p.consultation?._id || null,
         });
       });
     }
 
-    // Final sort by date across all items
+    // Final sort by date
     progress.sort((a, b) => new Date(a.date) - new Date(b.date));
 
     res.status(200).json({
@@ -426,6 +439,8 @@ export const getProgressTracker = async (req, res) => {
     res.status(500).json({ message: 'Internal server error', error: error.message });
   }
 };
+
+
 
 export const addProgressPhase = async (req, res) => {
   try {
@@ -482,6 +497,54 @@ export const addProgressPhase = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
+export const updatePhase = async (req, res) => {
+  try {
+    const { phaseId } = req.params;
+    const updates = req.body;
+
+    const phase = await ProgressPhase.findById(phaseId);
+    if (!phase) {
+      return res.status(404).json({ message: 'Progress phase not found' });
+    }
+
+    // Convert isFinal to boolean explicitly
+    if (typeof updates.isFinal !== 'undefined') {
+      const finalValue = updates.isFinal;
+      if (typeof finalValue === 'string') {
+        phase.isFinal = finalValue.toLowerCase() === 'yes';
+      } else {
+        phase.isFinal = !!finalValue; // boolean or anything truthy
+      }
+    }
+
+    // Convert isDone to boolean explicitly
+    if (typeof updates.isDone !== 'undefined') {
+      phase.isDone = updates.isDone === true || updates.isDone === 'true';
+    }
+
+    // Update other fields
+    if (updates.title !== undefined) phase.title = updates.title;
+    if (updates.date !== undefined) phase.date = updates.date;
+    if (updates.description !== undefined) phase.description = updates.description;
+    if (updates.files !== undefined) phase.files = updates.files;
+    if (updates.assignedDoctor !== undefined) phase.assignedDoctor = updates.assignedDoctor;
+    if (updates.consultation !== undefined) phase.consultation = updates.consultation;
+
+    await phase.save();
+
+    res.status(200).json({
+      message: 'Progress phase updated successfully',
+      phase,
+    });
+
+  } catch (error) {
+    console.error('Error updating progress phase:', error);
+    res.status(500).json({ message: 'Internal server error', error: error.message });
+  }
+};
+
+
 
 
 

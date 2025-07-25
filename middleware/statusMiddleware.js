@@ -28,14 +28,10 @@ cron.schedule("* * * * *", async () => {
   try {
     const now = new Date();
 
-    // Get today's start and end times
     const startOfDay = new Date(now);
-    startOfDay.setHours(0, 0, 0, 0);
+    startOfDay.setUTCHours(0, 0, 0, 0);
 
-    const endOfDay = new Date(now);
-    endOfDay.setHours(23, 59, 59, 999);
-
-    // Find token number 1 scheduled for today, with tokenDate <= now
+    // Use UTC comparison for `tokenDate`
     const appointment = await Appointment.findOne({
       tokenNumber: 1,
       status: "Waiting",
@@ -51,4 +47,5 @@ cron.schedule("* * * * *", async () => {
     console.error("❌ Cron job error:", err.message);
   }
 });
+
 

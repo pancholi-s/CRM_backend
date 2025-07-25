@@ -3,6 +3,7 @@ import Room from "../models/roomModel.js";
 import Hospital from "../models/hospitalModel.js";
 import Department from "../models/departmentModel.js";
 import Doctor from "../models/doctorModel.js";
+import Bed from "../models/bedModel.js";
 
 export const addRoom = async (req, res) => {
   const {
@@ -10,20 +11,14 @@ export const addRoom = async (req, res) => {
     name,
     roomType,
     doctorId,
-    status,
-    capacity,
-    features,
     floor,
     wing,
+    beds, // Array of beds
   } = req.body;
 
   const hospitalId = req.session.hospitalId;
   if (!hospitalId) {
-    return res
-      .status(403)
-      .json({
-        message: "Unauthorized access. Hospital ID not found in session.",
-      });
+    return res.status(403).json({ message: "Unauthorized. Hospital not found." });
   }
 
   const session = await mongoose.startSession();
@@ -31,84 +26,57 @@ export const addRoom = async (req, res) => {
 
   try {
     const hospital = await Hospital.findById(hospitalId);
-    if (!hospital) {
-      return res.status(404).json({ message: "Hospital not found." });
-    }
-
-    if (!doctorId) {
-      return res
-        .status(400)
-        .json({ message: "Doctor ID is required to assign a room." });
-    }
+    if (!hospital) throw new Error("Hospital not found.");
 
     const doctor = await Doctor.findById(doctorId);
     if (!doctor || !hospital.doctors.includes(doctorId)) {
-      return res
-        .status(404)
-        .json({ message: "Doctor not found in the specified hospital." });
+      throw new Error("Doctor not found in hospital.");
     }
 
-    if (!doctor.departments || doctor.departments.length === 0) {
-      return res
-        .status(400)
-        .json({ message: "Doctor is not assigned to any department." });
-    }
-
-    const departmentId = doctor.departments[0];
+    const departmentId = doctor.departments?.[0];
+    if (!departmentId) throw new Error("Doctor not assigned to a department.");
+    
     const department = await Department.findById(departmentId);
     if (!department || !hospital.departments.includes(departmentId)) {
-      return res
-        .status(404)
-        .json({ message: "Department not found in the specified hospital." });
-    }
-
-    if (!capacity || !capacity.totalBeds || capacity.totalBeds < 1) {
-      return res
-        .status(400)
-        .json({ message: "Room must have at least 1 bed capacity." });
+      throw new Error("Department not found in hospital.");
     }
 
     const newRoom = new Room({
       roomID,
       name,
-      roomType: roomType || "General Ward",
+      roomType,
       hospital: hospitalId,
       department: departmentId,
       assignedDoctor: doctorId,
-      status: status || "Available",
-      capacity: {
-        totalBeds: capacity.totalBeds,
-        availableBeds: capacity.totalBeds,
-      },
-      features: features || {
-        hasAC: false,
-        hasTV: false,
-        hasWiFi: false,
-        hasAttachedBathroom: true,
-      },
-      floor: floor || 1,
-      wing: wing || "Central",
+      floor,
+      wing,
     });
 
     await newRoom.save({ session });
 
-    await Hospital.findByIdAndUpdate(
-      hospitalId,
-      { $push: { rooms: newRoom._id } },
-      { session }
-    );
+    await Hospital.findByIdAndUpdate(hospitalId, { $push: { rooms: newRoom._id } }, { session });
+    await Department.findByIdAndUpdate(departmentId, { $push: { rooms: newRoom._id } }, { session });
+    await Doctor.findByIdAndUpdate(doctorId, { $push: { assignedRooms: newRoom._id } }, { session });
 
-    await Department.findByIdAndUpdate(
-      departmentId,
-      { $push: { rooms: newRoom._id } },
-      { session }
-    );
+    // Add beds (can be one or many)
+    const bedsToInsert = beds?.map((bed) => ({
+      bedNumber: bed.bedId,
+      bedType: bed.roomType || roomType,
+      room: newRoom._id,
+      hospital: hospitalId,
+      department: departmentId,
+      status: bed.status || 'Available',
+      assignedPatient: null,
+      features: bed.features || {},
+      charges: {
+        dailyRate: bed.cost || 0,
+        currency: "INR",
+      },
+    })) || [];
 
-    await Doctor.findByIdAndUpdate(
-      doctorId,
-      { $push: { assignedRooms: newRoom._id } },
-      { session }
-    );
+    if (bedsToInsert.length > 0) {
+      await Bed.insertMany(bedsToInsert, { session });
+    }
 
     await session.commitTransaction();
     session.endSession();
@@ -120,18 +88,17 @@ export const addRoom = async (req, res) => {
       .lean();
 
     res.status(201).json({
-      message: "Room added successfully.",
+      message: "Room and beds added successfully.",
       room: populatedRoom,
     });
+
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    res.status(500).json({
-      message: "Error adding room.",
-      error: error.message,
-    });
+    res.status(500).json({ message: error.message });
   }
 };
+
 
 export const getRoomsByHospital = async (req, res) => {
   const { departmentId, sort, roomType, status } = req.query;
