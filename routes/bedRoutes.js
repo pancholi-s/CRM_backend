@@ -6,6 +6,7 @@ import {
   dischargePatientFromBed,
   getHospitalStatistics,
   getPatientBedInfo,
+  getAvailableBeds
 } from "../controllers/bedController.js";
 import { authorizeRoles } from "../middleware/roleMiddleware.js";
 import { requireHospitalContext } from "../middleware/hospitalContext.js";
@@ -24,6 +25,12 @@ router.get(
   requireHospitalContext,
   authorizeRoles("hospitalAdmin", "doctor", "receptionist"),
   getBedsByHospital
+);
+router.get(
+  "/getAvailableBeds",
+  requireHospitalContext,
+  authorizeRoles("hospitalAdmin", "doctor", "receptionist"),
+  getAvailableBeds
 );
 
 router.post(

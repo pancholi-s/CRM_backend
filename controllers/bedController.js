@@ -517,3 +517,33 @@ export const getPatientBedInfo = async (req, res) => {
     });
   }
 };
+
+// controllers/bedController.js
+
+export const getAvailableBeds = async (req, res) => {
+  const hospitalId = req.session.hospitalId;
+  if (!hospitalId) {
+    return res.status(403).json({ message: "Unauthorized. Hospital ID not found in session." });
+  }
+
+  try {
+    const availableBeds = await Bed.find({
+      hospital: hospitalId,
+      status: "Available",
+    })
+      .populate("room", "name roomType")
+      .populate("department", "name")
+      .lean();
+
+    res.status(200).json({
+      message: "Available beds fetched successfully.",
+      count: availableBeds.length,
+      beds: availableBeds,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Error fetching available beds.",
+      error: error.message,
+    });
+  }
+};

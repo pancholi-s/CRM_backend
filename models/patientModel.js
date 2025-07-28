@@ -127,8 +127,8 @@ const patientSchema = new mongoose.Schema({
   },
   healthStatus: {
     type: String,
-    enum: ["Normal", "Critical"],
-    default: "Normal",
+    enum: ["Stable", "Critical", "High", "Low"],
+    default: "Stable",
   },
   patId: {
     type: String,
