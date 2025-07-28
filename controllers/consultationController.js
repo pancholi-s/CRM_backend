@@ -4,6 +4,7 @@ import Hospital from '../models/hospitalModel.js';
 import Appointment from '../models/appointmentModel.js';
 import Patient from '../models/patientModel.js';
 import ProgressPhase from '../models/ProgressPhase.js';
+import ProgressLog from '../models/progressLog.js';
 
 export const submitConsultation = async (req, res) => {
   const session = await Consultation.startSession();
@@ -324,49 +325,37 @@ export const getProgressTracker = async (req, res) => {
       return res.status(404).json({ message: 'Patient not found' });
     }
 
-    // Fetch consultations
+    // 1. Fetch consultations
     let consultations = await Consultation.find({ patient: patientId })
       .populate('doctor', 'name')
       .populate('department', 'name')
       .populate('appointment', 'caseId')
       .sort({ date: 1 });
 
-    if (!consultations.length) {
-      return res.status(200).json({ message: 'No consultations found', progress: [] });
-    }
-
     const progress = [];
 
-    // Group consultations by caseId
     const grouped = {};
     consultations.forEach(c => {
       const caseId = c.appointment?.caseId;
       if (!caseId) return;
-
       if (!grouped[caseId]) grouped[caseId] = [];
       grouped[caseId].push(c);
     });
 
-    // Process consultations
     for (const caseId in grouped) {
       const group = grouped[caseId];
-
       group.forEach((c, index) => {
         let phaseType = 'middle';
         const isFirst = index === 0;
         const isLast = index === group.length - 1;
+        if (isFirst) phaseType = 'initial';
+        else if (isLast && c.status === 'completed') phaseType = 'final';
 
-        if (isFirst) {
-          phaseType = 'initial';
-        } else if (isLast && c.status === 'completed') {
-          phaseType = 'final';
-        }
-
-        // Normalize consultation status
         const status = c.status === 'completed' ? 'completed' : 'ongoing';
 
         progress.push({
           type: 'consultation',
+          id: c._id,
           phase: phaseType,
           date: c.date,
           doctor: c.doctor,
@@ -378,36 +367,29 @@ export const getProgressTracker = async (req, res) => {
       });
     }
 
-    // Get all unique caseIds from consultations
     const caseIds = Object.keys(grouped);
 
-    // Fetch progress phases
+    // 2. Fetch phases
     const phases = await ProgressPhase.find({ caseId: { $in: caseIds } })
       .populate('assignedDoctor', 'name')
       .populate('consultation', 'title date')
       .sort({ date: 1 });
 
-    // Group phases by caseId
     const phaseGrouped = {};
     phases.forEach(p => {
       if (!phaseGrouped[p.caseId]) phaseGrouped[p.caseId] = [];
       phaseGrouped[p.caseId].push(p);
     });
 
-    // Append normalized phases to progress
     for (const caseId in phaseGrouped) {
       const casePhases = phaseGrouped[caseId];
 
       casePhases.forEach(p => {
-        if (!p.date) return; // Skip entries with missing dates
+        if (!p.date) return;
 
-        // Normalize status for phase
-        let status = 'ongoing'; // default
-        if (p.isFinal === true) {
-          status = 'final';
-        } else if (p.isDone === true) {
-          status = 'completed';
-        }
+        let status = 'ongoing';
+        if (p.isFinal) status = 'final';
+        else if (p.isDone) status = 'completed';
 
         progress.push({
           type: 'phase',
@@ -426,8 +408,34 @@ export const getProgressTracker = async (req, res) => {
       });
     }
 
-    // Final sort by date
     progress.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    // 3. Build logs to append to ProgressLog
+    const logEntries = progress.map(item => ({
+      caseId: item.caseId,
+      sourceType: item.type,
+      sourceId: item.id,
+      phaseCategory: item.phase || (item.status === 'final' ? 'final' : item.status === 'completed' ? 'final' : 'ongoing'),
+      status: item.status,
+      doctor: item.doctor?._id || null,
+      department: item.department?._id || null,
+      date: item.date
+    }));
+
+    // 4. Save logs under single patient ProgressLog
+    await ProgressLog.findOneAndUpdate(
+      { patient: patientId },
+      {
+        $set: {
+          date: new Date(),
+          status: 'ongoing'
+        },
+        $addToSet: {
+          logs: { $each: logEntries }
+        }
+      },
+      { upsert: true, new: true }
+    );
 
     res.status(200).json({
       message: 'Progress tracker data fetched successfully.',
@@ -440,6 +448,41 @@ export const getProgressTracker = async (req, res) => {
   }
 };
 
+
+export const getProgressPhaseCounts = async (req, res) => {
+  try {
+    const logs = await ProgressLog.find({});
+
+    const counts = {
+      initial: 0,
+      ongoing: 0,
+      final: 0,
+    };
+
+    for (const log of logs) {
+      if (!log.logs || !Array.isArray(log.logs)) continue;
+
+      for (const entry of log.logs) {
+        const cat = entry.phaseCategory;
+        if (counts[cat] !== undefined) {
+          counts[cat]++;
+        }
+      }
+    }
+
+    res.status(200).json({
+      message: "Overall progress phase counts fetched successfully.",
+      counts
+    });
+
+  } catch (error) {
+    console.error("Error fetching progress phase counts:", error);
+    res.status(500).json({
+      message: "Internal server error",
+      error: error.message
+    });
+  }
+};
 
 
 export const addProgressPhase = async (req, res) => {
