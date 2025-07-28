@@ -26,6 +26,30 @@ export const createCategory = async (req, res) => {
   }
 };
 
+export const updateCategory = async (req, res) => {
+  try {
+    const { categoryId } = req.params;
+    const { name, description, departmentId } = req.body;
+    const hospitalId = req.session.hospitalId;
+
+    const category = await InventoryCategory.findOne({ _id: categoryId, hospital: hospitalId });
+    if (!category) {
+      return res.status(404).json({ message: "Category not found or unauthorized." });
+    }
+
+    if (name !== undefined) category.name = name;
+    if (description !== undefined) category.description = description;
+    if (departmentId !== undefined) category.department = departmentId;
+
+    await category.save();
+
+    res.status(200).json({ message: "Inventory category updated successfully", data: category });
+  } catch (error) {
+    console.error("Error updating category:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
 export const addInventoryItem = async (req, res) => {
   try {
     const { name, quantity, categoryId, minimumStockThreshold, lastRestockedDate } = req.body;
@@ -64,21 +88,19 @@ export const addInventoryItem = async (req, res) => {
 export const updateInventoryItem = async (req, res) => {
   try {
     const { itemId } = req.params;
-    const { quantity, minimumStockThreshold, lastRestockedDate } = req.body;
+    const { name, quantity, minimumStockThreshold, lastRestockedDate, usagePercent, status } = req.body;
 
     const item = await InventoryItem.findById(itemId);
     if (!item) return res.status(404).json({ message: "Item not found." });
 
+    if (name !== undefined) item.name = name;
     if (quantity !== undefined) item.quantity = quantity;
     if (minimumStockThreshold !== undefined) item.minimumStockThreshold = minimumStockThreshold;
     if (lastRestockedDate) item.lastRestockedDate = new Date(lastRestockedDate);
+    if (usagePercent !== undefined) item.usagePercent = usagePercent; 
+    if (status !== undefined) item.status = status;                   
 
-    // Recalculate status and usage
-    const { usagePercent, status } = calculateUsageAndStatus(item.quantity, item.minimumStockThreshold);
-    item.usagePercent = usagePercent;
-    item.status = status;
     item.lastUpdated = new Date();
-
     await item.save();
     res.status(200).json({ message: "Inventory item updated", data: item });
   } catch (error) {
