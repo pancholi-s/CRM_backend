@@ -275,3 +275,29 @@ export const updateRoom = async (req, res) => {
     });
   }
 };
+
+// controllers/roomController.js
+
+export const getAllRooms = async (req, res) => {
+  const hospitalId = req.session.hospitalId;
+  if (!hospitalId) {
+    return res.status(403).json({ message: 'Unauthorized. Hospital ID missing from session.' });
+  }
+
+  try {
+    const rooms = await Room.find({ hospital: hospitalId })
+      .populate("department", "name")
+      .populate("assignedDoctor", "name")
+      .lean();
+
+    res.status(200).json({
+      message: "Rooms fetched successfully.",
+      rooms,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Error fetching rooms.",
+      error: error.message,
+    });
+  }
+};

@@ -85,12 +85,12 @@ export const getRequestedAppointments = async (req, res) => {
   // Get the logged-in doctor's ID from the middleware
   const loggedInDoctorId = req.user._id;
 
-  // Verify the user is a doctor
-  if (req.user.role !== 'doctor') {
-    return res
-      .status(403)
-      .json({ message: 'Access denied. Only doctors can access this endpoint.' });
-  }
+  // // Verify the user is a doctor
+  // if (req.user.role !== 'doctor') {
+  //   return res
+  //     .status(403)
+  //     .json({ message: 'Access denied. Only doctors can access this endpoint.' });
+  // }
 
   const { patientId, departmentName, status } = req.query;
 

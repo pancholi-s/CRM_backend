@@ -36,12 +36,12 @@ const roomSchema = new mongoose.Schema({
   },
   floor: {
     type: Number,
-    required: true,
+    // required: true,
   },
   wing: {
     type: String,
     enum: ['North', 'South', 'East', 'West', 'Central'],
-    required: true,
+    // required: true,
   },
   capacity: {
     totalBeds: { type: Number },
