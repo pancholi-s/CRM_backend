@@ -1,6 +1,5 @@
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
-
 import Hospital from "../models/hospitalModel.js";
 import Department from "../models/departmentModel.js";
 import Doctor from "../models/doctorModel.js";
@@ -889,45 +888,73 @@ export const getAppointmentHistory = async (req, res) => {
       return res.status(403).json({ message: "Access denied. No hospital context found." });
     }
 
-    const { page = 1, limit = 10 } = req.query;
+    const { page = 1, limit = 10, dateRange, status } = req.query;
     const skip = (page - 1) * limit;
 
-    // Get all appointments for the hospital, sorted by date (newest first)
-    const appointments = await Appointment.find({ hospital: hospitalId })
+    // Build filter object
+    const filter = { hospital: hospitalId };
+
+    // Date Range Filter
+    if (dateRange) {
+      let startDate;
+      const today = moment().endOf("day");
+
+      if (dateRange === "7") {
+        // Last 7 days
+        startDate = moment().subtract(7, "days").startOf("day");
+      } else if (dateRange === "30") {
+        // Last 30 days
+        startDate = moment().subtract(30, "days").startOf("day");
+      }
+
+      if (startDate) {
+        filter.tokenDate = { $gte: startDate.toDate(), $lte: today.toDate() };
+      }
+    }
+
+    // Status Filter (allow multiple statuses)
+    if (status) {
+      const statusArray = status.split(",").map((st) => st.trim());
+      filter.status = { $in: statusArray };
+    }
+
+    // Fetch appointments
+    const appointments = await Appointment.find(filter)
       .populate("patient", "name phone")
       .populate("doctor", "phone")
       .sort({ tokenDate: -1 })
       .skip(skip)
       .limit(parseInt(limit));
 
-    // Format the data to match the UI requirements
-    const formattedAppointments = appointments.map(appointment => ({
+    // Format for UI
+    const formattedAppointments = appointments.map((appointment) => ({
       caseId: appointment.caseId,
-      name: appointment.patient?.name || 'N/A',
-      phone: appointment.doctor?.phone || 'N/A',
+      name: appointment.patient?.name || "N/A",
+      phone: appointment.doctor?.phone || "N/A",
       typeVisit: appointment.typeVisit,
-      token: appointment.tokenNumber || 'N/A',
-      date: moment(appointment.tokenDate).format('DD-MM-YYYY'),
-      status: appointment.status
+      token: appointment.tokenNumber || "N/A",
+      date: moment(appointment.tokenDate).format("DD-MM-YYYY"),
+      status: appointment.status,
     }));
 
-    const totalAppointments = await Appointment.countDocuments({ hospital: hospitalId });
+    // Count for pagination
+    const totalAppointments = await Appointment.countDocuments(filter);
 
     res.status(200).json({
       message: "Appointment history retrieved successfully",
       appointments: formattedAppointments,
       totalAppointments,
       totalPages: Math.ceil(totalAppointments / limit),
-      currentPage: parseInt(page)
+      currentPage: parseInt(page),
     });
-
   } catch (error) {
     console.error("Error fetching appointment history:", error);
-    res.status(500).json({ 
+    res.status(500).json({
       message: "Error fetching appointment history",
-      error: error.message 
+      error: error.message,
     });
   }
 };
+
 
 //add "edit appointment" functionality

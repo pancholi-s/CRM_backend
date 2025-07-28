@@ -113,9 +113,14 @@ export const getRoomsByHospital = async (req, res) => {
   try {
     const filter = { hospital: hospitalId };
     if (departmentId) filter.department = departmentId;
-    if (roomType) filter.roomType = roomType;
-    if (status) filter.status = status;
-
+    if (roomType) {
+      const roomTypesArray = roomType.split(",").map((type) => type.trim());
+      filter.roomType = { $in: roomTypesArray };
+    }
+    if (status) {
+      const statusArray = status.split(",").map((st) => st.trim());
+      filter.status = { $in: statusArray };
+}
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
