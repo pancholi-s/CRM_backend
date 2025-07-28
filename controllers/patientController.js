@@ -291,67 +291,86 @@ export const getInpatients = async (req, res) => {
       return res.status(400).json({ message: "Hospital ID is required" });
     }
 
+    // Pagination
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
+
+    // Sorting
     const sortOrder = req.query.sort === "asc" ? 1 : -1;
 
-    // Find patients with admissionStatus "Admitted"
+    // Filters
+    const statusFilter = req.query.status
+      ? req.query.status.split(",") // allow multiple statuses
+      : [];
+
+    // Fetch admitted patients
     const admittedPatients = await Patient.find({
       hospital: hospitalId,
       admissionStatus: "Admitted"
     })
-    .select("-password")
-    .populate("doctors", "name specialization")
-    .lean();
+      .select("-password")
+      .populate("doctors", "name specialization")
+      .lean();
 
-    // Find consultations with followUpRequired true
+    // Fetch follow-up consultations
     const followUpConsultations = await Consultation.find({
       followUpRequired: true
     })
-    .populate({
-      path: "patient",
-      match: { hospital: hospitalId },
-      select: "-password"
-    })
-    .populate("doctor", "name specialization")
-    .populate("department", "name")
-    .lean();
+      .populate({
+        path: "patient",
+        match: { hospital: hospitalId },
+        select: "-password"
+      })
+      .populate("doctor", "name specialization")
+      .populate("department", "name")
+      .lean();
 
-    // Get follow-up patients
+    // Combine follow-up patients
     const followUpPatients = followUpConsultations
-      .filter(consultation => consultation.patient)
-      .map(consultation => ({
+      .filter((consultation) => consultation.patient)
+      .map((consultation) => ({
         ...consultation.patient,
         consultation: consultation,
         doctors: consultation.doctor ? [consultation.doctor] : []
       }));
 
-    // Create Map to avoid duplicates
+    // Merge admitted & follow-up patients (avoid duplicates)
     const inpatientMap = new Map();
 
-    // Add admitted patients
-    admittedPatients.forEach(patient => {
+    admittedPatients.forEach((patient) => {
       inpatientMap.set(patient._id.toString(), {
         ...patient,
         consultation: null
       });
     });
 
-    // Add follow-up patients (avoid duplicates)
-    followUpPatients.forEach(patientData => {
+    followUpPatients.forEach((patientData) => {
       const patientId = patientData._id.toString();
       if (!inpatientMap.has(patientId)) {
         inpatientMap.set(patientId, patientData);
       } else {
-        // Add consultation data to existing patient
+        // Add consultation if exists
         const existingPatient = inpatientMap.get(patientId);
         existingPatient.consultation = patientData.consultation;
       }
     });
 
-    // Convert to array and sort
+    // Convert to array
     let allInpatients = Array.from(inpatientMap.values());
+
+    // Filter by status
+    if (statusFilter.length > 0) {
+      allInpatients = allInpatients.filter((patient) => {
+        const status =
+          patient.consultation?.referralUrgency ||
+          patient.healthStatus ||
+          "Stable";
+        return statusFilter.includes(status);
+      });
+    }
+
+    // Sort by registration date
     allInpatients.sort((a, b) => {
       const dateA = new Date(a.registrationDate || 0);
       const dateB = new Date(b.registrationDate || 0);
@@ -361,23 +380,23 @@ export const getInpatients = async (req, res) => {
     const totalInpatients = allInpatients.length;
     const paginatedInpatients = allInpatients.slice(skip, skip + limit);
 
-    // Get bed assignments for all inpatients
-    const patientIds = paginatedInpatients.map(patient => patient._id);
+    // Fetch bed assignments for paginated patients
+    const patientIds = paginatedInpatients.map((patient) => patient._id);
     const bedAssignments = await Bed.find({
       assignedPatient: { $in: patientIds },
       status: "Occupied"
     })
-    .populate("room", "roomID name roomType")
-    .lean();
+      .populate("room", "roomID name roomType")
+      .lean();
 
-    // Create a map for quick bed lookup
+    // Create a bed map
     const bedMap = new Map();
-    bedAssignments.forEach(bed => {
+    bedAssignments.forEach((bed) => {
       bedMap.set(bed.assignedPatient.toString(), bed);
     });
 
-    // Format response
-    const inpatientData = paginatedInpatients.map(patient => {
+    // Final response mapping
+    const inpatientData = paginatedInpatients.map((patient) => {
       const consultation = patient.consultation;
       const doctor = patient.doctors?.[0] || consultation?.doctor || null;
       const assignedBed = bedMap.get(patient._id.toString());
@@ -393,12 +412,20 @@ export const getInpatients = async (req, res) => {
         roomID: assignedBed?.room?.roomID || null,
         roomName: assignedBed?.room?.name || null,
         roomType: assignedBed?.room?.roomType || null,
-        condition: consultation?.primaryDiagnosis || patient.healthStatus || "Not Specified",
-        doctor: doctor ? {
-          _id: doctor._id,
-          name: doctor.name
-        } : null,
-        status: consultation?.referralUrgency || patient.healthStatus || "Stable",
+        condition:
+          consultation?.primaryDiagnosis ||
+          patient.healthStatus ||
+          "Not Specified",
+        doctor: doctor
+          ? {
+              _id: doctor._id,
+              name: doctor.name
+            }
+          : null,
+        status:
+          consultation?.referralUrgency ||
+          patient.healthStatus ||
+          "Stable", // same field used for filtering
         admissionStatus: patient.admissionStatus,
         followUpRequired: consultation?.followUpRequired || false,
         assignedDate: assignedBed?.assignedDate || null
@@ -413,17 +440,16 @@ export const getInpatients = async (req, res) => {
       currentPage: page,
       inpatients: inpatientData
     });
-
   } catch (error) {
     console.error("Error fetching inpatients:", error);
-    res.status(500).json({ 
-      message: "Failed to fetch inpatients", 
-      error: error.message 
+    res.status(500).json({
+      message: "Failed to fetch inpatients",
+      error: error.message
     });
   }
 };
 
-//Get Surgery Patients
+// Get Surgery Patients
 export const getPatientsInSurgery = async (req, res) => {
   try {
     const hospitalId = req.session.hospitalId;
@@ -431,77 +457,103 @@ export const getPatientsInSurgery = async (req, res) => {
       return res.status(400).json({ message: "Hospital ID is required" });
     }
 
+    // Pagination
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
-    const sortOrder = req.query.sort === "asc" ? 1 : -1; // Default: Newest to Oldest
 
-    // Find all surgery progress phases that are not done
+    // Sorting
+    const sortOrder = req.query.sort === "asc" ? 1 : -1; // asc=oldest→newest, default=desc=newest→oldest
+
+    // Filtering by status
+    const statusFilter = req.query.status
+      ? req.query.status.split(",") // allow multiple statuses in query
+      : [];
+
+    // Find all surgery progress phases
     const surgeryPhases = await ProgressPhase.find({
-      title: "Surgery",
-      isDone: false
+      title: "Surgery"
     })
-    .populate({
-      path: "patient",
-      match: { hospital: hospitalId },
-      select: "patId name email phone hospital"
-    })
-    .populate("assignedDoctor", "name specialization")
-    .sort({ date: sortOrder })
-    .lean();
+      .populate({
+        path: "patient",
+        match: { hospital: hospitalId },
+        select: "patId name email phone hospital"
+      })
+      .populate("assignedDoctor", "name specialization")
+      .sort({ date: sortOrder }) // sort by date
+      .lean();
 
-    // Filter out null patients (patients not belonging to the hospital)
-    const validSurgeryPhases = surgeryPhases.filter(phase => phase.patient);
+    // Filter out patients not in the hospital
+    let validSurgeryPhases = surgeryPhases.filter((phase) => phase.patient);
 
-    // Get total count before pagination
+    // Apply status filter
+    if (statusFilter.length > 0) {
+      validSurgeryPhases = validSurgeryPhases.filter((phase) => {
+        let status = "Scheduled"; // default status
+        if (phase.isCancelled) status = "Cancelled";
+        else if (phase.isDone) status = "Completed";
+        return statusFilter.includes(status);
+      });
+    }
+
+    // Total count
     const totalSurgeries = validSurgeryPhases.length;
 
-    // Apply pagination
+    // Pagination
     const paginatedSurgeries = validSurgeryPhases.slice(skip, skip + limit);
 
-    // Get patient IDs for additional data lookup
-    const patientIds = paginatedSurgeries.map(phase => phase.patient._id);
+    // Fetch Appointments for surgery type
+    const patientIds = paginatedSurgeries.map((phase) => phase.patient._id);
+    const caseIds = paginatedSurgeries.map((phase) => phase.caseId);
 
-    // Get appointments for these patients to get surgery type
     const appointments = await Appointment.find({
       patient: { $in: patientIds },
-      caseId: { $in: paginatedSurgeries.map(phase => phase.caseId) }
+      caseId: { $in: caseIds }
     })
-    .populate("department", "name")
-    .lean();
+      .populate("department", "name")
+      .lean();
 
     // Create a map for quick appointment lookup by caseId
     const appointmentMap = new Map();
-    appointments.forEach(appointment => {
+    appointments.forEach((appointment) => {
       appointmentMap.set(appointment.caseId, appointment);
     });
 
     // Format the response data
-    const surgeryData = paginatedSurgeries.map(phase => {
+    const surgeryData = paginatedSurgeries.map((phase) => {
       const patient = phase.patient;
       const doctor = phase.assignedDoctor;
       const appointment = appointmentMap.get(phase.caseId);
 
+      // Determine status for response
+      let status = "Scheduled";
+      if (phase.isCancelled) status = "Cancelled";
+      else if (phase.isDone) status = "Completed";
+
       return {
-        patId: patient.patId || "XXXXXXX", 
+        patId: patient.patId || "XXXXXXX",
         patient: {
           name: patient.name,
           email: patient.email
         },
-        date: phase.date ? new Date(phase.date).toLocaleDateString('en-GB', {
-          day: '2-digit',
-          month: '2-digit',
-          year: 'numeric'
-        }) : null,
-        surgeryType: appointment?.type || appointment?.department?.name || null, // Based on appointment type or department
+        date: phase.date
+          ? new Date(phase.date).toLocaleDateString("en-GB", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "numeric"
+            })
+          : null,
+        surgeryType:
+          appointment?.type || appointment?.department?.name || null,
         doctor: doctor ? `Dr. ${doctor.name}` : null,
-        status: phase.isDone ? "Completed" : "In Progress", // Since we're filtering isDone: false, it will be "In Progress"
+        status, // status after filtering logic
         caseId: phase.caseId,
         createdAt: phase.createdAt,
         updatedAt: phase.updatedAt
       };
     });
 
+    // Response
     return res.status(200).json({
       message: "Patients in surgery retrieved successfully",
       count: paginatedSurgeries.length,
@@ -510,12 +562,11 @@ export const getPatientsInSurgery = async (req, res) => {
       currentPage: page,
       surgeries: surgeryData
     });
-
   } catch (error) {
     console.error("Error fetching patients in surgery:", error);
-    res.status(500).json({ 
-      message: "Failed to fetch patients in surgery", 
-      error: error.message 
+    res.status(500).json({
+      message: "Failed to fetch patients in surgery",
+      error: error.message
     });
   }
 };
@@ -550,3 +601,28 @@ export const updateHealthStatus = async (req, res) => {
   }
 };
 
+// Get count of active patients
+export const getActivePatientCount = async (req, res) => {
+  try {
+    const hospitalId = req.session.hospitalId;
+    if (!hospitalId) {
+      return res.status(400).json({ message: "Hospital ID is required" });
+    }
+
+    const count = await Patient.countDocuments({
+      hospital: hospitalId,
+      status: "active",
+    });
+
+    return res.status(200).json({
+      message: "Active patient count retrieved successfully",
+      activePatientCount: count,
+    });
+  } catch (error) {
+    console.error("Error fetching active patient count:", error);
+    res.status(500).json({
+      message: "Failed to fetch active patient count",
+      error: error.message,
+    });
+  }
+};

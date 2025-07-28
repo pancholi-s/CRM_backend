@@ -1,10 +1,11 @@
 import Appointment from "../models/appointmentModel.js";
+import ProgressPhase from "../models/ProgressPhase.js";
 import mongoose from "mongoose";
 
 export const getMedicalProceduresStats = async (req, res) => {
   try {
-    const { departmentId, filterType = "month", month, year } = req.query;
     const { hospitalId } = req.session;
+    const { filterType = "month", month, year } = req.query;
 
     if (!hospitalId) {
       return res.status(400).json({
@@ -13,109 +14,107 @@ export const getMedicalProceduresStats = async (req, res) => {
       });
     }
 
-    const matchConditions = {
-      hospital: new mongoose.Types.ObjectId(String(hospitalId)),
-      status: { $in: ["Scheduled", "Completed"] },
-    };
-
-    if (departmentId) {
-      matchConditions.department = new mongoose.Types.ObjectId(String(departmentId));
-    }
-
     const today = new Date();
-    let startDate, endDate;
+    let startDate, endDate, prevStartDate, prevEndDate;
 
     if (filterType === "month") {
       const selectedMonth = month ? parseInt(month) - 1 : today.getMonth();
       const selectedYear = year ? parseInt(year) : today.getFullYear();
+
       startDate = new Date(selectedYear, selectedMonth, 1);
       endDate = new Date(selectedYear, selectedMonth + 1, 0, 23, 59, 59);
+
+      const prevMonth = selectedMonth - 1;
+      const prevYear = prevMonth < 0 ? selectedYear - 1 : selectedYear;
+      const actualPrevMonth = (prevMonth + 12) % 12;
+
+      prevStartDate = new Date(prevYear, actualPrevMonth, 1);
+      prevEndDate = new Date(prevYear, actualPrevMonth + 1, 0, 23, 59, 59);
     } else if (filterType === "week") {
       const current = new Date();
-      const first = current.getDate() - current.getDay() + 1; // Monday
+      const first = current.getDate() - current.getDay() + 1;
+
       startDate = new Date(current.setDate(first));
       startDate.setHours(0, 0, 0, 0);
+
       endDate = new Date(startDate);
       endDate.setDate(endDate.getDate() + 6);
       endDate.setHours(23, 59, 59, 999);
+
+      prevStartDate = new Date(startDate);
+      prevStartDate.setDate(prevStartDate.getDate() - 7);
+      prevStartDate.setHours(0, 0, 0, 0);
+
+      prevEndDate = new Date(endDate);
+      prevEndDate.setDate(prevEndDate.getDate() - 7);
+      prevEndDate.setHours(23, 59, 59, 999);
     } else if (filterType === "year") {
       const selectedYear = year ? parseInt(year) : today.getFullYear();
       startDate = new Date(selectedYear, 0, 1);
       endDate = new Date(selectedYear, 11, 31, 23, 59, 59);
+
+      prevStartDate = new Date(selectedYear - 1, 0, 1);
+      prevEndDate = new Date(selectedYear - 1, 11, 31, 23, 59, 59);
     }
 
-    if (startDate && endDate) {
-      matchConditions.tokenDate = { $gte: startDate, $lte: endDate };
-    }
-
-    const [stats, totalCases] = await Promise.all([
-      Appointment.aggregate([
-        { $match: matchConditions },
-        { $group: { _id: "$procedureCategory", count: { $sum: 1 } } },
-        {
-          $project: {
-            _id: 0,
-            procedureType: { $ifNull: ["$_id", "Unassigned"] },
-            cases: "$count",
-          },
+    const buildStatsPipeline = (dateRange) => ([
+      { $match: { date: dateRange } },
+      {
+        $lookup: {
+          from: "patients",
+          localField: "patient",
+          foreignField: "_id",
+          as: "patientDetails",
         },
-        { $sort: { cases: -1 } },
-      ]),
-      Appointment.countDocuments(matchConditions),
+      },
+      { $unwind: "$patientDetails" },
+      {
+        $match: {
+          "patientDetails.hospital": new mongoose.Types.ObjectId(hospitalId),
+        },
+      },
+      {
+        $group: {
+          _id: "$title",
+          cases: { $sum: 1 },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          procedureType: "$_id",
+          cases: 1,
+        },
+      },
     ]);
 
-    let percentageChange = 0;
-    if (filterType === "month" && month && year) {
-      const lastMonth = month - 1 === 0 ? 12 : month - 1;
-      const lastYear = month - 1 === 0 ? year - 1 : year;
-      const lastMonthStart = new Date(lastYear, lastMonth - 1, 1);
-      const lastMonthEnd = new Date(lastYear, lastMonth, 0, 23, 59, 59);
+    const stats = await ProgressPhase.aggregate(buildStatsPipeline({ $gte: startDate, $lte: endDate }));
+    const prevStats = await ProgressPhase.aggregate(buildStatsPipeline({ $gte: prevStartDate, $lte: prevEndDate }));
 
-      const lastMonthCount = await Appointment.countDocuments({
-        ...matchConditions,
-        tokenDate: { $gte: lastMonthStart, $lte: lastMonthEnd },
-      });
+    const totalCases = stats.reduce((sum, s) => sum + s.cases, 0);
+    const prevTotalCases = prevStats.reduce((sum, s) => sum + s.cases, 0);
 
-      percentageChange =
-        lastMonthCount > 0
-          ? ((totalCases - lastMonthCount) / lastMonthCount) * 100
-          : 100;
-    }
+    const percentageChange =
+      prevTotalCases === 0
+        ? null
+        : +(((totalCases - prevTotalCases) / prevTotalCases) * 100).toFixed(2);
 
-    const topCategories = stats
-      .filter((s) => s.procedureType !== "Unassigned")
-      .slice(0, 4)
-      .map((s) => s.procedureType);
-
-    const breakdown = {};
-
-    topCategories.forEach((cat) => {
-      breakdown[cat] = stats.find((s) => s.procedureType === cat)?.cases || 0;
-    });
-
-    const unassigned = stats.find((s) => s.procedureType === "Unassigned");
-    if (unassigned) {
-      breakdown.Unassigned = unassigned.cases;
-    }
+    const breakdown = Object.fromEntries(stats.map((s) => [s.procedureType, s.cases]));
 
     res.status(200).json({
       success: true,
       data: {
         totalCases,
-        percentageChange:
-          filterType === "month"
-            ? `${percentageChange > 0 ? "+" : ""}${percentageChange.toFixed(1)}%`
-            : null,
-        chartData: stats,
+        percentageChange,
         breakdown,
-        displayedCategories: topCategories,
+        displayedCategories: Object.keys(breakdown).slice(0, 4),
       },
     });
   } catch (error) {
-    console.error("Medical procedures error:", error);
+    console.error("ProgressPhase stats error:", error);
     res.status(500).json({
       success: false,
-      message: "Error fetching statistics",
+      message: "Error fetching stats",
     });
   }
 };
@@ -179,7 +178,6 @@ export const getHeaderStats = async (req, res) => {
     });
   }
 };
-
 
 export const getPatientsByCategory = async (req, res) => {
   try {

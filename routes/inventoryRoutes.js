@@ -8,6 +8,7 @@ import {
   getInventorySummary,
   deleteInventoryItem,
   deleteInventoryCategory,
+  updateCategory,
 } from "../controllers/inventoryController.js";
 import { authorizeRoles } from "../middleware/roleMiddleware.js";
 import { requireHospitalContext } from "../middleware/hospitalContext.js";
@@ -34,6 +35,14 @@ router.patch(
   authorizeRoles("hospitalAdmin", "doctor", "staff"),
   updateInventoryItem
 );
+
+router.patch(
+  "/inventory/categories/:categoryId",
+  requireHospitalContext,
+  authorizeRoles("hospitalAdmin", "doctor", "staff"),
+  updateCategory
+);
+
 
 router.get(
   "/inventory/:departmentId",
