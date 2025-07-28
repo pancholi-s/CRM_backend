@@ -6,7 +6,7 @@ import {
   dischargePatientFromBed,
   getHospitalStatistics,
   getPatientBedInfo,
-  getAvailableBeds
+  getAvailableBeds,
   transferBedToRoom,
 } from "../controllers/bedController.js";
 import { authorizeRoles } from "../middleware/roleMiddleware.js";
