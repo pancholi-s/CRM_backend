@@ -301,3 +301,41 @@ export const getAllRooms = async (req, res) => {
     });
   }
 };
+
+export const getAvailableRooms = async (req, res) => {
+  const hospitalId = req.session.hospitalId;
+  if (!hospitalId) {
+    return res.status(403).json({ message: "Unauthorized. Hospital ID missing." });
+  }
+
+  try {
+    const rooms = await Room.find({ hospital: hospitalId })
+      .populate({
+        path: "beds",
+        match: { status: "Available" }, 
+        select: "_id bedNumber status"
+      })
+      .lean();
+
+    const availableRooms = rooms
+      .filter(room => room.beds && room.beds.length > 0)
+      .map(room => ({
+        ...room,
+        capacity: {
+          totalBeds: room.capacity?.totalBeds || room.beds.length,
+          availableBeds: room.beds.length, 
+        }
+      }));
+
+    res.status(200).json({
+      message: "Available rooms fetched successfully.",
+      count: availableRooms.length,
+      rooms: availableRooms
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Error fetching available rooms.",
+      error: error.message
+    });
+  }
+};

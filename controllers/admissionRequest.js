@@ -240,7 +240,7 @@ export const getAdmissionRequests = async (req, res) => {
     const requests = await AdmissionRequest.find(filter)
       .populate({
         path: "patient",
-        select: "name age contact admissionStatus",
+        select: "name age contact phone admissionStatus",
         match: { admissionStatus: { $ne: "Admitted" } }, // 💥 exclude admitted patients
       })
       .populate("doctor", "name email")
@@ -299,7 +299,7 @@ export const getAdmittedPatients = async (req, res) => {
     const admitted = await Patient.find({
       hospital: hospitalId,
       admissionStatus: "Admitted"
-    }).select("name age gender contact admissionStatus healthStatus");
+    }).select("name age gender contact phone admissionStatus healthStatus");
 
     // 2. Get their IDs
     const admittedPatientIds = admitted.map(p => p._id);
@@ -344,7 +344,7 @@ export const getAdmittedPatients = async (req, res) => {
     const followUpPatients = await Patient.find({
       hospital: hospitalId,
       _id: { $in: followUpPatientIds }
-    }).select("name age gender contact admissionStatus healthStatus");
+    }).select("name age gender contact phone admissionStatus healthStatus");
 
     followUpPatients.forEach(p => {
       const id = p._id.toString();
@@ -359,7 +359,7 @@ export const getAdmittedPatients = async (req, res) => {
     const criticalPatients = await Patient.find({
       hospital: hospitalId,
       healthStatus: "Critical"
-    }).select("name age gender contact admissionStatus healthStatus");
+    }).select("name age gender contact phone admissionStatus healthStatus");
 
     criticalPatients.forEach(p => {
       const id = p._id.toString();
