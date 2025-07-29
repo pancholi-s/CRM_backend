@@ -146,11 +146,11 @@ export const getRoomsByHospital = async (req, res) => {
       .limit(limit)
       .lean();
 
-    if (!rooms || rooms.length === 0) {
-      return res.status(404).json({
-        message: "No rooms found for this hospital.",
-      });
-    }
+    // if (!rooms || rooms.length === 0) {
+    //   return res.status(404).json({
+    //     message: "No rooms found for this hospital.",
+    //   });
+    // }
 
     const roomsWithStats = rooms.map((room) => {
       const capacity = room.capacity || { totalBeds: 0, availableBeds: 0 };
