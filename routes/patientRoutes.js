@@ -11,7 +11,7 @@ router.use(requireHospitalContext);
 
 router.post("/updateHealthStatus/:patientId", authorizeRoles("doctor", "hospitalAdmin"), updateHealthStatus,updateHealthStatus)
 router.get("/getPatientsByHospital", authorizeRoles("receptionist", "hospitalAdmin", "doctor"), getPatientsByHospital,paginationMiddleware)
-router.get("/getPatientsByStatus", authorizeRoles("receptionist", "hospitalAdmin"), getPatientsByStatus ,paginationMiddleware);
+router.get("/getPatientsByStatus", authorizeRoles("receptionist", "hospitalAdmin","doctor"), getPatientsByStatus ,paginationMiddleware);
 router.get(
   "/:patientId/appointments",
   authorizeRoles("doctor", "receptionist", "hospitalAdmin"),
