@@ -11,10 +11,12 @@ const progressEntrySchema = new mongoose.Schema({
   doctor: { type: mongoose.Schema.Types.ObjectId, ref: "Doctor" },
   department: { type: mongoose.Schema.Types.ObjectId, ref: "Department" },
   date: { type: Date, default: Date.now },
+  consultationData: { type: mongoose.Schema.Types.Mixed }, // Added field to store consultation data
+  title: { type: String }, // Added field to store phase title
 }, { _id: false });
 
 const progressLogSchema = new mongoose.Schema({
-  patient: { type: mongoose.Schema.Types.ObjectId, ref: "Patient", required: true, unique: true },
+  patient: { type: mongoose.Schema.Types.ObjectId, ref: "Patient", required: true },
   date: { type: Date, default: Date.now },
   status: { type: String, enum: ["ongoing", "completed", "final"], default: "ongoing" },
   logs: [progressEntrySchema],
