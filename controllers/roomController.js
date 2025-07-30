@@ -146,11 +146,11 @@ export const getRoomsByHospital = async (req, res) => {
       .limit(limit)
       .lean();
 
-    if (!rooms || rooms.length === 0) {
-      return res.status(404).json({
-        message: "No rooms found for this hospital.",
-      });
-    }
+    // if (!rooms || rooms.length === 0) {
+    //   return res.status(404).json({
+    //     message: "No rooms found for this hospital.",
+    //   });
+    // }
 
     const roomsWithStats = rooms.map((room) => {
       const capacity = room.capacity || { totalBeds: 0, availableBeds: 0 };
@@ -298,6 +298,44 @@ export const getAllRooms = async (req, res) => {
     res.status(500).json({
       message: "Error fetching rooms.",
       error: error.message,
+    });
+  }
+};
+
+export const getAvailableRooms = async (req, res) => {
+  const hospitalId = req.session.hospitalId;
+  if (!hospitalId) {
+    return res.status(403).json({ message: "Unauthorized. Hospital ID missing." });
+  }
+
+  try {
+    const rooms = await Room.find({ hospital: hospitalId })
+      .populate({
+        path: "beds",
+        match: { status: "Available" }, 
+        select: "_id bedNumber status"
+      })
+      .lean();
+
+    const availableRooms = rooms
+      .filter(room => room.beds && room.beds.length > 0)
+      .map(room => ({
+        ...room,
+        capacity: {
+          totalBeds: room.capacity?.totalBeds || room.beds.length,
+          availableBeds: room.beds.length, 
+        }
+      }));
+
+    res.status(200).json({
+      message: "Available rooms fetched successfully.",
+      count: availableRooms.length,
+      rooms: availableRooms
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Error fetching available rooms.",
+      error: error.message
     });
   }
 };

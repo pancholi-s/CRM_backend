@@ -1,3 +1,4 @@
+import PDFDocument from 'pdfkit';
 import AdmissionRequest from '../models/admissionReqModel.js';
 import Bed from '../models/bedModel.js';
 import Room from '../models/roomModel.js';
@@ -239,7 +240,7 @@ export const getAdmissionRequests = async (req, res) => {
     const requests = await AdmissionRequest.find(filter)
       .populate({
         path: "patient",
-        select: "name age contact admissionStatus",
+        select: "name age contact phone admissionStatus",
         match: { admissionStatus: { $ne: "Admitted" } }, // 💥 exclude admitted patients
       })
       .populate("doctor", "name email")
@@ -298,7 +299,7 @@ export const getAdmittedPatients = async (req, res) => {
     const admitted = await Patient.find({
       hospital: hospitalId,
       admissionStatus: "Admitted"
-    }).select("name age gender contact admissionStatus healthStatus");
+    }).select("name age gender contact phone admissionStatus healthStatus");
 
     // 2. Get their IDs
     const admittedPatientIds = admitted.map(p => p._id);
@@ -343,7 +344,7 @@ export const getAdmittedPatients = async (req, res) => {
     const followUpPatients = await Patient.find({
       hospital: hospitalId,
       _id: { $in: followUpPatientIds }
-    }).select("name age gender contact admissionStatus healthStatus");
+    }).select("name age gender contact phone admissionStatus healthStatus");
 
     followUpPatients.forEach(p => {
       const id = p._id.toString();
@@ -358,7 +359,7 @@ export const getAdmittedPatients = async (req, res) => {
     const criticalPatients = await Patient.find({
       hospital: hospitalId,
       healthStatus: "Critical"
-    }).select("name age gender contact admissionStatus healthStatus");
+    }).select("name age gender contact phone admissionStatus healthStatus");
 
     criticalPatients.forEach(p => {
       const id = p._id.toString();
@@ -443,4 +444,212 @@ export const dischargePatient = async (req, res) => {
     console.error('Error discharging patient:', error);
     res.status(500).json({ message: 'Internal server error', error: error.message });
   }
+};
+
+export const downloadDischargePDF = async (req, res) => {
+  try {
+    const { dischargeId } = req.params;
+
+    const discharge = await Discharge.findById(dischargeId)
+      .populate('patient', 'name age gender phone email address')
+      .lean();
+
+    if (!discharge) {
+      return res.status(404).json({ message: 'Discharge record not found' });
+    }
+
+    const doc = new PDFDocument({ 
+      margin: 60,
+      size: 'A4'
+    });
+    
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="discharge-summary-${discharge.patient.name.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf"`);
+    
+    doc.pipe(res);
+
+    generateDischargePDF(doc, discharge);
+    
+    doc.end();
+
+  } catch (error) {
+    console.error('Error generating discharge PDF:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ message: 'Error generating PDF', error: error.message });
+    }
+  }
+};
+
+// Helper function to generate PDF content
+const generateDischargePDF = (doc, discharge) => {
+  const patient = discharge.patient;
+  const margin = 60;
+  const pageWidth = doc.page.width - (margin * 2);
+  const labelWidth = 140;
+  const valueX = margin + labelWidth + 20;
+  
+  let currentY = margin + 40;
+
+  doc.fontSize(26)
+     .font('Helvetica-Bold')
+     .fillColor('#2c3e50')
+     .text('DISCHARGE SUMMARY', margin, currentY, { 
+       align: 'center',
+       width: pageWidth 
+     });
+  
+  currentY += 40;
+  
+  doc.strokeColor('#3498db')
+     .lineWidth(3)
+     .moveTo(margin, currentY)
+     .lineTo(margin + pageWidth, currentY)
+     .stroke();
+  
+  currentY += 30;
+
+
+  currentY = addSection(doc, 'PATIENT INFORMATION', currentY, margin, pageWidth);
+  
+  currentY = addKeyValueRow(doc, 'Patient Name', patient.name || 'N/A', currentY, margin, labelWidth, valueX);
+  currentY = addKeyValueRow(doc, 'Age', patient.age ? `${patient.age} years` : 'N/A', currentY, margin, labelWidth, valueX);
+  currentY = addKeyValueRow(doc, 'Gender', patient.gender || 'N/A', currentY, margin, labelWidth, valueX);
+  currentY = addKeyValueRow(doc, 'Phone', patient.phone || 'N/A', currentY, margin, labelWidth, valueX);
+  currentY = addKeyValueRow(doc, 'Email', patient.email || 'N/A', currentY, margin, labelWidth, valueX);
+  currentY = addKeyValueRow(doc, 'Address', patient.address || 'N/A', currentY, margin, labelWidth, valueX, true);
+  
+  currentY += 25;
+
+  currentY = addSection(doc, 'ADMISSION DETAILS', currentY, margin, pageWidth);
+  
+  currentY = addKeyValueRow(doc, 'Admission Date', formatDate(discharge.admissionDate), currentY, margin, labelWidth, valueX);
+  
+  if (discharge.onAdmissionNotes) {
+    currentY = addKeyValueRow(doc, 'Clinical Notes', discharge.onAdmissionNotes, currentY, margin, labelWidth, valueX, true);
+  }
+  
+  currentY += 25;
+
+  currentY = addSection(doc, 'DISCHARGE DETAILS', currentY, margin, pageWidth);
+  
+  currentY = addKeyValueRow(doc, 'Discharge Date', formatDate(discharge.dischargeDate), currentY, margin, labelWidth, valueX);
+  
+  if (discharge.onDischargeNotes) {
+    currentY = addKeyValueRow(doc, 'Clinical Notes', discharge.onDischargeNotes, currentY, margin, labelWidth, valueX, true);
+  }
+  
+  currentY += 25;
+
+  if (discharge.diagnosis) {
+    currentY = addSection(doc, 'DIAGNOSIS', currentY, margin, pageWidth);
+    
+    doc.fontSize(11)
+       .font('Helvetica')
+       .fillColor('#2c3e50')
+       .text(discharge.diagnosis, margin, currentY, { 
+         width: pageWidth,
+         lineGap: 3
+       });
+    
+    currentY = doc.y + 25;
+  }
+
+  if (discharge.followUpDay || discharge.followUpTime) {
+    currentY = addSection(doc, 'FOLLOW-UP APPOINTMENT', currentY, margin, pageWidth);
+    
+    currentY = addKeyValueRow(doc, 'Day', discharge.followUpDay || 'N/A', currentY, margin, labelWidth, valueX);
+    currentY = addKeyValueRow(doc, 'Time', discharge.followUpTime || 'N/A', currentY, margin, labelWidth, valueX);
+    
+    currentY += 25;
+  }
+
+  const footerY = doc.page.height - 80;
+  
+  doc.strokeColor('#bdc3c7')
+     .lineWidth(1)
+     .moveTo(margin, footerY - 20)
+     .lineTo(margin + pageWidth, footerY - 20)
+     .stroke();
+
+  doc.fontSize(9)
+     .font('Helvetica')
+     .fillColor('#7f8c8d')
+     .text(`Generated on: ${new Date().toLocaleString('en-US', {
+       year: 'numeric',
+       month: 'long', 
+       day: 'numeric',
+       hour: '2-digit',
+       minute: '2-digit'
+     })}`, margin, footerY, { 
+       align: 'center',
+       width: pageWidth 
+     });
+};
+
+const addSection = (doc, title, currentY, margin, pageWidth) => {
+  if (currentY > doc.page.height - 150) {
+    doc.addPage();
+    currentY = 60;
+  }
+
+  doc.fontSize(14)
+     .font('Helvetica-Bold')
+     .fillColor('#34495e')
+     .text(title, margin, currentY);
+  
+  currentY += 20;
+  
+  doc.strokeColor('#ecf0f1')
+     .lineWidth(1)
+     .moveTo(margin, currentY)
+     .lineTo(margin + pageWidth, currentY)
+     .stroke();
+  
+  return currentY + 15;
+};
+
+const addKeyValueRow = (doc, key, value, currentY, margin, labelWidth, valueX, isMultiline = false) => {
+  if (currentY > doc.page.height - 100) {
+    doc.addPage();
+    currentY = 60;
+  }
+
+  doc.fontSize(10)
+     .font('Helvetica-Bold')
+     .fillColor('#34495e')
+     .text(`${key}:`, margin, currentY, { 
+       width: labelWidth,
+       align: 'left'
+     });
+
+  doc.fontSize(10)
+     .font('Helvetica')
+     .fillColor('#2c3e50');
+
+  if (isMultiline) {
+    const valueHeight = doc.heightOfString(value, { 
+      width: doc.page.width - valueX - margin,
+      lineGap: 2
+    });
+    
+    doc.text(value, valueX, currentY, { 
+      width: doc.page.width - valueX - margin,
+      lineGap: 2
+    });
+    
+    return currentY + Math.max(valueHeight, 12) + 8;
+  } else {
+    doc.text(value, valueX, currentY);
+    return currentY + 18;
+  }
+};
+
+const formatDate = (date) => {
+  if (!date) return 'N/A';
+  
+  return new Date(date).toLocaleDateString('en-US', {
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric'
+  });
 };
