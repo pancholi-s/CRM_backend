@@ -4,6 +4,7 @@ import Consultation from "../models/consultationModel.js";
 import Appointment from "../models/appointmentModel.js";
 import Bed from "../models/bedModel.js";
 import ProgressPhase from "../models/ProgressPhase.js";
+import Progress from "../models/progressLog.js";
 
 // Get Patients by Hospital with Sorting
 export const getPatientsByHospital = async (req, res) => {
@@ -462,49 +463,69 @@ export const getPatientsInSurgery = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    // Sorting
-    const sortOrder = req.query.sort === "asc" ? 1 : -1; // asc=oldest→newest, default=desc=newest→oldest
+    // Sorting order
+    const sortOrder = req.query.sort === "asc" ? 1 : -1;
 
-    // Filtering by status
-    const statusFilter = req.query.status
-      ? req.query.status.split(",") // allow multiple statuses in query
-      : [];
+    // Status filter (optional)
+    const statusFilter = req.query.status ? req.query.status.split(",") : [];
 
-    // Find all surgery progress phases
-    const surgeryPhases = await ProgressPhase.find({
-      title: "Surgery"
-    })
+    // Get all Progress documents (no hospital filter at root)
+    const progressDocs = await Progress.find({})
       .populate({
         path: "patient",
-        match: { hospital: hospitalId },
         select: "patId name email phone hospital"
       })
-      .populate("assignedDoctor", "name specialization")
-      .sort({ date: sortOrder }) // sort by date
+      .populate("logs.doctor", "name specialization")
       .lean();
 
-    // Filter out patients not in the hospital
-    let validSurgeryPhases = surgeryPhases.filter((phase) => phase.patient);
+    let validSurgeryLogs = [];
+
+    progressDocs.forEach((progress) => {
+      if (!progress.patient || !progress.logs || progress.logs.length === 0) return;
+
+      // ✅ Only consider logs that belong to this hospital
+      const hospitalLogs = progress.logs.filter(
+        (log) => log.department && log.department.toString() === hospitalId
+      );
+      if (hospitalLogs.length === 0) return;
+
+      // ✅ Sort logs by date (latest first)
+      const latestLog = [...hospitalLogs].sort(
+        (a, b) => new Date(b.date) - new Date(a.date)
+      )[0];
+
+      // ✅ Only if latest log is Surgery
+      if (latestLog.title === "Surgery") {
+        validSurgeryLogs.push({
+          patient: progress.patient,
+          caseId: latestLog.caseId,
+          date: latestLog.date,
+          doctor: latestLog.doctor,
+          department: latestLog.department,
+          status: latestLog.status || "Scheduled",
+          createdAt: progress.createdAt,
+          updatedAt: progress.updatedAt
+        });
+      }
+    });
 
     // Apply status filter
     if (statusFilter.length > 0) {
-      validSurgeryPhases = validSurgeryPhases.filter((phase) => {
-        let status = "Scheduled"; // default status
-        if (phase.isCancelled) status = "Cancelled";
-        else if (phase.isDone) status = "Completed";
-        return statusFilter.includes(status);
-      });
+      validSurgeryLogs = validSurgeryLogs.filter((log) =>
+        statusFilter.includes(log.status)
+      );
     }
 
-    // Total count
-    const totalSurgeries = validSurgeryPhases.length;
+    const totalSurgeries = validSurgeryLogs.length;
 
-    // Pagination
-    const paginatedSurgeries = validSurgeryPhases.slice(skip, skip + limit);
+    // Paginate
+    const paginatedSurgeries = validSurgeryLogs
+      .sort((a, b) => (sortOrder === 1 ? a.date - b.date : b.date - a.date))
+      .slice(skip, skip + limit);
 
-    // Fetch Appointments for surgery type
-    const patientIds = paginatedSurgeries.map((phase) => phase.patient._id);
-    const caseIds = paginatedSurgeries.map((phase) => phase.caseId);
+    // Fetch appointments for caseIds
+    const caseIds = paginatedSurgeries.map((log) => log.caseId);
+    const patientIds = paginatedSurgeries.map((log) => log.patient._id);
 
     const appointments = await Appointment.find({
       patient: { $in: patientIds },
@@ -513,47 +534,37 @@ export const getPatientsInSurgery = async (req, res) => {
       .populate("department", "name")
       .lean();
 
-    // Create a map for quick appointment lookup by caseId
+    // Map appointments by caseId
     const appointmentMap = new Map();
-    appointments.forEach((appointment) => {
-      appointmentMap.set(appointment.caseId, appointment);
+    appointments.forEach((appt) => {
+      appointmentMap.set(appt.caseId, appt);
     });
 
-    // Format the response data
-    const surgeryData = paginatedSurgeries.map((phase) => {
-      const patient = phase.patient;
-      const doctor = phase.assignedDoctor;
-      const appointment = appointmentMap.get(phase.caseId);
-
-      // Determine status for response
-      let status = "Scheduled";
-      if (phase.isCancelled) status = "Cancelled";
-      else if (phase.isDone) status = "Completed";
-
+    // Prepare final response
+    const surgeryData = paginatedSurgeries.map((log) => {
+      const appointment = appointmentMap.get(log.caseId);
       return {
-        patId: patient.patId || "XXXXXXX",
+        patId: log.patient.patId || "XXXXXXX",
         patient: {
-          name: patient.name,
-          email: patient.email
+          name: log.patient.name,
+          email: log.patient.email
         },
-        date: phase.date
-          ? new Date(phase.date).toLocaleDateString("en-GB", {
+        date: log.date
+          ? new Date(log.date).toLocaleDateString("en-GB", {
               day: "2-digit",
               month: "2-digit",
               year: "numeric"
             })
           : null,
-        surgeryType:
-          appointment?.type || appointment?.department?.name || null,
-        doctor: doctor ? `Dr. ${doctor.name}` : null,
-        status, // status after filtering logic
-        caseId: phase.caseId,
-        createdAt: phase.createdAt,
-        updatedAt: phase.updatedAt
+        surgeryType: appointment?.type || appointment?.department?.name || null,
+        doctor: log.doctor ? `Dr. ${log.doctor.name}` : null,
+        status: log.status,
+        caseId: log.caseId,
+        createdAt: log.createdAt,
+        updatedAt: log.updatedAt
       };
     });
 
-    // Response
     return res.status(200).json({
       message: "Patients in surgery retrieved successfully",
       count: paginatedSurgeries.length,
@@ -570,6 +581,7 @@ export const getPatientsInSurgery = async (req, res) => {
     });
   }
 };
+
 
 export const updateHealthStatus = async (req, res) => {
   try {
@@ -601,6 +613,36 @@ export const updateHealthStatus = async (req, res) => {
   }
 };
 
+export const getCriticalPatients = async (req, res) => {
+  try {
+    const hospitalId = req.session.hospitalId;
+    if (!hospitalId) {
+      return res.status(403).json({ message: "Unauthorized. Hospital ID missing." });
+    }
+
+    // Find patients with Critical status in this hospital
+    const criticalPatients = await Patient.find({
+      hospital: hospitalId,
+      healthStatus: "Critical"
+    })
+      .select("name patientID age gender phone healthStatus") // optional select
+      .lean();
+
+    if (criticalPatients.length === 0) {
+      return res.status(200).json({ message: "No patients in Critical status", patients: [] });
+    }
+
+    res.status(200).json({
+      message: "Critical patients fetched successfully",
+      count: criticalPatients.length,
+      patients: criticalPatients
+    });
+  } catch (error) {
+    console.error("Error fetching critical patients:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
 // Get count of active patients
 export const getActivePatientCount = async (req, res) => {
   try {
@@ -626,7 +668,6 @@ export const getActivePatientCount = async (req, res) => {
     });
   }
 };
-
 export const getPatientDetailsbyPatId = async (req, res) => {
   try {
     const { patientId } = req.params; // Get patientId from the URL parameter
@@ -651,5 +692,112 @@ export const getPatientDetailsbyPatId = async (req, res) => {
   } catch (error) {
     console.error('Error fetching patient details:', error);
     res.status(500).json({ message: 'Internal server error', error: error.message });
+  }
+};
+
+export const getTop4Procedures = async (req, res) => {
+  try {
+    // Get all Progress documents without hospital filtering (for testing)
+    const progressDocs = await Progress.find({})
+      .select("logs patient")
+      .lean();
+
+    const titleCounts = {};
+    let processedPatients = 0;
+
+    // Process each progress document
+    progressDocs.forEach((progress) => {
+      if (!progress.logs || progress.logs.length === 0) return;
+
+      // Find latest log based on date (from all logs)
+      const latestLog = [...progress.logs].sort(
+        (a, b) => new Date(b.date) - new Date(a.date)
+      )[0];
+
+      // Ignore logs without a title
+      if (!latestLog.title) return;
+
+      processedPatients++;
+
+      // Count the titles
+      titleCounts[latestLog.title] = (titleCounts[latestLog.title] || 0) + 1;
+    });
+
+    // Sort titles by count (descending)
+    const sortedTitles = Object.entries(titleCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4); // Take top 4
+
+    // Format for response
+    const result = sortedTitles.map(([title, count]) => ({
+      title,
+      count
+    }));
+
+    return res.status(200).json({
+      message: "Top 4 procedures retrieved successfully",
+      totalProcedures: processedPatients,
+      topProcedures: result
+    });
+  } catch (error) {
+    console.error("Error fetching top procedures:", error);
+    return res.status(500).json({
+      message: "Failed to fetch top procedures",
+      error: error.message
+    });
+  }
+};
+
+export const getMostCommonDiagnosis = async (req, res) => {
+  try {
+    // Fetch all Progress documents (later we can add hospital filter)
+    const progressDocs = await Progress.find({})
+      .select("logs patient")
+      .lean();
+
+    const diagnosisCounts = {};
+    let totalDiagnosis = 0;
+
+    progressDocs.forEach((progress) => {
+      if (!progress.logs || progress.logs.length === 0) return;
+
+      // ✅ Find the latest log based on date
+      const latestLog = [...progress.logs].sort(
+        (a, b) => new Date(b.date) - new Date(a.date)
+      )[0];
+
+      // Extract diagnosis from multiple possible locations
+      let diagnosis =
+        latestLog.consultationData?.diagnosis ||
+        latestLog.consultationData?.diagnosisAndVitals?.diagnosis ||
+        latestLog.consultationData?.vitals?.diagnosis;
+
+      if (!diagnosis || diagnosis.trim() === "") return;
+
+      const cleanDiagnosis = diagnosis.trim();
+
+      // Count diagnosis
+      diagnosisCounts[cleanDiagnosis] =
+        (diagnosisCounts[cleanDiagnosis] || 0) + 1;
+      totalDiagnosis++;
+    });
+
+    // Sort by count and get top 5
+    const sortedDiagnosis = Object.entries(diagnosisCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([diagnosis, count]) => ({ diagnosis, count }));
+
+    return res.status(200).json({
+      message: "Most common diagnosis retrieved successfully (Latest logs only)",
+      totalDiagnosis,
+      commonDiagnosis: sortedDiagnosis
+    });
+  } catch (error) {
+    console.error("Error fetching most common diagnosis:", error);
+    res.status(500).json({
+      message: "Failed to fetch most common diagnosis",
+      error: error.message
+    });
   }
 };
