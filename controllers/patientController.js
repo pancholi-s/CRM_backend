@@ -576,7 +576,7 @@ export const updateHealthStatus = async (req, res) => {
     const { patientId } = req.params;
     const { status } = req.body; // Expected: "Normal" or "Critical"
 
-    if (!["Stable", "Critical", "High", "Low"].includes(status)) {
+    if (!["Stable", "Critical", "High", "Moderate"].includes(status)) {
       return res.status(400).json({ message: "Invalid status value" });
     }
 

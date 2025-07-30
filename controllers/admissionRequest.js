@@ -295,7 +295,7 @@ export const getAdmittedPatients = async (req, res) => {
 
     const patientMap = {};
 
-    // 1. Get all admitted patients
+    // 1. Get all admitted patients, including healthStatus
     const admitted = await Patient.find({
       hospital: hospitalId,
       admissionStatus: "Admitted"
@@ -322,9 +322,10 @@ export const getAdmittedPatients = async (req, res) => {
       };
     });
 
-    // 5. Construct admitted map
+    // 5. Construct admitted map with healthStatus included
     admitted.forEach(p => {
       const id = p._id.toString();
+
       patientMap[id] = {
         ...p.toObject(),
         ...admissionDataMap[id],  // adds medicalNote and date
@@ -355,24 +356,31 @@ export const getAdmittedPatients = async (req, res) => {
       }
     });
 
-    // 7. Critical patients
-    const criticalPatients = await Patient.find({
-      hospital: hospitalId,
-      healthStatus: "Critical"
-    }).select("name age gender contact phone admissionStatus healthStatus");
+    // 7. Remove critical patients and map to patientMap
+    const finalPatients = Object.values(patientMap);
 
-    criticalPatients.forEach(p => {
-      const id = p._id.toString();
-      if (patientMap[id]) {
-        if (!patientMap[id].type.includes("critical")) {
-          patientMap[id].type += "+critical";
-        }
-      } else {
-        patientMap[id] = { ...p.toObject(), type: "critical" };
-      }
+    // 8. Adjust type sequence to always maintain: [admitted+followup], [followup], [admitted]
+    finalPatients.forEach(p => {
+      const types = p.type.split("+").sort((a, b) => {
+        const order = ["admitted", "followup"];
+        return order.indexOf(a) - order.indexOf(b); // Ensure fixed order
+      });
+      p.type = types.join("+");
+      // Remove healthStatus from the response data (if needed)
+      // delete p.healthStatus;  // If you still want to remove healthStatus, uncomment this line
     });
 
-    const finalPatients = Object.values(patientMap);
+        // 9. Fetch the latest caseId from consultations
+    for (let patient of finalPatients) {
+      const latestConsultation = await Consultation.findOne({
+        patient: patient._id,
+      }).sort({ date: -1 }).select('caseId');  // Get the latest consultation's caseId
+
+      if (latestConsultation) {
+        patient.latestCaseId = latestConsultation.caseId;  // Add the latest caseId
+      }
+    }
+    
 
     res.status(200).json({
       message: "Admitted, follow-up, and critical patients fetched successfully.",
@@ -383,7 +391,11 @@ export const getAdmittedPatients = async (req, res) => {
     console.error("Error fetching tracked patients:", error);
     res.status(500).json({ message: "Internal server error", error: error.message });
   }
+
+  
 };
+
+
 
 
 
