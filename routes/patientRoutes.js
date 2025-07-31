@@ -4,23 +4,15 @@ import { authorizeRoles } from "../middleware/roleMiddleware.js";
 import { requireHospitalContext } from "../middleware/hospitalContext.js";
 import { paginationMiddleware } from "../middleware/paginationMiddleware.js";
 
-import {
-  getPatientsByHospital,
-  getPatientsByStatus,
-  getAppointmentsByPatientId,
-  getPatientDetailsById,
-  getInpatients,
-  getPatientsInSurgery,
-  updateHealthStatus,
-  getActivePatientCount,
-  getCriticalPatients,
-  getTop4Procedures,
-  getMostCommonDiagnosis,
-} from "../controllers/patientController.js";
+import { getPatientsByHospital, getPatientsByStatus,getAppointmentsByPatientId, getPatientDetailsById,getInpatients, getPatientsInSurgery,updateHealthStatus , getActivePatientCount, getPatientDetailsbyPatId,getMostCommonDiagnosis, getTop4Procedures, getCriticalPatients  } from "../controllers/patientController.js"
 
 const router = express.Router();
 router.use(requireHospitalContext);
 
+router.post("/updateHealthStatus/:patientId", authorizeRoles("doctor", "hospitalAdmin"), updateHealthStatus)
+router.get("/getPatientsByHospital", authorizeRoles("receptionist", "hospitalAdmin", "doctor"), getPatientsByHospital,paginationMiddleware)
+router.get("/getPatientDetailsbyPatId/:patientId", authorizeRoles("receptionist", "hospitalAdmin", "doctor"), getPatientDetailsbyPatId)
+router.get("/getPatientsByStatus", authorizeRoles("receptionist", "hospitalAdmin","doctor"), getPatientsByStatus ,paginationMiddleware);
 router.post(
   "/updateHealthStatus/:patientId",
   authorizeRoles("doctor", "hospitalAdmin"),

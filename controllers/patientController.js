@@ -668,6 +668,32 @@ export const getActivePatientCount = async (req, res) => {
     });
   }
 };
+export const getPatientDetailsbyPatId = async (req, res) => {
+  try {
+    const { patientId } = req.params; // Get patientId from the URL parameter
+
+    // Find patient details by patientId
+    const patient = await Patient.findOne({ patId: patientId }).select('name phone address age');
+
+    if (!patient) {
+      return res.status(404).json({ message: 'Patient not found' });
+    }
+
+    // Return the patient details
+    res.status(200).json({
+      message: 'Patient details fetched successfully',
+      patient: {
+        name: patient.name,
+        phone: patient.phone,
+        address: patient.address,
+        age: patient.age
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching patient details:', error);
+    res.status(500).json({ message: 'Internal server error', error: error.message });
+  }
+};
 
 export const getTop4Procedures = async (req, res) => {
   try {

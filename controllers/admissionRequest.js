@@ -1,4 +1,6 @@
 import PDFDocument from 'pdfkit';
+import bcrypt from 'bcryptjs';
+
 import AdmissionRequest from '../models/admissionReqModel.js';
 import Bed from '../models/bedModel.js';
 import Room from '../models/roomModel.js';
@@ -16,19 +18,44 @@ export const createAdmissionRequest = async (req, res) => {
     const { patId, doctor, sendTo, admissionDetails } = req.body;
     const createdBy = req.user._id;
 
-    // 1. Validate patient using patId
-    const patient = await Patient.findOne({ patId: patId, hospital: hospitalId });
-    if (!patient) {
-      return res.status(404).json({ message: "Patient not found with given patId." });
+    let patient;
+
+    // Step 1: Try finding patient by patId
+    if (patId) {
+      patient = await Patient.findOne({ patId, hospital: hospitalId });
     }
 
-    // 2. Validate room by roomID
+    // Step 2: If patient doesn't exist, register a new patient
+    if (!patient) {
+      const { name, mobileNumber, email } = req.body;
+
+      if (!name || !mobileNumber || !email) {
+        return res.status(400).json({ message: "Missing patient registration details." });
+      }
+
+      const defaultPassword = "changeme";
+      const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+
+      patient = new Patient({
+        name,
+        email,
+        phone: mobileNumber,
+        hospital: hospitalId,
+        password: hashedPassword,
+        status: "active", // or 'new'
+      });
+
+      await patient.save(); // This is where patId gets generated if defined in your Patient model
+      console.log(`✅ New patient registered: ${patient.patId}`);
+    }
+
+    // Step 3: Validate room
     const room = await Room.findOne({ roomID: admissionDetails.room, hospital: hospitalId });
     if (!room) {
-      return res.status(404).json({ message: "Room not found with given roomId." });
+      return res.status(404).json({ message: "Room not found with given roomID." });
     }
 
-    // 3. Validate bed by bedNumber and associated room
+    // Step 4: Validate bed
     const bed = await Bed.findOne({
       bedNumber: admissionDetails.bed,
       hospital: hospitalId,
@@ -36,19 +63,19 @@ export const createAdmissionRequest = async (req, res) => {
       status: 'Available'
     });
     if (!bed) {
-      return res.status(404).json({ message: "Bed not found or not available with given bed number in the specified room." });
+      return res.status(404).json({ message: "Bed not found or not available in given room." });
     }
 
-    // 4. Prepare admissionDetails (convert admissionDate -> date)
+    // Step 5: Prepare admissionDetails
     const admissionData = {
       ...admissionDetails,
       room: room._id,
       bed: bed._id,
-      date: admissionDetails.admissionDate // Map to expected schema field
+      date: admissionDetails.date || admissionDetails.admissionDate
     };
     delete admissionData.admissionDate;
 
-    // 5. Create the admission request
+    // Step 6: Create admission request
     const request = await AdmissionRequest.create({
       patient: patient._id,
       hospital: hospitalId,
@@ -58,13 +85,22 @@ export const createAdmissionRequest = async (req, res) => {
       admissionDetails: admissionData
     });
 
-    res.status(201).json({ message: "Admission request created successfully", request });
+    res.status(201).json({
+      message: "Admission request created successfully",
+      request,
+      patient: {
+        name: patient.name,
+        patId: patient.patId
+      }
+    });
 
   } catch (error) {
-    console.error("Create Admission Request Error:", error);
+    console.error("❌ Create Admission Request Error:", error);
     res.status(500).json({ message: "Internal Server Error", error: error.message });
   }
 };
+
+
 
 
 export const approveAdmissionRequest = async (req, res) => {
