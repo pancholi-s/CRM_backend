@@ -5,7 +5,7 @@ import Appointment from "../models/appointmentModel.js";
 import Bed from "../models/bedModel.js";
 import ProgressPhase from "../models/ProgressPhase.js";
 import Progress from "../models/progressLog.js";
-
+import moment from "moment";
 // Get Patients by Hospital with Sorting
 export const getPatientsByHospital = async (req, res) => {
   try {
@@ -671,7 +671,19 @@ export const getActivePatientCount = async (req, res) => {
 
 export const getTop4Procedures = async (req, res) => {
   try {
-    // Get all Progress documents without hospital filtering (for testing)
+    // Time filter (weekly, monthly, yearly)
+    const filter = req.query.filter || "all"; // default is all
+    let startDate = null;
+
+    if (filter === "weekly") {
+      startDate = moment().subtract(7, "days").startOf("day").toDate();
+    } else if (filter === "monthly") {
+      startDate = moment().startOf("month").toDate();
+    } else if (filter === "yearly") {
+      startDate = moment().startOf("year").toDate();
+    }
+
+    // Get all Progress documents
     const progressDocs = await Progress.find({})
       .select("logs patient")
       .lean();
@@ -679,30 +691,32 @@ export const getTop4Procedures = async (req, res) => {
     const titleCounts = {};
     let processedPatients = 0;
 
-    // Process each progress document
     progressDocs.forEach((progress) => {
       if (!progress.logs || progress.logs.length === 0) return;
 
-      // Find latest log based on date (from all logs)
+      // Sort logs by date and get latest
       const latestLog = [...progress.logs].sort(
         (a, b) => new Date(b.date) - new Date(a.date)
       )[0];
 
-      // Ignore logs without a title
+      // Ignore logs without title
       if (!latestLog.title) return;
+
+      // ✅ Apply time filter
+      if (startDate && new Date(latestLog.date) < startDate) return;
 
       processedPatients++;
 
       // Count the titles
-      titleCounts[latestLog.title] = (titleCounts[latestLog.title] || 0) + 1;
+      titleCounts[latestLog.title] =
+        (titleCounts[latestLog.title] || 0) + 1;
     });
 
-    // Sort titles by count (descending)
+    // Sort titles and take top 4
     const sortedTitles = Object.entries(titleCounts)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 4); // Take top 4
+      .slice(0, 4);
 
-    // Format for response
     const result = sortedTitles.map(([title, count]) => ({
       title,
       count
@@ -710,6 +724,7 @@ export const getTop4Procedures = async (req, res) => {
 
     return res.status(200).json({
       message: "Top 4 procedures retrieved successfully",
+      filter,
       totalProcedures: processedPatients,
       topProcedures: result
     });
@@ -721,6 +736,7 @@ export const getTop4Procedures = async (req, res) => {
     });
   }
 };
+
 
 export const getMostCommonDiagnosis = async (req, res) => {
   try {
