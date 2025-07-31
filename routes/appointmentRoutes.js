@@ -5,7 +5,7 @@ import { requireHospitalContext } from '../middleware/hospitalContext.js';
 import { updateStatusesMiddleware } from '../middleware/statusMiddleware.js';
 import { paginationMiddleware } from '../middleware/paginationMiddleware.js';
 
-import { bookAppointment, completeAppointment, getAppointmentsByStatus, getFilteredAppointments, getAppointmentCounts, getRejectedAppointments, getCancelledAppointments, getAppointmentsByVisitType, getAppointments,getAppointmentHistory } from '../controllers/bookAppointmentController.js';
+import { bookAppointment, completeAppointment, getAppointmentsByStatus, getFilteredAppointments, getAppointmentCounts, getRejectedAppointments, getCancelledAppointments, getAppointmentsByVisitType, getAppointments,getAppointmentHistory, startAppointment } from '../controllers/bookAppointmentController.js';
 import { requestAppointment, getRequestedAppointments, approveAppointment, rejectAppointment, cancelAppointment } from '../controllers/requestedAppointmentController.js';
 
 const router = express.Router();
@@ -28,5 +28,6 @@ router.get('/getRequestedAppointments', authorizeRoles("receptionist", "hospital
 router.get('/getCancelledAppointments', authorizeRoles("receptionist", "hospitalAdmin","doctor"), updateStatusesMiddleware, getCancelledAppointments);
 router.get('/getAppointments', authorizeRoles("receptionist", "hospitalAdmin","doctor"), updateStatusesMiddleware, getAppointments);
 router.get('/getAppointmentsHistory', authorizeRoles("receptionist", "hospitalAdmin","doctor"), getAppointmentHistory);
+router.post('/setOngoing', authorizeRoles("receptionist", "hospitalAdmin","doctor"), startAppointment);
 
 export default router;

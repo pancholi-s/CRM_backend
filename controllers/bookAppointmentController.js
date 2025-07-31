@@ -956,5 +956,68 @@ export const getAppointmentHistory = async (req, res) => {
   }
 };
 
+export const startAppointment = async (req, res) => {
+  const { patientId } = req.body;
+  const { hospitalId } = req.session;
 
-//add "edit appointment" functionality
+  // Validate hospital context
+  if (!hospitalId) {
+    return res.status(403).json({ message: "Access denied. No hospital context found." });
+  }
+
+  // Validate patientId
+  if (!patientId) {
+    return res.status(400).json({ message: "Patient ID is required." });
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(patientId)) {
+    return res.status(400).json({ message: "Invalid patient ID format." });
+  }
+
+  try {
+    // Find the appointment with "Waiting" status for the given patient
+    const appointment = await Appointment.findOne({
+      patient: patientId,
+      hospital: hospitalId,
+      status: "Waiting"
+    })
+    .populate("patient", "name email phone")
+    .populate("doctor", "name specialization email")
+    .populate("department", "name")
+    .populate("hospital", "name address");
+
+    if (!appointment) {
+      return res.status(404).json({ 
+        message: "No waiting appointment found for this patient in the current hospital." 
+      });
+    }
+
+    // Update the appointment status from "Waiting" to "Ongoing"
+    appointment.status = "Ongoing";
+    await appointment.save();
+
+    res.status(200).json({
+      message: "Appointment status updated to Ongoing successfully.",
+      appointment: {
+        _id: appointment._id,
+        caseId: appointment.caseId,
+        patient: appointment.patient,
+        doctor: appointment.doctor,
+        department: appointment.department,
+        type: appointment.type,
+        typeVisit: appointment.typeVisit,
+        tokenDate: appointment.tokenDate,
+        tokenNumber: appointment.tokenNumber,
+        status: appointment.status,
+        note: appointment.note
+      }
+    });
+
+  } catch (error) {
+    console.error("Error updating appointment status:", error);
+    res.status(500).json({ 
+      message: "Error updating appointment status.", 
+      error: error.message 
+    });
+  }
+};
