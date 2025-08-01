@@ -21,6 +21,10 @@ const billSchema = new mongoose.Schema(
         service: { type: mongoose.Schema.Types.ObjectId, ref: "Service" },
         category: { type: String, required: true },
         quantity: { type: Number, default: 1 },
+        rate: { type: Number }, // Admin will update this rate
+        details: { 
+          type:mongoose.Schema.Types.Mixed, // To store additional details about the service 
+        }, 
       },
     ],
     totalAmount: {

@@ -5,10 +5,12 @@ import Appointment from '../models/appointmentModel.js';
 import Patient from '../models/patientModel.js';
 import ProgressPhase from '../models/ProgressPhase.js';
 import ProgressLog from '../models/progressLog.js';
+import Service from '../models/serviceModel.js';
+import { updateBillAfterAction } from '../middleware/billingMiddleware.js'; // Import the billing middleware function
 
 export const submitConsultation = async (req, res) => {
-  const session = await Consultation.startSession();
-  session.startTransaction();
+  const session = await Consultation.startSession();  // Start a session for the current request
+  session.startTransaction();  // Start the transaction
 
   try {
     const hospitalId = req.session.hospitalId;
@@ -19,13 +21,13 @@ export const submitConsultation = async (req, res) => {
       department,
       consultationData,
       action,
-      tab, // renamed from referralType
+      tab,
       referredToDoctor,
       referredToDepartment,
       referralReason,
       preferredDate,
       preferredTime,
-      referralUrgency, // added
+      referralUrgency,
       referralTracking,
       primaryDiagnosis,
       externalFacility,
@@ -37,6 +39,7 @@ export const submitConsultation = async (req, res) => {
       followUpRequired
     } = req.body;
 
+    // Validate required fields
     if (!hospitalId) {
       return res.status(403).json({ message: "Access denied. No hospital context found." });
     }
@@ -50,11 +53,10 @@ export const submitConsultation = async (req, res) => {
       return res.status(400).json({ message: "Invalid action type." });
     }
 
+    // Fetch hospital and department
     const hospital = await Hospital.findById(hospitalId).session(session);
     if (!hospital) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(404).json({ message: "Hospital not found." });
+      throw new Error("Hospital not found.");
     }
 
     const departmentExists = await Department.findOne({
@@ -63,20 +65,23 @@ export const submitConsultation = async (req, res) => {
     }).session(session);
 
     if (!departmentExists) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(404).json({ message: "Department not found in this hospital." });
+      throw new Error("Department not found in this hospital.");
     }
 
+    // Fetch appointment and patient
     const appointmentDoc = await Appointment.findById(appointment).session(session);
     if (!appointmentDoc) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(404).json({ message: "Appointment not found." });
+      throw new Error("Appointment not found.");
+    }
+
+    const patientDoc = await Patient.findOne({ _id: patient, hospital: hospitalId }).session(session);
+    if (!patientDoc) {
+      throw new Error("Patient not found.");
     }
 
     const caseId = appointmentDoc.caseId;
 
+    // Prepare consultation payload
     const consultationPayload = {
       doctor,
       patient,
@@ -88,6 +93,7 @@ export const submitConsultation = async (req, res) => {
       caseId
     };
 
+    // Handle action types (complete, refer, schedule)
     if (action === "complete") {
       consultationPayload.status = "completed";
       consultationPayload.followUpRequired = followUpRequired === true;
@@ -128,38 +134,65 @@ export const submitConsultation = async (req, res) => {
       consultationPayload.treatment = treatment;
 
       const admissionRec = treatment?.admissionRecommendation === true ? "Yes" : "No";
-      await Patient.findByIdAndUpdate(
-        patient,
-        { admissionRecommendation: admissionRec },
-        { session }
-      );
+      await Patient.findByIdAndUpdate(patient, { admissionRecommendation: admissionRec }, { session });
     }
 
+    // Create the new consultation
     const newConsultation = await Consultation.create([consultationPayload], { session });
 
-    await Appointment.findByIdAndUpdate(
-      appointment,
-      { status: "completed" },
-      { session }
-    );
+    // Update the appointment status
+    await Appointment.findByIdAndUpdate(appointment, { status: "completed" }, { session });
 
-    await session.commitTransaction();
-    session.endSession();
+    // Step 1: Fetch Consultation Service from Service collection
+    const consultationService = await Service.findOne({ name: "Consultation", hospital: hospitalId }).session(session);
+    console.log("Fetched Consultation Service:", consultationService);  // Log the fetched consultation service
 
-    res.status(201).json({
-      message: "Consultation submitted successfully.",
-      consultation: newConsultation[0],
+    // Step 2: Find the rate for the Consultation service from the categories array
+    let consultationRate = 0;  // Default to 0
+    if (consultationService) {
+      // Find the category with subCategoryName "Doctor Consultation"
+      const consultationCategory = consultationService.categories.find(
+        category => category.subCategoryName === "Doctor Consultation"
+      );
+      if (consultationCategory) {
+        consultationRate = consultationCategory.rate; // Use the rate from the category
+      }
+    }
+
+    console.log("Fetched Consultation Rate:", consultationRate);  // Log the fetched rate
+
+    // Step 3: Prepare Consultation Charges with details
+    const consultationCharge = {
+      service: consultationService ? consultationService._id : null, // Set service ID or null if missing
+      category: "Doctor Consultation",
+      quantity: 1,
+      rate: consultationRate,  // Use the fetched rate
+      details: consultationData,  // Pass the consultationData details here
+    };
+
+    console.log("Consultation Charge:", consultationCharge);  // Log the consultation charge before passing to `updateBillAfterAction`
+
+    // Step 4: Call centralized updateBillAfterAction with the session
+    await updateBillAfterAction(caseId, session, consultationCharge);  // Pass the `consultationCharge` to be included in services
+
+    // Send Response
+    res.status(200).json({
+      message: `Consultation successfully ${action === "complete" ? "completed" : action}.`,
+      data: newConsultation
     });
+
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
-    console.error("Error submitting consultation:", error);
-    res.status(500).json({
-      message: "Error submitting consultation.",
-      error: error.message,
-    });
+    console.error("Error updating consultation action:", error);
+    res.status(500).json({ message: "Internal server error", error: error.message });
+  } finally {
+    // Always ensure the session is closed
+    if (session) {
+      session.endSession();
+    }
   }
 };
+
+
 
 
 

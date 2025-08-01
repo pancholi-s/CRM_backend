@@ -11,9 +11,7 @@ export const createBill = async (req, res) => {
   const { hospitalId } = req.session;
 
   if (!hospitalId) {
-    return res
-      .status(403)
-      .json({ message: "Access denied. No hospital context found." });
+    return { error: "Access denied. No hospital context found." }; // Return an error instead of sending a response directly
   }
 
   try {
@@ -24,7 +22,7 @@ export const createBill = async (req, res) => {
     }).select("name phone");
 
     if (!patient) {
-      return res.status(404).json({ message: "Patient not found." });
+      return { error: "Patient not found." };
     }
 
     // Validate appointment (caseId)
@@ -35,7 +33,7 @@ export const createBill = async (req, res) => {
     });
 
     if (!appointment) {
-      return res.status(404).json({ message: "Appointment not found." });
+      return { error: "Appointment not found." };
     }
 
     // Validate services
@@ -49,9 +47,7 @@ export const createBill = async (req, res) => {
       });
 
       if (!service) {
-        return res
-          .status(404)
-          .json({ message: `Service not found: ${serviceItem.serviceId}` });
+        return { error: `Service not found: ${serviceItem.serviceId}` };
       }
 
       const serviceDetails = service.categories.find(
@@ -59,9 +55,7 @@ export const createBill = async (req, res) => {
       );
 
       if (!serviceDetails) {
-        return res
-          .status(404)
-          .json({ message: `Sub-category not found: ${serviceItem.category}` });
+        return { error: `Sub-category not found: ${serviceItem.category}` };
       }
 
       const serviceTotal = serviceDetails.rate * serviceItem.quantity;
@@ -99,11 +93,13 @@ export const createBill = async (req, res) => {
       { $inc: { revenue: paidAmount } }
     );
 
-    res.status(201).json({ message: "Bill generated successfully.", bill: newBill });
+    // Instead of sending a response, return the new bill object
+    return { success: true, bill: newBill };
   } catch (error) {
-    res.status(500).json({ message: "Error generating bill.", error: error.message });
+    return { error: `Error generating bill: ${error.message}` };
   }
 };
+
 
 export const getAllBills = async (req, res) => {
   const { hospitalId } = req.session;
