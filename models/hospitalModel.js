@@ -115,6 +115,10 @@ const hospitalSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+    hospitalImage: {
+    type: String, 
+    default: null
+  },
 });
 
 export default mongoose.model('Hospital', hospitalSchema);
