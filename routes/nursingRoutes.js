@@ -1,5 +1,6 @@
 import express from "express";
 import {recordVitals, getVitalsByPatient, addMedicalRecord,updateMedicationAction, getMedicalRecords} from "../controllers/nursingSection.js";
+// import { updateBillAfterAction } from "../middleware/billingMiddleware.js"; // Import the billing middleware function
 
 const router = express.Router();
 
