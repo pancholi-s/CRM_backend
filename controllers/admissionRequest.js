@@ -1,5 +1,7 @@
 import PDFDocument from 'pdfkit';
 import bcrypt from 'bcryptjs';
+import mongoose from 'mongoose';
+import { updateBillAfterAction } from '../middleware/billingMiddleware.js'; // Import the billing middleware function
 
 import AdmissionRequest from '../models/admissionReqModel.js';
 import Bed from '../models/bedModel.js';
@@ -432,13 +434,14 @@ export const getAdmittedPatients = async (req, res) => {
 };
 
 
-
-
-
 export const dischargePatient = async (req, res) => {
+  const session = await mongoose.startSession();  // Start a session for the current request
+  session.startTransaction();  // Start the transaction
+
   try {
     const {
       patientId,
+      caseId,
       admissionDate,
       dischargeDate,
       onAdmissionNotes,
@@ -454,6 +457,7 @@ export const dischargePatient = async (req, res) => {
     // Save discharge summary
     const discharge = new Discharge({
       patient: patientId,
+      caseId,
       admissionDate,
       dischargeDate,
       onAdmissionNotes,
@@ -465,16 +469,17 @@ export const dischargePatient = async (req, res) => {
     await discharge.save();
 
     // Dereference bed
-    const bed = await Bed.findOne({ assignedPatient: patientId });
+    const bed = await Bed.findOne({ assignedPatient: patientId }).session(session);
     if (bed) {
       bed.status = 'Available';
       bed.assignedPatient = null;
-      await bed.save();
+      bed.dischargeDate = dischargeDate;
+      await bed.save({ session });
     }
 
     // Update patient status
     patient.admissionStatus = 'Not Admitted';
-    await patient.save();
+    await patient.save({ session });
 
     // Update admission request
     const admissionRequest = await AdmissionRequest.findOne({
@@ -484,15 +489,54 @@ export const dischargePatient = async (req, res) => {
 
     if (admissionRequest) {
       admissionRequest.status = 'discharged';
-      await admissionRequest.save();
+      await admissionRequest.save({ session });
     }
 
+    // ---- Add Bed Charges Logic Here ----
+
+    // Fetch the bed's daily rate
+    const bedChargeRate = bed?.charges?.dailyRate || 0;  // If bed has a daily rate, use it
+    const assignedDate = bed?.assignedDate ? new Date(bed?.assignedDate) : null;
+    const dischargeDateObj = dischargeDate ? new Date(dischargeDate) : new Date();
+
+    // Calculate the number of days the bed was occupied
+    const daysOccupied = assignedDate ? Math.ceil((dischargeDateObj - assignedDate) / (1000 * 3600 * 24)) : 0;
+
+    // Calculate total bed charges for the occupied days
+    const bedCharges = daysOccupied * bedChargeRate;
+
+    // Prepare the bed charge details (without referencing service)
+    const bedChargeDetails = {
+      service: null,  // No service ID for room & bed, so we keep it null
+      category: bed?.room?.name || 'Unknown Room',
+      quantity: daysOccupied,  // Quantity = number of days occupied
+      rate: bedChargeRate,  // Daily rate from the bed model
+      details: {
+        bedType: bed?.bedType || "Not Specified",
+        features: bed?.features || "No features specified",
+        bedNumber: bed?.bedNumber || "Not Specified",
+        daysOccupied,  // Added for reference
+        totalCharge: bedCharges,  // Total charge for the bed occupancy
+      }
+    };
+
+    // Call the centralized function to update or create the bill (only bed charges)
+    await updateBillAfterAction(caseId, session, bedChargeDetails);  // Pass the bed charge details to update bill
+
     res.status(200).json({ message: 'Patient discharged successfully', discharge });
+    
   } catch (error) {
     console.error('Error discharging patient:', error);
     res.status(500).json({ message: 'Internal server error', error: error.message });
+  }finally {
+    // Always ensure the session is closed
+    if (session) {
+      session.endSession();
+    }
   }
 };
+
+
 
 export const downloadDischargePDF = async (req, res) => {
   try {

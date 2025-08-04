@@ -9,7 +9,8 @@ const dischargeSchema = new mongoose.Schema({
   diagnosis: { type: String },
   followUpDay: { type: String },
   followUpTime: { type: String },
-  createdAt: { type: Date, default: Date.now }
+  createdAt: { type: Date, default: Date.now },
+  caseId: { type: String, required: true },
 });
 
 export default mongoose.model('Discharge', dischargeSchema);

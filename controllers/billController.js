@@ -203,6 +203,158 @@ export const getBillDetails = async (req, res) => {
   }
 };
 
+export const getBillsByPatient = async (req, res) => {
+  try {
+    const { patientId } = req.params; // Get patientId from URL params
+
+    if (!patientId) {
+      return res.status(400).json({ message: "Patient ID is required." });
+    }
+
+    // Fetch all bills for the given patientId and populate required fields
+    const bills = await Bill.find({ patient: patientId })
+      .populate("patient", "name phone")  // Populate patient fields (name and phone)
+      .populate("doctor", "name specialization")  // Populate doctor fields (name and specialization)
+      .populate("services.service", "name categories") // Populate service fields (name and categories)
+      .exec();
+
+    if (!bills || bills.length === 0) {
+      return res.status(404).json({ message: "No bills found for this patient." });
+    }
+
+    // Map services and group by service name
+    const formattedBills = bills.map((bill) => {
+      const serviceMap = new Map();
+
+      bill.services.forEach((item) => {
+        if (!item.service) return;
+
+        const serviceName = item.service.name || "Unknown Service";
+        const selectedCategory = item.category;
+        const categoryQuantity = item.quantity || 1;
+
+        const filteredCategories = item.service.categories
+          ?.filter((cat) => cat.subCategoryName === selectedCategory)  // Use subCategoryName
+          .map((cat) => ({
+            subCategoryName: cat.subCategoryName,  // Include subCategoryName
+            rateType: cat.rateType,
+            rate: cat.rate,
+            quantity: categoryQuantity,
+            total: (cat.rate || 0) * categoryQuantity,
+          })) || [];
+
+        if (!serviceMap.has(serviceName)) {
+          serviceMap.set(serviceName, {
+            name: serviceName,
+            totalQuantity: categoryQuantity,
+            totalCategories: filteredCategories.length,
+            categories: filteredCategories,
+          });
+        } else {
+          const existingService = serviceMap.get(serviceName);
+          existingService.totalQuantity += categoryQuantity;
+          existingService.categories.push(...filteredCategories);
+          existingService.totalCategories = existingService.categories.length;
+        }
+      });
+
+      // Return a formatted bill
+      return {
+        invoiceNumber: bill.invoiceNumber,
+        caseId: bill.caseId,
+        invoiceDate: bill.invoiceDate,
+        patient: bill.patient
+          ? { name: bill.patient.name, phone: bill.patient.phone }
+          : { name: "Unknown", phone: "N/A" },
+        doctor: bill.doctor
+          ? { name: bill.doctor.name, specialization: bill.doctor.specialization }
+          : { name: "Unknown", specialization: "N/A" },
+        services: Array.from(serviceMap.values()), // Convert map back to array
+        totalAmount: bill.totalAmount,
+        paidAmount: bill.paidAmount,
+        outstanding: bill.outstanding,
+        status: bill.status,
+        mode: bill.mode,
+      };
+    });
+
+    // Send the response back
+    res.status(200).json({
+      message: "Bills fetched successfully",
+      bills: formattedBills,
+    });
+  } catch (error) {
+    console.error("Error fetching bills:", error);
+    res.status(500).json({
+      message: "Error fetching bills.",
+      error: error.message,
+    });
+  }
+};
+
+export const editBillDetails = async (req, res) => {
+  const { billId } = req.params;  // Get billId from URL params
+  const { services, paidAmount, status, mode } = req.body;  // Extract fields from request body
+
+  try {
+    // Fetch the bill by its ID
+    let bill = await Bill.findById(billId)
+      .populate("services.service", "name categories");
+
+    if (!bill) {
+      return res.status(404).json({ message: "Bill not found." });
+    }
+
+    // Update the services (if provided in the request body)
+    if (services) {
+      bill.services = services;
+    }
+
+    // Recalculate totalAmount based on services (quantity * rate for each service)
+    let totalAmount = 0;
+    bill.services.forEach(item => {
+      totalAmount += item.quantity * (item.rate || 0);  // Ensure we handle cases where rate might be null or 0
+    });
+
+    // Update paid amount and status (if provided)
+    if (paidAmount !== undefined) {
+      bill.paidAmount = paidAmount;
+      bill.outstanding = totalAmount - paidAmount;  // Recalculate outstanding amount
+    }
+
+    if (status) {
+      bill.status = status;
+    }
+
+    if (mode) {
+      bill.mode = mode;
+    }
+
+    // Update the totalAmount and outstanding in the bill
+    bill.totalAmount = totalAmount;
+    bill.outstanding = totalAmount - bill.paidAmount;
+
+    // Save the updated bill
+    await bill.save();
+
+    // Send the updated bill back in the response
+    res.status(200).json({
+      message: "Bill updated successfully",
+      bill
+    });
+
+  } catch (error) {
+    console.error("Error updating bill:", error);
+    res.status(500).json({
+      message: "Error updating bill.",
+      error: error.message
+    });
+  }
+};
+
+
+
+
 export const getRevenueByYear = async (req, res) => {
   const { year } = req.query;
   const hospitalId = req.session.hospitalId;
