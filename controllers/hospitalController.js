@@ -1,4 +1,5 @@
 import Hospital from "../models/hospitalModel.js";
+import fs from "fs";
 
 export const registerHospital = async (req, res) => {
   const {
@@ -52,5 +53,43 @@ export const registerHospital = async (req, res) => {
   } catch (error) {
     console.error("Error registering hospital:", error);
     res.status(500).json({ message: "Error registering hospital." });
+  }
+};
+
+export const addHospitalImage = async (req, res) => {
+  try {
+    const { hospitalId } = req.body;
+
+    if (!hospitalId || !req.file) {
+      return res.status(400).json({ 
+        message: "hospitalId and image file are required." 
+      });
+    }
+
+    const imageBase64 = fs.readFileSync(req.file.path, { encoding: "base64" });
+    const mimeType = req.file.mimetype; // e.g., "image/png"
+    const imageData = `data:${mimeType};base64,${imageBase64}`;
+
+    const updatedHospital = await Hospital.findByIdAndUpdate(
+      hospitalId,
+      { hospitalImage: imageData },
+      { new: true }
+    );
+
+    if (!updatedHospital) {
+      return res.status(404).json({ message: "Hospital not found." });
+    }
+
+    res.status(200).json({
+      message: "Hospital image updated successfully.",
+      hospital: {
+        _id: updatedHospital._id,
+        name: updatedHospital.name,
+        hospitalImage: updatedHospital.hospitalImage
+      }
+    });
+  } catch (error) {
+    console.error("Error updating hospital image:", error);
+    res.status(500).json({ message: "Error updating hospital image." });
   }
 };

@@ -197,6 +197,7 @@ export const loginUser = async (req, res) => {
         username: user.name,
         hospitalId: user.hospital._id,
         hospitalName: user.hospital.name,
+        hospitalImage: user.hospital.hospitalImage || null, 
         departmentIds: role === "doctor" && user.departments
           ? user.departments.map((dep) => dep._id)
           : undefined,

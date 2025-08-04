@@ -1021,3 +1021,177 @@ export const startAppointment = async (req, res) => {
     });
   }
 };
+
+// Send Patient to Last in Queue API - Reason is Optional
+export const sendPatientToLast = async (req, res) => {
+  const { appointmentId, reason } = req.body;
+  const { hospitalId } = req.session;
+
+  if (!hospitalId) {
+    return res.status(403).json({ message: "Access denied. No hospital context found." });
+  }
+
+  if (!appointmentId) {
+    return res.status(400).json({ message: "Appointment ID is required." });
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(appointmentId)) {
+    return res.status(400).json({ message: "Invalid appointment ID." });
+  }
+
+  try {
+    // Find the appointment that needs to be sent to last
+    const appointment = await Appointment.findOne({
+      _id: appointmentId,
+      hospital: hospitalId,
+      status: "Waiting" // Only waiting appointments can be moved
+    }).populate("patient", "name email phone")
+      .populate("doctor", "_id name")
+      .populate("department", "_id name");
+
+    if (!appointment) {
+      return res.status(404).json({ 
+        message: "Waiting appointment not found." 
+      });
+    }
+
+    const today = new Date(appointment.tokenDate);
+    const startOfDay = new Date(today);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(today);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const lastAppointment = await Appointment.findOne({
+      doctor: appointment.doctor._id,
+      department: appointment.department._id,
+      hospital: hospitalId,
+      tokenDate: { $gte: startOfDay, $lte: endOfDay },
+      typeVisit: "Walk in",
+      status: { $nin: ["Cancelled", "RescheduledOld", "Completed"] }
+    }).sort({ tokenNumber: -1 });
+
+    const newTokenNumber = lastAppointment ? lastAppointment.tokenNumber + 1 : 1;
+    const oldTokenNumber = appointment.tokenNumber;
+
+    const defaultReason = "Moved to end of queue";
+    const actualReason = reason && reason.trim() ? reason.trim() : defaultReason;
+
+    appointment.tokenNumber = newTokenNumber;
+    appointment.note = appointment.note ? 
+      `${appointment.note}\n[MOVED TO LAST] Reason: ${actualReason}` : 
+      `[MOVED TO LAST] Reason: ${actualReason}`;
+    
+    await appointment.save();
+
+    const currentQueue = await Appointment.find({
+      doctor: appointment.doctor._id,
+      department: appointment.department._id,
+      hospital: hospitalId,
+      tokenDate: { $gte: startOfDay, $lte: endOfDay },
+      typeVisit: "Walk in",
+      status: { $nin: ["Cancelled", "RescheduledOld", "Completed"] }
+    })
+    .populate("patient", "name")
+    .sort({ tokenNumber: 1 })
+    .select("tokenNumber patient status caseId");
+
+    res.status(200).json({
+      message: "Patient sent to last in queue successfully.",
+      updatedAppointment: {
+        _id: appointment._id,
+        caseId: appointment.caseId,
+        patient: appointment.patient,
+        oldTokenNumber: oldTokenNumber,
+        newTokenNumber: newTokenNumber,
+        status: appointment.status,
+        reasonProvided: reason ? true : false,
+        actualReason: actualReason 
+      },
+      currentQueue: currentQueue.map(apt => ({
+        tokenNumber: apt.tokenNumber,
+        patientName: apt.patient.name,
+        status: apt.status,
+        caseId: apt.caseId
+      })),
+      queueSummary: {
+        totalWaiting: currentQueue.filter(apt => apt.status === "Waiting").length,
+        totalOngoing: currentQueue.filter(apt => apt.status === "Ongoing").length,
+        nextPatient: currentQueue.find(apt => apt.status === "Waiting")?.patient.name || "None"
+      }
+    });
+
+  } catch (error) {
+    console.error("Error sending patient to last:", error);
+    res.status(500).json({ 
+      message: "Error moving patient to last in queue.", 
+      error: error.message 
+    });
+  }
+};
+
+// Get Today's Queue Status (Helper API)
+export const getTodayQueue = async (req, res) => {
+  const { doctorId, departmentId } = req.query;
+  const { hospitalId } = req.session;
+
+  if (!hospitalId) {
+    return res.status(403).json({ message: "Access denied. No hospital context found." });
+  }
+
+  if (!doctorId || !departmentId) {
+    return res.status(400).json({ message: "Doctor ID and Department ID are required." });
+  }
+
+  try {
+    const today = new Date();
+    const startOfDay = new Date(today);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(today);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const todayAppointments = await Appointment.find({
+      doctor: doctorId,
+      department: departmentId,
+      hospital: hospitalId,
+      tokenDate: { $gte: startOfDay, $lte: endOfDay },
+      typeVisit: "Walk in",
+      status: { $nin: ["Cancelled", "RescheduledOld", "Completed"] }
+    })
+    .populate("patient", "name phone")
+    .sort({ tokenNumber: 1 })
+    .select("tokenNumber patient status caseId tokenDate");
+
+    const queueStatus = todayAppointments.map(apt => ({
+      appointmentId: apt._id,
+      tokenNumber: apt.tokenNumber,
+      patientName: apt.patient.name,
+      patientPhone: apt.patient.phone,
+      status: apt.status,
+      caseId: apt.caseId,
+      time: apt.tokenDate
+    }));
+
+    const summary = {
+      totalInQueue: todayAppointments.length,
+      waiting: todayAppointments.filter(apt => apt.status === "Waiting").length,
+      ongoing: todayAppointments.filter(apt => apt.status === "Ongoing").length,
+      completed: todayAppointments.filter(apt => apt.status === "Completed").length,
+      currentPatient: todayAppointments.find(apt => apt.status === "Ongoing")?.patient.name || "None",
+      nextPatient: todayAppointments.find(apt => apt.status === "Waiting")?.patient.name || "None"
+    };
+
+    res.status(200).json({
+      message: "Today's queue retrieved successfully.",
+      date: today.toISOString().split('T')[0],
+      summary: summary,
+      queue: queueStatus
+    });
+
+  } catch (error) {
+    console.error("Error fetching today's queue:", error);
+    res.status(500).json({ 
+      message: "Error fetching queue status.", 
+      error: error.message 
+    });
+  }
+};
