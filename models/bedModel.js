@@ -17,7 +17,7 @@ const bedSchema = new mongoose.Schema(
         "Pediatric",
         "Maternity",
       ],
-      required: true,
+      // required: true,
     },
     room: {
       type: mongoose.Schema.Types.ObjectId,
