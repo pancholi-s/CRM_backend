@@ -61,7 +61,7 @@ export const addRoom = async (req, res) => {
     // Add beds (can be one or many)
     const bedsToInsert = beds?.map((bed) => ({
       bedNumber: bed.bedId,
-      bedType: bed.roomType || roomType,
+      // bedType: bed.roomType || roomType,
       room: newRoom._id,
       hospital: hospitalId,
       department: departmentId,
