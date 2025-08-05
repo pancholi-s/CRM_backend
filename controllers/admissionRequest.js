@@ -493,42 +493,51 @@ export const dischargePatient = async (req, res) => {
     }
 
     // ---- Add Bed Charges Logic Here ----
-
-    // Fetch the bed's daily rate
     const bedChargeRate = bed?.charges?.dailyRate || 0;  // If bed has a daily rate, use it
     const assignedDate = bed?.assignedDate ? new Date(bed?.assignedDate) : null;
     const dischargeDateObj = dischargeDate ? new Date(dischargeDate) : new Date();
 
-    // Calculate the number of days the bed was occupied
-    const daysOccupied = assignedDate ? Math.ceil((dischargeDateObj - assignedDate) / (1000 * 3600 * 24)) : 0;
+    // Ensure both dates are valid Date objects
+    if (assignedDate && dischargeDateObj) {
+      // Calculate the number of days the bed was occupied
+      const timeDiff = dischargeDateObj - assignedDate;
+      const daysOccupied = Math.floor(timeDiff / (1000 * 3600 * 24));  // Convert milliseconds to days
 
-    // Calculate total bed charges for the occupied days
-    const bedCharges = daysOccupied * bedChargeRate;
-
-    // Prepare the bed charge details (without referencing service)
-    const bedChargeDetails = {
-      service: null,  // No service ID for room & bed, so we keep it null
-      category: bed?.room?.name || 'Unknown Room',
-      quantity: daysOccupied,  // Quantity = number of days occupied
-      rate: bedChargeRate,  // Daily rate from the bed model
-      details: {
-        bedType: bed?.bedType || "Not Specified",
-        features: bed?.features || "No features specified",
-        bedNumber: bed?.bedNumber || "Not Specified",
-        daysOccupied,  // Added for reference
-        totalCharge: bedCharges,  // Total charge for the bed occupancy
+      // Avoid negative days (in case of erroneous data)
+      if (daysOccupied < 0) {
+        throw new Error("Discharge date cannot be earlier than assigned date.");
       }
-    };
 
-    // Call the centralized function to update or create the bill (only bed charges)
-    await updateBillAfterAction(caseId, session, bedChargeDetails);  // Pass the bed charge details to update bill
+      // Calculate total bed charges for the occupied days
+      const bedCharges = daysOccupied * bedChargeRate;
+
+      // Prepare the bed charge details (without referencing service)
+      const bedChargeDetails = {
+        service: null,  // No service ID for room & bed, so we keep it null
+        category: bed?.room?.name || 'Unknown Room',
+        quantity: daysOccupied,  // Quantity = number of days occupied
+        rate: bedChargeRate,  // Daily rate from the bed model
+        details: {
+          bedType: bed?.bedType || "Not Specified",
+          features: bed?.features || "No features specified",
+          bedNumber: bed?.bedNumber || "Not Specified",
+          daysOccupied,  // Added for reference
+          totalCharge: bedCharges,  // Total charge for the bed occupancy
+        }
+      };
+
+      // Call the centralized function to update or create the bill (only bed charges)
+      await updateBillAfterAction(caseId, session, bedChargeDetails);  // Pass the bed charge details to update bill
+    } else {
+      throw new Error("Assigned date or discharge date is missing.");
+    }
 
     res.status(200).json({ message: 'Patient discharged successfully', discharge });
     
   } catch (error) {
     console.error('Error discharging patient:', error);
     res.status(500).json({ message: 'Internal server error', error: error.message });
-  }finally {
+  } finally {
     // Always ensure the session is closed
     if (session) {
       session.endSession();
