@@ -478,7 +478,7 @@ export const getProgressTracker = async (req, res) => {
     });
 
     // Final sort by date
-    progress.sort((a, b) => new Date(a.date) - new Date(b.date));
+    progress.sort((a, b) => new Date(b.date) - new Date(a.date));
 
     // 3. Build logs to append to ProgressLog
     const logEntries = progress.map(item => ({
@@ -535,7 +535,6 @@ export const getProgressTracker = async (req, res) => {
     res.status(500).json({ message: 'Internal server error', error: error.message });
   }
 };
-
 
 
 
