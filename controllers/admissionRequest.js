@@ -22,15 +22,31 @@ export const createAdmissionRequest = async (req, res) => {
 
     let patient;
 
-    // Step 1: Try finding patient by patId
+    // Step 1: Try finding patient by patId (optional path)
     if (patId) {
       patient = await Patient.findOne({ patId, hospital: hospitalId });
     }
 
-    // Step 2: If patient doesn't exist, register a new patient
+    // Step 2: Validate room
+    const room = await Room.findOne({ roomID: admissionDetails.room, hospital: hospitalId });
+    if (!room) {
+      return res.status(404).json({ message: "Room not found with given roomID." });
+    }
+
+    // Step 3: Validate bed
+    const bed = await Bed.findOne({
+      bedNumber: admissionDetails.bed,
+      hospital: hospitalId,
+      room: room._id,
+      status: 'Available'
+    });
+    if (!bed) {
+      return res.status(409).json({ message: "Bed not available. Already reserved or occupied." });
+    }
+
+    // Step 4: If patient doesn't exist, create new (only after bed is valid)
     if (!patient) {
       const { name, mobileNumber, email } = req.body;
-
       if (!name || !mobileNumber || !email) {
         return res.status(400).json({ message: "Missing patient registration details." });
       }
@@ -44,31 +60,18 @@ export const createAdmissionRequest = async (req, res) => {
         phone: mobileNumber,
         hospital: hospitalId,
         password: hashedPassword,
-        status: "active", // or 'new'
+        status: "active",
       });
 
-      await patient.save(); // This is where patId gets generated if defined in your Patient model
+      await patient.save();
       console.log(`✅ New patient registered: ${patient.patId}`);
     }
 
-    // Step 3: Validate room
-    const room = await Room.findOne({ roomID: admissionDetails.room, hospital: hospitalId });
-    if (!room) {
-      return res.status(404).json({ message: "Room not found with given roomID." });
-    }
+    // Step 5: Mark bed as Reserved
+    bed.status = 'Reserved';
+    await bed.save();
 
-    // Step 4: Validate bed
-    const bed = await Bed.findOne({
-      bedNumber: admissionDetails.bed,
-      hospital: hospitalId,
-      room: room._id,
-      status: 'Available'
-    });
-    if (!bed) {
-      return res.status(404).json({ message: "Bed not found or not available in given room." });
-    }
-
-    // Step 5: Prepare admissionDetails
+    // Step 6: Prepare admissionDetails
     const admissionData = {
       ...admissionDetails,
       room: room._id,
@@ -77,7 +80,7 @@ export const createAdmissionRequest = async (req, res) => {
     };
     delete admissionData.admissionDate;
 
-    // Step 6: Create admission request
+    // Step 7: Create admission request
     const request = await AdmissionRequest.create({
       patient: patient._id,
       hospital: hospitalId,
@@ -101,9 +104,6 @@ export const createAdmissionRequest = async (req, res) => {
     res.status(500).json({ message: "Internal Server Error", error: error.message });
   }
 };
-
-
-
 
 export const approveAdmissionRequest = async (req, res) => {
   try {
