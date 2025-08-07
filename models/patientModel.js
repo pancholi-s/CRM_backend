@@ -133,6 +133,19 @@ const patientSchema = new mongoose.Schema({
   patId: {
     type: String,
   },
+
+  hasInsurance: { type: Boolean, default: false },
+  
+  insuranceDetails: {
+    employerName: { type: String },
+    insuranceIdNumber: { type: String },
+    policyNumber: { type: String },
+    insuranceCompany: { type: String },
+    employeeCode: { type: String },
+    insuranceStartDate: { type: Date },
+    insuranceExpiryDate: { type: Date }
+  },
+
   files: [
     {
       fileName: { type: String, required: true },

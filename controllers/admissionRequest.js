@@ -17,12 +17,13 @@ export const createAdmissionRequest = async (req, res) => {
       return res.status(403).json({ message: "No hospital context found." });
     }
 
-    const { patId, doctor, sendTo, admissionDetails } = req.body;
+    const { patId, doctor, sendTo, admissionDetails, hasInsurance } = req.body;
     const createdBy = req.user._id;
 
     let patient;
+    let generatedCaseId = null;
 
-    // Step 1: Try finding patient by patId (optional path)
+    // Step 1: Check if patient exists
     if (patId) {
       patient = await Patient.findOne({ patId, hospital: hospitalId });
     }
@@ -44,15 +45,34 @@ export const createAdmissionRequest = async (req, res) => {
       return res.status(409).json({ message: "Bed not available. Already reserved or occupied." });
     }
 
-    // Step 4: If patient doesn't exist, create new (only after bed is valid)
+    // Step 4: If patient doesn't exist, register
     if (!patient) {
       const { name, mobileNumber, email } = req.body;
       if (!name || !mobileNumber || !email) {
         return res.status(400).json({ message: "Missing patient registration details." });
       }
 
+      // Validate insurance if enabled
+      if (hasInsurance === true || hasInsurance === 'true') {
+        const requiredFields = [
+          "employerName", "insuranceIdNumber", "policyNumber",
+          "insuranceCompany", "employeeCode", "insuranceStartDate", "insuranceExpiryDate"
+        ];
+
+        for (const field of requiredFields) {
+          if (!req.body[field]) {
+            return res.status(400).json({ message: `Missing required insurance field: ${field}` });
+          }
+        }
+      }
+
       const defaultPassword = "changeme";
       const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+
+      // ✅ Generate unique caseId
+      const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const randomPart = Math.random().toString(36).substring(2, 8).toUpperCase();
+      generatedCaseId = `CASE-${datePart}-${randomPart}`;
 
       patient = new Patient({
         name,
@@ -61,22 +81,47 @@ export const createAdmissionRequest = async (req, res) => {
         hospital: hospitalId,
         password: hashedPassword,
         status: "active",
+        hasInsurance: hasInsurance === true || hasInsurance === 'true',
+        insuranceDetails: hasInsurance === true || hasInsurance === 'true' ? {
+          employerName: req.body.employerName,
+          insuranceIdNumber: req.body.insuranceIdNumber,
+          policyNumber: req.body.policyNumber,
+          insuranceCompany: req.body.insuranceCompany,
+          employeeCode: req.body.employeeCode,
+          insuranceStartDate: req.body.insuranceStartDate,
+          insuranceExpiryDate: req.body.insuranceExpiryDate
+        } : undefined
       });
 
       await patient.save();
       console.log(`✅ New patient registered: ${patient.patId}`);
     }
 
-    // Step 5: Mark bed as Reserved
+    // Step 5: Reserve bed
     bed.status = 'Reserved';
     await bed.save();
 
-    // Step 6: Prepare admissionDetails
+    // Step 6: Construct admission details
+    const insurancePayload =
+      hasInsurance === true || hasInsurance === 'true'
+        ? {
+            hasInsurance: true,
+            employerName: req.body.employerName,
+            insuranceIdNumber: req.body.insuranceIdNumber,
+            policyNumber: req.body.policyNumber,
+            insuranceCompany: req.body.insuranceCompany,
+            employeeCode: req.body.employeeCode,
+            insuranceStartDate: req.body.insuranceStartDate,
+            insuranceExpiryDate: req.body.insuranceExpiryDate,
+          }
+        : { hasInsurance: false };
+
     const admissionData = {
       ...admissionDetails,
       room: room._id,
       bed: bed._id,
-      date: admissionDetails.date || admissionDetails.admissionDate
+      date: admissionDetails.date || admissionDetails.admissionDate,
+      insurance: insurancePayload
     };
     delete admissionData.admissionDate;
 
@@ -87,6 +132,7 @@ export const createAdmissionRequest = async (req, res) => {
       doctor,
       createdBy,
       sendTo,
+      caseId: generatedCaseId, // may be null for existing patients
       admissionDetails: admissionData
     });
 
@@ -104,6 +150,8 @@ export const createAdmissionRequest = async (req, res) => {
     res.status(500).json({ message: "Internal Server Error", error: error.message });
   }
 };
+
+
 
 export const approveAdmissionRequest = async (req, res) => {
   try {
