@@ -136,80 +136,52 @@ export const getBillDetails = async (req, res) => {
   const { billId } = req.params;
 
   try {
-    // Fetch the bill by ID and populate necessary fields (patient, doctor, service details)
     const bill = await Bill.findById(billId)
-      .populate("patient", "name phone") // Populate patient details
-      .populate("doctor", "name specialization") // Populate doctor details
-      .populate("services.service", "name categories") // Populate service details
-      .exec();
+      .populate("patient", "name phone")
+      .populate("doctor", "name specialization")
+      .populate("services.service", "name categories");
 
     if (!bill) {
       return res.status(404).json({ message: "Bill not found." });
     }
 
-    // Map services and group by service name (keep the structure you need)
-    const serviceMap = new Map();
+    // Prepare the services and include all necessary details
+    const services = bill.services.map((item) => {
+      // If the service is available, return the details
+      let serviceDetails = item.details || {};  // Ensure details is included
 
-    bill.services.forEach((item) => {
-      if (!item.service) return; // Skip if no service is available
+      if (item.service) {
+        // Add additional information from the Service categories
+        const serviceName = item.service.name || "Unknown Service";
+        const categories = item.service.categories || [];
+        
+        // Find the matching category (based on subCategoryName)
+        const selectedCategory = categories.find(
+          (category) => category.subCategoryName === item.category
+        ) || {};
 
-      const serviceName = item.service ? item.service.name : "Unknown Service"; // Handle unknown services
-      const selectedCategory = item.category;
-      const categoryQuantity = item.quantity || 1;
-
-      const filteredCategories = item.service?.categories
-        ?.filter((cat) => cat.subCategoryName === selectedCategory)  // ✅ Use subCategoryName
-        .map((cat) => ({
-          subCategoryName: cat.subCategoryName,  // ✅ Include subCategoryName
-          rateType: cat.rateType,
-          rate: cat.rate,
-          quantity: categoryQuantity,
-          total: (cat.rate || 0) * categoryQuantity,
-        })) || [];
-
-      // Add to map service data
-      if (!serviceMap.has(serviceName)) {
-        serviceMap.set(serviceName, {
-          name: serviceName,
-          totalQuantity: categoryQuantity,
-          totalCategories: filteredCategories.length,
-          categories: filteredCategories,
-        });
-      } else {
-        const existingService = serviceMap.get(serviceName);
-        existingService.totalQuantity += categoryQuantity;
-        existingService.categories.push(...filteredCategories);
-        existingService.totalCategories = existingService.categories.length;
-      }
-    });
-
-    // Adding the Unknown Room services to the map manually (service is null)
-    bill.services.forEach((item) => {
-      if (item.service === null) {
-        const serviceName = "Unknown Room";
-        const details = item.details;
-
-        const unknownCategory = {
-          subCategoryName: "Unknown Category",
-          rateType: "Unknown",
-          rate: item.rate || 0,
-          quantity: item.quantity || 1,
-          total: (item.rate || 0) * (item.quantity || 1),
+        serviceDetails = {
+          ...serviceDetails,
+          rate: selectedCategory.rate || 0,  // Ensure rate is included
+          rateType: selectedCategory.rateType || "Unknown",
         };
 
-        if (!serviceMap.has(serviceName)) {
-          serviceMap.set(serviceName, {
-            name: serviceName,
-            totalQuantity: item.quantity || 1,
-            totalCategories: 1,
-            categories: [unknownCategory],
-          });
-        } else {
-          const existingService = serviceMap.get(serviceName);
-          existingService.totalQuantity += item.quantity || 1;
-          existingService.categories.push(unknownCategory);
-          existingService.totalCategories = existingService.categories.length;
-        }
+        return {
+          service: item.service.name || "Unknown Service",
+          category: item.category || "Unknown Category",
+          quantity: item.quantity || 1,
+          rate: item.rate || 0,
+          details: serviceDetails,
+        };
+      } else {
+        // If the service is null (e.g., Unknown Room), include the details directly
+        return {
+          service: "Unknown Service",
+          category: item.category || "Unknown Category",
+          quantity: item.quantity || 1,
+          rate: item.rate || 0,
+          details: serviceDetails,  // The details already exist as input
+        };
       }
     });
 
@@ -223,16 +195,12 @@ export const getBillDetails = async (req, res) => {
       doctor: bill.doctor
         ? { name: bill.doctor.name, specialization: bill.doctor.specialization }
         : { name: "Unknown", specialization: "N/A" },
-      services: Array.from(serviceMap.values()), // Convert map back to array
+      services: services, // Now returning all services with correct details
       totalAmount: bill.totalAmount,
       paidAmount: bill.paidAmount,
       outstanding: bill.outstanding,
       status: bill.status,
       mode: bill.mode,
-      invoiceDate: bill.invoiceDate,
-      createdAt: bill.createdAt,
-      updatedAt: bill.updatedAt,
-      hospital: bill.hospital, // Returning the hospital ID
     });
   } catch (error) {
     console.error("Error fetching bill details:", error);
@@ -366,6 +334,7 @@ export const getBillsByPatient = async (req, res) => {
     });
   }
 };
+
 
 
 
