@@ -2,30 +2,31 @@ import Request from "../models/requestModel.js";
 
 export const createRequest = async (req, res) => {
   try {
-    const { title, quantity, timeline, purpose, description } = req.body;
+    const { order, quantity, timeline, purpose, description } = req.body;
 
     const doctorId = req.user._id;
     const doctorName = req.user.name;
     const hospitalId = req.session.hospitalId || req.user.hospital;
 
-    if (!title || !quantity || !timeline || !purpose) {
+    if (!order || !quantity || !timeline || !purpose) {
       return res.status(400).json({
         message:
-          "All fields are required (title, quantity, timeline, purpose).",
+          "All fields are required (order, quantity, timeline, purpose).",
       });
     }
 
     const newRequest = new Request({
       requestBy: doctorId,
-      title,
-      description: description || purpose,
+      order,
+      description: description || "",
       quantity,
       timeline,
       purpose,
       hospital: hospitalId,
+      status: "Pending",
       messages: [
         {
-          message: `Request created: ${title}`,
+          message: `Request created: ${order}`,
           messageBy: doctorId,
           messageByRole: "doctor",
           messageByModel: "Doctor",
@@ -57,7 +58,7 @@ export const getRequests = async (req, res) => {
     const hospitalId = req.session?.hospitalId || req.user.hospital;
 
     const {
-      status = "active",
+      status = "all",
       page = 1,
       limit = 10,
       sortBy = "createdAt",
@@ -79,10 +80,23 @@ export const getRequests = async (req, res) => {
         return res.status(403).json({ message: "Unauthorized access" });
     }
 
-    if (status === "active") {
-      filter.status = "Active";
-    } else if (status === "inactive") {
-      filter.status = "Inactive";
+    if (status !== "all") {
+      switch (status) {
+        case "pending":
+          filter.status = "Pending";
+          break;
+        case "active":
+          filter.status = "Active";
+          break;
+        case "completed":
+          filter.status = "Completed";
+          break;
+        case "inactive":
+          if (userRole === "doctor") {
+            filter.status = "Completed";
+          }
+          break;
+      }
     }
 
     const skip = (page - 1) * limit;
@@ -168,6 +182,8 @@ export const addRequestMessage = async (req, res) => {
     const roleToModelMap = {
       hospitalAdmin: "HospitalAdmin",
       doctor: "Doctor",
+      receptionist: "HospitalAdmin",
+      staff: "HospitalAdmin",
     };
 
     const actionByModel = roleToModelMap[userRole] || "Doctor";
@@ -180,11 +196,13 @@ export const addRequestMessage = async (req, res) => {
       userName
     );
 
-    const updatedRequest = await Request.findById(requestId);
+    const updatedRequest = await Request.findById(requestId)
+      .populate("requestBy", "name specialization")
+      .populate("hospital", "name");
 
     res.status(200).json({
       message: "Message added successfully",
-      data: updatedRequest.messages,
+      data: updatedRequest,
     });
   } catch (error) {
     console.error("Error adding message:", error);
@@ -192,10 +210,10 @@ export const addRequestMessage = async (req, res) => {
   }
 };
 
-export const updateRequestStatus = async (req, res) => {
+export const acceptRequest = async (req, res) => {
   try {
     const { requestId } = req.params;
-    const { status, message } = req.body;
+    const { message } = req.body;
     const userId = req.user._id;
     const userRole = req.user.role;
     const userName = req.user.name;
@@ -203,7 +221,7 @@ export const updateRequestStatus = async (req, res) => {
     if (!["hospitalAdmin", "receptionist", "staff"].includes(userRole)) {
       return res
         .status(403)
-        .json({ message: "Not authorized to update request status" });
+        .json({ message: "Not authorized to accept requests" });
     }
 
     const request = await Request.findById(requestId);
@@ -211,17 +229,20 @@ export const updateRequestStatus = async (req, res) => {
       return res.status(404).json({ message: "Request not found" });
     }
 
+    if (request.status !== "Pending") {
+      return res.status(400).json({ message: "Request is not pending" });
+    }
+
     const roleToModelMap = {
       hospitalAdmin: "HospitalAdmin",
-      receptionist: "Receptionist",
-      staff: "Staff",
+      receptionist: "HospitalAdmin",
+      staff: "HospitalAdmin",
     };
 
     const actionByModel = roleToModelMap[userRole];
 
-    await request.updateStatus(
-      status,
-      message || `Status changed to ${status}`,
+    await request.acceptRequest(
+      message || "Request accepted and moved to ongoing",
       userId,
       userRole,
       actionByModel,
@@ -233,12 +254,65 @@ export const updateRequestStatus = async (req, res) => {
       .populate("hospital", "name");
 
     res.status(200).json({
-      message: "Request status updated successfully",
+      message: "Request accepted successfully",
       data: updatedRequest,
     });
   } catch (error) {
-    console.error("Error updating request status:", error);
-    res.status(500).json({ message: "Failed to update request status" });
+    console.error("Error accepting request:", error);
+    res.status(500).json({ message: "Failed to accept request" });
+  }
+};
+
+export const completeRequest = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { message } = req.body;
+    const userId = req.user._id;
+    const userRole = req.user.role;
+    const userName = req.user.name;
+
+    if (!["hospitalAdmin", "receptionist", "staff"].includes(userRole)) {
+      return res
+        .status(403)
+        .json({ message: "Not authorized to complete requests" });
+    }
+
+    const request = await Request.findById(requestId);
+    if (!request) {
+      return res.status(404).json({ message: "Request not found" });
+    }
+
+    if (request.status !== "Active") {
+      return res.status(400).json({ message: "Request is not active" });
+    }
+
+    const roleToModelMap = {
+      hospitalAdmin: "HospitalAdmin",
+      receptionist: "HospitalAdmin",
+      staff: "HospitalAdmin",
+    };
+
+    const actionByModel = roleToModelMap[userRole];
+
+    await request.completeRequest(
+      message || "Request completed successfully",
+      userId,
+      userRole,
+      actionByModel,
+      userName
+    );
+
+    const updatedRequest = await Request.findById(requestId)
+      .populate("requestBy", "name specialization")
+      .populate("hospital", "name");
+
+    res.status(200).json({
+      message: "Request completed successfully",
+      data: updatedRequest,
+    });
+  } catch (error) {
+    console.error("Error completing request:", error);
+    res.status(500).json({ message: "Failed to complete request" });
   }
 };
 
@@ -262,27 +336,35 @@ export const getRequestStats = async (req, res) => {
         $group: {
           _id: null,
           totalRequests: { $sum: 1 },
+          pendingRequests: {
+            $sum: {
+              $cond: [{ $eq: ["$status", "Pending"] }, 1, 0],
+            },
+          },
           activeRequests: {
             $sum: {
               $cond: [{ $eq: ["$status", "Active"] }, 1, 0],
             },
           },
-          inactiveRequests: {
+          completedRequests: {
             $sum: {
-              $cond: [{ $eq: ["$status", "Inactive"] }, 1, 0],
+              $cond: [{ $eq: ["$status", "Completed"] }, 1, 0],
             },
           },
         },
       },
     ]);
 
+    const result = stats[0] || {
+      totalRequests: 0,
+      pendingRequests: 0,
+      activeRequests: 0,
+      completedRequests: 0,
+    };
+
     res.status(200).json({
       data: {
-        overview: stats[0] || {
-          totalRequests: 0,
-          activeRequests: 0,
-          inactiveRequests: 0,
-        },
+        overview: result,
       },
     });
   } catch (error) {

@@ -10,7 +10,7 @@ router.use(requireHospitalContext);
 
 router.post('/submitConsultation', authorizeRoles('doctor'), submitConsultation);
 router.post('/addProgressPhase', authorizeRoles('doctor'), addProgressPhase);
-router.get('/getProgressTracker/:patientId/:caseId', authorizeRoles('doctor'), getProgressTracker);
+router.get('/getProgressTracker/:patientId/:caseId', authorizeRoles('doctor', 'receptionist'), getProgressTracker);
 router.get('/getProgressPhaseCounts', authorizeRoles('doctor'), getProgressPhaseCounts);
 router.get('/getConsultationByAppointment/:appointmentId', authorizeRoles('doctor', 'receptionist', 'hospitalAdmin'), getConsultationByAppointment);
 router.get('/getPatientConsultationHistory/:patientId', authorizeRoles('doctor', 'hospitalAdmin'), getPatientConsultationHistory);

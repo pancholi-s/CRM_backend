@@ -7,14 +7,14 @@ const requestSchema = new mongoose.Schema(
       ref: "Doctor",
       required: true,
     },
-    title: {
+    order: {
       type: String,
       required: true,
       trim: true,
     },
     description: {
       type: String,
-      required: true,
+      required: false,
     },
     quantity: {
       type: String,
@@ -30,15 +30,14 @@ const requestSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["Active", "Inactive"],
-      default: "Active",
+      enum: ["Pending", "Active", "Completed"],
+      default: "Pending",
     },
     hospital: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Hospital",
       required: true,
     },
-    // Simple timeline for comments/updates
     messages: [
       {
         message: {
@@ -54,7 +53,6 @@ const requestSchema = new mongoose.Schema(
           enum: ["doctor", "hospitalAdmin", "receptionist", "staff"],
           required: true,
         },
-
         messageByModel: {
           type: String,
           enum: ["Doctor", "HospitalAdmin"],
@@ -70,6 +68,9 @@ const requestSchema = new mongoose.Schema(
         },
       },
     ],
+    acceptedDate: {
+      type: Date,
+    },
     completedDate: {
       type: Date,
     },
@@ -84,12 +85,20 @@ requestSchema.index({ requestBy: 1, status: 1 });
 requestSchema.index({ hospital: 1, status: 1 });
 requestSchema.index({ createdAt: -1 });
 
-// Virtual for checking if request is active
+// Virtual for checking request state
+requestSchema.virtual("isPending").get(function () {
+  return this.status === "Pending";
+});
+
 requestSchema.virtual("isActive").get(function () {
   return this.status === "Active";
 });
 
-// Method to add a message to timeline
+requestSchema.virtual("isCompleted").get(function () {
+  return this.status === "Completed";
+});
+
+// Method to add a message
 requestSchema.methods.addMessage = function (
   message,
   messageBy,
@@ -108,19 +117,39 @@ requestSchema.methods.addMessage = function (
   return this.save();
 };
 
-// Method to update status
-requestSchema.methods.updateStatus = async function (
-  newStatus,
+// Method to accept request
+requestSchema.methods.acceptRequest = async function (
   message,
   messageBy,
   messageByRole,
   messageByModel,
   messageByName
 ) {
-  this.status = newStatus;
-  if (newStatus === "Inactive") {
-    this.completedDate = new Date();
+  this.status = "Active";
+  this.acceptedDate = new Date();
+
+  if (message) {
+    await this.addMessage(
+      message,
+      messageBy,
+      messageByRole,
+      messageByModel,
+      messageByName
+    );
   }
+  return this.save();
+};
+
+// Method to complete request
+requestSchema.methods.completeRequest = async function (
+  message,
+  messageBy,
+  messageByRole,
+  messageByModel,
+  messageByName
+) {
+  this.status = "Completed";
+  this.completedDate = new Date();
 
   if (message) {
     await this.addMessage(

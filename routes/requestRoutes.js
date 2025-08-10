@@ -3,7 +3,8 @@ import {
   createRequest,
   getRequests,
   getRequestById,
-  updateRequestStatus,
+  acceptRequest,
+  completeRequest,
   addRequestMessage,
   getRequestStats,
 } from "../controllers/requestController.js";
@@ -38,9 +39,15 @@ router.get(
 );
 
 router.patch(
-  "/requests/:requestId/status",
+  "/requests/:requestId/accept",
   authorizeRoles("hospitalAdmin", "receptionist", "staff"),
-  updateRequestStatus
+  acceptRequest
+);
+
+router.patch(
+  "/requests/:requestId/complete",
+  authorizeRoles("hospitalAdmin", "receptionist", "staff"),
+  completeRequest
 );
 
 router.post(
