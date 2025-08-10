@@ -6,6 +6,7 @@ const admissionRequestSchema = new mongoose.Schema({
   hospital: { type: mongoose.Schema.Types.ObjectId, ref: 'Hospital', required: true },
   doctor: { type: mongoose.Schema.Types.ObjectId, ref: 'Doctor' }, // doctor who recommended admission
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }, // staff who submitted
+  caseId: { type: String, unique: true },
   status: {
     type: String,
     enum: ['Pending', 'Approved', 'Rejected',"Admitted","discharged"],
@@ -39,7 +40,17 @@ const admissionRequestSchema = new mongoose.Schema({
     date: { type: Date, required: true },
     room: { type: mongoose.Schema.Types.ObjectId, ref: 'Room', required: true },
     bed: { type: mongoose.Schema.Types.ObjectId, ref: 'Bed', required: true },
-    deposit: { type: Number }
+    deposit: { type: Number },
+    insurance: {
+      hasInsurance: { type: Boolean, default: false },
+      employerName: String,
+      insuranceIdNumber: String,
+      policyNumber: String,
+      insuranceCompany: String,
+      employeeCode: String,
+      insuranceStartDate: Date,
+      insuranceExpiryDate: Date
+    }
   },
 }, {
   timestamps: true

@@ -17,47 +17,24 @@ export const createAdmissionRequest = async (req, res) => {
       return res.status(403).json({ message: "No hospital context found." });
     }
 
-    const { patId, doctor, sendTo, admissionDetails } = req.body;
+    const { patId, doctor, sendTo, admissionDetails, hasInsurance } = req.body;
     const createdBy = req.user._id;
 
     let patient;
+    let generatedCaseId = null;
 
-    // Step 1: Try finding patient by patId
+    // Step 1: Check if patient exists
     if (patId) {
       patient = await Patient.findOne({ patId, hospital: hospitalId });
     }
 
-    // Step 2: If patient doesn't exist, register a new patient
-    if (!patient) {
-      const { name, mobileNumber, email } = req.body;
-
-      if (!name || !mobileNumber || !email) {
-        return res.status(400).json({ message: "Missing patient registration details." });
-      }
-
-      const defaultPassword = "changeme";
-      const hashedPassword = await bcrypt.hash(defaultPassword, 10);
-
-      patient = new Patient({
-        name,
-        email,
-        phone: mobileNumber,
-        hospital: hospitalId,
-        password: hashedPassword,
-        status: "active", // or 'new'
-      });
-
-      await patient.save(); // This is where patId gets generated if defined in your Patient model
-      console.log(`✅ New patient registered: ${patient.patId}`);
-    }
-
-    // Step 3: Validate room
+    // Step 2: Validate room
     const room = await Room.findOne({ roomID: admissionDetails.room, hospital: hospitalId });
     if (!room) {
       return res.status(404).json({ message: "Room not found with given roomID." });
     }
 
-    // Step 4: Validate bed
+    // Step 3: Validate bed
     const bed = await Bed.findOne({
       bedNumber: admissionDetails.bed,
       hospital: hospitalId,
@@ -65,25 +42,97 @@ export const createAdmissionRequest = async (req, res) => {
       status: 'Available'
     });
     if (!bed) {
-      return res.status(404).json({ message: "Bed not found or not available in given room." });
+      return res.status(409).json({ message: "Bed not available. Already reserved or occupied." });
     }
 
-    // Step 5: Prepare admissionDetails
+    // Step 4: If patient doesn't exist, register
+    if (!patient) {
+      const { name, mobileNumber, email } = req.body;
+      if (!name || !mobileNumber || !email) {
+        return res.status(400).json({ message: "Missing patient registration details." });
+      }
+
+      // Validate insurance if enabled
+      if (hasInsurance === true || hasInsurance === 'true') {
+        const requiredFields = [
+          "employerName", "insuranceIdNumber", "policyNumber",
+          "insuranceCompany", "employeeCode", "insuranceStartDate", "insuranceExpiryDate"
+        ];
+
+        for (const field of requiredFields) {
+          if (!req.body[field]) {
+            return res.status(400).json({ message: `Missing required insurance field: ${field}` });
+          }
+        }
+      }
+
+      const defaultPassword = "changeme";
+      const hashedPassword = await bcrypt.hash(defaultPassword, 10);
+
+      // ✅ Generate unique caseId
+      const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const randomPart = Math.random().toString(36).substring(2, 8).toUpperCase();
+      generatedCaseId = `CASE-${datePart}-${randomPart}`;
+
+      patient = new Patient({
+        name,
+        email,
+        phone: mobileNumber,
+        hospital: hospitalId,
+        password: hashedPassword,
+        status: "active",
+        hasInsurance: hasInsurance === true || hasInsurance === 'true',
+        insuranceDetails: hasInsurance === true || hasInsurance === 'true' ? {
+          employerName: req.body.employerName,
+          insuranceIdNumber: req.body.insuranceIdNumber,
+          policyNumber: req.body.policyNumber,
+          insuranceCompany: req.body.insuranceCompany,
+          employeeCode: req.body.employeeCode,
+          insuranceStartDate: req.body.insuranceStartDate,
+          insuranceExpiryDate: req.body.insuranceExpiryDate
+        } : undefined
+      });
+
+      await patient.save();
+      console.log(`✅ New patient registered: ${patient.patId}`);
+    }
+
+    // Step 5: Reserve bed
+    bed.status = 'Reserved';
+    await bed.save();
+
+    // Step 6: Construct admission details
+    const insurancePayload =
+      hasInsurance === true || hasInsurance === 'true'
+        ? {
+            hasInsurance: true,
+            employerName: req.body.employerName,
+            insuranceIdNumber: req.body.insuranceIdNumber,
+            policyNumber: req.body.policyNumber,
+            insuranceCompany: req.body.insuranceCompany,
+            employeeCode: req.body.employeeCode,
+            insuranceStartDate: req.body.insuranceStartDate,
+            insuranceExpiryDate: req.body.insuranceExpiryDate,
+          }
+        : { hasInsurance: false };
+
     const admissionData = {
       ...admissionDetails,
       room: room._id,
       bed: bed._id,
-      date: admissionDetails.date || admissionDetails.admissionDate
+      date: admissionDetails.date || admissionDetails.admissionDate,
+      insurance: insurancePayload
     };
     delete admissionData.admissionDate;
 
-    // Step 6: Create admission request
+    // Step 7: Create admission request
     const request = await AdmissionRequest.create({
       patient: patient._id,
       hospital: hospitalId,
       doctor,
       createdBy,
       sendTo,
+      caseId: generatedCaseId, // may be null for existing patients
       admissionDetails: admissionData
     });
 
@@ -101,7 +150,6 @@ export const createAdmissionRequest = async (req, res) => {
     res.status(500).json({ message: "Internal Server Error", error: error.message });
   }
 };
-
 
 
 
@@ -493,42 +541,51 @@ export const dischargePatient = async (req, res) => {
     }
 
     // ---- Add Bed Charges Logic Here ----
-
-    // Fetch the bed's daily rate
     const bedChargeRate = bed?.charges?.dailyRate || 0;  // If bed has a daily rate, use it
     const assignedDate = bed?.assignedDate ? new Date(bed?.assignedDate) : null;
     const dischargeDateObj = dischargeDate ? new Date(dischargeDate) : new Date();
 
-    // Calculate the number of days the bed was occupied
-    const daysOccupied = assignedDate ? Math.ceil((dischargeDateObj - assignedDate) / (1000 * 3600 * 24)) : 0;
+    // Ensure both dates are valid Date objects
+    if (assignedDate && dischargeDateObj) {
+      // Calculate the number of days the bed was occupied
+      const timeDiff = dischargeDateObj - assignedDate;
+      const daysOccupied = Math.floor(timeDiff / (1000 * 3600 * 24));  // Convert milliseconds to days
 
-    // Calculate total bed charges for the occupied days
-    const bedCharges = daysOccupied * bedChargeRate;
-
-    // Prepare the bed charge details (without referencing service)
-    const bedChargeDetails = {
-      service: null,  // No service ID for room & bed, so we keep it null
-      category: bed?.room?.name || 'Unknown Room',
-      quantity: daysOccupied,  // Quantity = number of days occupied
-      rate: bedChargeRate,  // Daily rate from the bed model
-      details: {
-        bedType: bed?.bedType || "Not Specified",
-        features: bed?.features || "No features specified",
-        bedNumber: bed?.bedNumber || "Not Specified",
-        daysOccupied,  // Added for reference
-        totalCharge: bedCharges,  // Total charge for the bed occupancy
+      // Avoid negative days (in case of erroneous data)
+      if (daysOccupied < 0) {
+        throw new Error("Discharge date cannot be earlier than assigned date.");
       }
-    };
 
-    // Call the centralized function to update or create the bill (only bed charges)
-    await updateBillAfterAction(caseId, session, bedChargeDetails);  // Pass the bed charge details to update bill
+      // Calculate total bed charges for the occupied days
+      const bedCharges = daysOccupied * bedChargeRate;
+
+      // Prepare the bed charge details (without referencing service)
+      const bedChargeDetails = {
+        service: null,  // No service ID for room & bed, so we keep it null
+        category: bed?.room?.name || 'Unknown Room',
+        quantity: daysOccupied,  // Quantity = number of days occupied
+        rate: bedChargeRate,  // Daily rate from the bed model
+        details: {
+          bedType: bed?.bedType || "Not Specified",
+          features: bed?.features || "No features specified",
+          bedNumber: bed?.bedNumber || "Not Specified",
+          daysOccupied,  // Added for reference
+          totalCharge: bedCharges,  // Total charge for the bed occupancy
+        }
+      };
+
+      // Call the centralized function to update or create the bill (only bed charges)
+      await updateBillAfterAction(caseId, session, bedChargeDetails);  // Pass the bed charge details to update bill
+    } else {
+      throw new Error("Assigned date or discharge date is missing.");
+    }
 
     res.status(200).json({ message: 'Patient discharged successfully', discharge });
     
   } catch (error) {
     console.error('Error discharging patient:', error);
     res.status(500).json({ message: 'Internal server error', error: error.message });
-  }finally {
+  } finally {
     // Always ensure the session is closed
     if (session) {
       session.endSession();
