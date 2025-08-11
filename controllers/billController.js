@@ -167,6 +167,7 @@ export const getBillDetails = async (req, res) => {
         };
 
         return {
+          serviceId: item.service._id,  // Use service ID for reference
           service: item.service.name || "Unknown Service",
           category: item.category || "Unknown Category",
           quantity: item.quantity || 1,
@@ -176,6 +177,7 @@ export const getBillDetails = async (req, res) => {
       } else {
         // If the service is null (e.g., Unknown Room), include the details directly
         return {
+          serviceId: null,  // No service ID for custom expenses
           service: "Unknown Service",
           category: item.category || "Unknown Category",
           quantity: item.quantity || 1,
