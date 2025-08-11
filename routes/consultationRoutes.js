@@ -16,6 +16,6 @@ router.get('/getConsultationByAppointment/:appointmentId', authorizeRoles('docto
 router.get('/getPatientConsultationHistory/:patientId', authorizeRoles('doctor', 'hospitalAdmin'), getPatientConsultationHistory);
 router.get('/diagnosis/most-common', authorizeRoles('hospitalAdmin', 'doctor', 'receptionist'), getMostCommonDiagnoses);
 router.put('/updateConsultation/:consultationId', authorizeRoles('doctor'), updateConsultation);
-router.put('/updatePhase/:phaseId', authorizeRoles('doctor'), updatePhase);
+router.put('/updatePhase/:sourceType/:sourceId', authorizeRoles('doctor'), updatePhase);
 
 export default router;
