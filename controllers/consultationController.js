@@ -414,6 +414,7 @@ export const getProgressTracker = async (req, res) => {
       progress.push({
         type: "consultation",
         phase,
+        title: phase === "initial" ? "initial" : undefined, // ✅ Hardcode title for initial
         date: c.date,
         doctor: c.doctor,
         department: c.department,
@@ -580,43 +581,72 @@ export const addProgressPhase = async (req, res) => {
       caseId,
       patient,
       title,
-      date,
+      date, // user-provided date string like "2025-08-13"
       assignedDoctor,
       description,
       files,
-      isFinalPhase // <- boolean flag to mark final
+      isFinalPhase
     } = req.body;
 
     if (!caseId || !patient || !title || !assignedDoctor) {
       return res.status(400).json({ message: 'Required fields are missing' });
     }
 
-    // Step 1: Check if a "final" phase already exists for this caseId
-    const finalExists = await ProgressPhase.exists({ caseId, title: "final" });
+    // 1. Block if final phase exists
+    const finalExists = await ProgressPhase.exists({ caseId, isFinal: true });
     if (finalExists) {
       return res.status(400).json({ message: 'Cannot add more phases. Final phase already exists.' });
     }
 
-    // Step 2: Mark previous phase as completed
+    // 2. Close the latest item (phase or consultation)
     const lastPhase = await ProgressPhase.findOne({ caseId }).sort({ date: -1 });
-    if (lastPhase && !lastPhase.isCompleted) {
-      lastPhase.isCompleted = true;
-      await lastPhase.save();
+    const lastConsultation = await Consultation.findOne({ caseId }).sort({ date: -1 });
+
+    let latestItem = null;
+    let latestType = null;
+
+    if (lastPhase && lastConsultation) {
+      if (new Date(lastPhase.date) > new Date(lastConsultation.date)) {
+        latestItem = lastPhase;
+        latestType = "phase";
+      } else {
+        latestItem = lastConsultation;
+        latestType = "consultation";
+      }
+    } else if (lastPhase) {
+      latestItem = lastPhase;
+      latestType = "phase";
+    } else if (lastConsultation) {
+      latestItem = lastConsultation;
+      latestType = "consultation";
     }
 
-    // Step 3: Determine title
-    const phaseTitle = isFinalPhase ? 'final' : title;
+    if (latestItem) {
+      if (latestType === "phase" && !latestItem.isDone) {
+        latestItem.isDone = true;
+        await latestItem.save();
+      } else if (latestType === "consultation" && latestItem.status !== "completed") {
+        latestItem.status = "completed";
+        await latestItem.save();
+      }
+    }
 
-    // Step 4: Create new phase
+    // 3. Merge user date with system time
+    const now = new Date();
+    const [year, month, day] = new Date(date).toISOString().split("T")[0].split("-");
+    const finalDate = new Date(`${year}-${month}-${day}T${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}Z`);
+
+    // 4. Create new phase
     const newPhase = await ProgressPhase.create({
       caseId,
       patient,
-      title: phaseTitle,
-      date,
+      title: isFinalPhase ? 'final' : title,
+      date: finalDate,
       assignedDoctor,
-      isCompleted: false,
       description,
-      files
+      files,
+      isDone: false,
+      isFinal: !!isFinalPhase
     });
 
     res.status(201).json({
@@ -630,53 +660,79 @@ export const addProgressPhase = async (req, res) => {
   }
 };
 
+
+
+
 export const updatePhase = async (req, res) => {
+  const { sourceType, sourceId } = req.params; // sourceType: "phase" or "consultation"
+  const updates = req.body;
+
   try {
-    const { phaseId } = req.params;
-    const updates = req.body;
+    let updatedItem;
 
-    const phase = await ProgressPhase.findById(phaseId);
-    if (!phase) {
-      return res.status(404).json({ message: 'Progress phase not found' });
-    }
-
-    // Convert isFinal to boolean explicitly
-    if (typeof updates.isFinal !== 'undefined') {
-      const finalValue = updates.isFinal;
-      if (typeof finalValue === 'string') {
-        phase.isFinal = finalValue.toLowerCase() === 'yes';
-      } else {
-        phase.isFinal = !!finalValue; // boolean or anything truthy
+    if (sourceType === "phase") {
+      updatedItem = await ProgressPhase.findById(sourceId);
+      if (!updatedItem) {
+        return res.status(404).json({ message: "Progress phase not found" });
       }
+
+      // Convert isFinal / isDone to booleans if present
+      if (typeof updates.isFinal !== "undefined") {
+        updatedItem.isFinal = typeof updates.isFinal === "string"
+          ? updates.isFinal.toLowerCase() === "yes"
+          : !!updates.isFinal;
+      }
+      if (typeof updates.isDone !== "undefined") {
+        updatedItem.isDone = updates.isDone === true || updates.isDone === "true";
+      }
+
+      // Update other fields
+      if (updates.title !== undefined) updatedItem.title = updates.title;
+      if (updates.date !== undefined) updatedItem.date = updates.date;
+      if (updates.description !== undefined) updatedItem.description = updates.description;
+      if (updates.files !== undefined) updatedItem.files = updates.files;
+      if (updates.assignedDoctor !== undefined) updatedItem.assignedDoctor = updates.assignedDoctor;
+      if (updates.consultation !== undefined) updatedItem.consultation = updates.consultation;
+
+      await updatedItem.save();
     }
 
-    // Convert isDone to boolean explicitly
-    if (typeof updates.isDone !== 'undefined') {
-      phase.isDone = updates.isDone === true || updates.isDone === 'true';
+    else if (sourceType === "consultation") {
+      updatedItem = await Consultation.findById(sourceId);
+      if (!updatedItem) {
+        return res.status(404).json({ message: "Consultation not found" });
+      }
+
+      // Update only allowed fields for consultation
+      const allowedFields = [
+        "consultationData", "status", "followUpRequired", "referredToDoctor",
+        "referredToDepartment", "referralReason", "preferredDate",
+        "preferredTime", "treatment"
+      ];
+
+      allowedFields.forEach(field => {
+        if (updates[field] !== undefined) {
+          updatedItem[field] = updates[field];
+        }
+      });
+
+      await updatedItem.save();
     }
 
-    // Update other fields
-    if (updates.title !== undefined) phase.title = updates.title;
-    if (updates.date !== undefined) phase.date = updates.date;
-    if (updates.description !== undefined) phase.description = updates.description;
-    if (updates.files !== undefined) phase.files = updates.files;
-    if (updates.assignedDoctor !== undefined) phase.assignedDoctor = updates.assignedDoctor;
-    if (updates.consultation !== undefined) phase.consultation = updates.consultation;
-
-    await phase.save();
+    else {
+      return res.status(400).json({ message: "Invalid sourceType. Use 'phase' or 'consultation'" });
+    }
 
     res.status(200).json({
-      message: 'Progress phase updated successfully',
-      phase,
+      message: `${sourceType} updated successfully`,
+      data: updatedItem
     });
 
   } catch (error) {
-    console.error('Error updating progress phase:', error);
-    res.status(500).json({ message: 'Internal server error', error: error.message });
+    console.error(`Error updating ${req.params.sourceType}:`, error);
+    res.status(500).json({ message: "Internal server error", error: error.message });
   }
 };
-
-
 
 
 
