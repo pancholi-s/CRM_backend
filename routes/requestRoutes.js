@@ -7,6 +7,7 @@ import {
   completeRequest,
   addRequestMessage,
   getRequestStats,
+  rejectRequest,
 } from "../controllers/requestController.js";
 import { authorizeRoles } from "../middleware/roleMiddleware.js";
 import { requireHospitalContext } from "../middleware/hospitalContext.js";
@@ -48,6 +49,12 @@ router.patch(
   "/requests/:requestId/complete",
   authorizeRoles("hospitalAdmin", "receptionist", "staff"),
   completeRequest
+);
+
+router.patch(
+  "/requests/:requestId/reject",
+  authorizeRoles("hospitalAdmin", "receptionist", "staff"),
+  rejectRequest
 );
 
 router.post(
