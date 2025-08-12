@@ -30,7 +30,7 @@ const requestSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["Pending", "Active", "Completed"],
+      enum: ["Pending", "Active", "Completed", "Rejected"],
       default: "Pending",
     },
     hospital: {
@@ -149,6 +149,29 @@ requestSchema.methods.completeRequest = async function (
   messageByName
 ) {
   this.status = "Completed";
+  this.completedDate = new Date();
+
+  if (message) {
+    await this.addMessage(
+      message,
+      messageBy,
+      messageByRole,
+      messageByModel,
+      messageByName
+    );
+  }
+  return this.save();
+};
+
+// Method to reject request
+requestSchema.methods.rejectRequest = async function (
+  message,
+  messageBy,
+  messageByRole,
+  messageByModel,
+  messageByName
+) {
+  this.status = "Rejected";
   this.completedDate = new Date();
 
   if (message) {

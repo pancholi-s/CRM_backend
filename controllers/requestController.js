@@ -372,3 +372,53 @@ export const getRequestStats = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch request statistics" });
   }
 };
+
+export const rejectRequest = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+    const { message } = req.body;
+    const userId = req.user._id;
+    const userRole = req.user.role;
+    const userName = req.user.name;
+
+    if (!["hospitalAdmin", "receptionist", "staff"].includes(userRole)) {
+      return res.status(403).json({ message: "Not authorized to reject requests" });
+    }
+
+    const request = await Request.findById(requestId);
+    if (!request) {
+      return res.status(404).json({ message: "Request not found" });
+    }
+
+    if (request.status !== "Pending") {
+      return res.status(400).json({ message: "Only pending requests can be rejected" });
+    }
+
+    const roleToModelMap = {
+      hospitalAdmin: "HospitalAdmin",
+      receptionist: "HospitalAdmin",
+      staff: "HospitalAdmin",
+    };
+    const actionByModel = roleToModelMap[userRole];
+
+    await request.rejectRequest(
+      message || "Request rejected",
+      userId,
+      userRole,
+      actionByModel,
+      userName
+    );
+
+    const updatedRequest = await Request.findById(requestId)
+      .populate("requestBy", "name specialization")
+      .populate("hospital", "name");
+
+    res.status(200).json({
+      message: "Request rejected successfully",
+      data: updatedRequest,
+    });
+  } catch (error) {
+    console.error("Error rejecting request:", error);
+    res.status(500).json({ message: "Failed to reject request" });
+  }
+};
