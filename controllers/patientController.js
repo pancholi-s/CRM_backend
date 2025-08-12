@@ -19,13 +19,17 @@ export const getPatientsByHospital = async (req, res) => {
     const skip = (page - 1) * limit;
     const sortOrder = req.query.sort === "asc" ? 1 : -1; // Default: Newest first (desc)
 
-    // Fetch total count of patients
-    const totalPatients = await Patient.countDocuments({
-      hospital: hospitalId,
-    });
+    // 🔹 Build filter
+    const filter = { hospital: hospitalId };
+    if (req.query.doctorId) {
+      filter.doctors = req.query.doctorId; // match patients assigned to this doctor
+    }
+
+    // Fetch total count
+    const totalPatients = await Patient.countDocuments(filter);
 
     // Fetch and sort patients before pagination
-    const patients = await Patient.find({ hospital: hospitalId })
+    const patients = await Patient.find(filter)
       .select("-password") // Exclude password field
       .populate({
         path: "appointments",
@@ -109,7 +113,7 @@ export const getPatientsByHospital = async (req, res) => {
 // Get Patients by Status with Sorting
 export const getPatientsByStatus = async (req, res) => {
   try {
-    const { status, typeVisit } = req.query;
+    const { status, typeVisit, doctorId } = req.query;
     const hospitalId = req.session.hospitalId;
 
     if (!hospitalId) {
@@ -132,6 +136,10 @@ export const getPatientsByStatus = async (req, res) => {
 
     if (typeVisit) {
       filter.typeVisit = typeVisit;
+    }
+
+    if (doctorId) {
+      filter.doctors = doctorId; // filter patients by doctor
     }
 
     const page = parseInt(req.query.page) || 1;
@@ -174,7 +182,7 @@ export const getPatientsByStatus = async (req, res) => {
     return res.status(200).json({
       message: "Patients retrieved successfully",
       hospitalId,
-      appliedFilters: { status, typeVisit },
+      appliedFilters: { status, typeVisit, doctorId  },
       count: patientData.length,
       totalPatients,
       totalPages: Math.ceil(totalPatients / limit),
