@@ -313,19 +313,31 @@ export const getInpatients = async (req, res) => {
       ? req.query.status.split(",") // allow multiple statuses
       : [];
 
-    // Fetch admitted patients
-    const admittedPatients = await Patient.find({
+    // 🔹 Build filter for admitted patients
+    const admittedFilter = {
       hospital: hospitalId,
       admissionStatus: "Admitted"
-    })
+    };
+    if (req.query.doctorId) {
+      admittedFilter.doctors = req.query.doctorId; // match patients assigned to this doctor
+    }
+
+    // Fetch admitted patients
+    const admittedPatients = await Patient.find(admittedFilter)
       .select("-password")
       .populate("doctors", "name specialization")
       .lean();
 
-    // Fetch follow-up consultations
-    const followUpConsultations = await Consultation.find({
+    // 🔹 Build filter for follow-up consultations
+    const consultationFilter = {
       followUpRequired: true
-    })
+    };
+    if (req.query.doctorId) {
+      consultationFilter.doctor = req.query.doctorId; // match consultations by this doctor
+    }
+
+    // Fetch follow-up consultations
+    const followUpConsultations = await Consultation.find(consultationFilter)
       .populate({
         path: "patient",
         match: { hospital: hospitalId },
@@ -589,7 +601,6 @@ export const getPatientsInSurgery = async (req, res) => {
     });
   }
 };
-
 
 export const updateHealthStatus = async (req, res) => {
   try {
