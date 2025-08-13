@@ -481,6 +481,40 @@ export const getAdmittedPatients = async (req, res) => {
   
 };
 
+export const getAdmissionRequestsWithInsurance = async (req, res) => {
+  try {
+    const hospitalId = req.session.hospitalId;
+    if (!hospitalId) {
+      return res.status(403).json({ message: "Unauthorized: No hospital context." });
+    }
+
+    // Step 1: Find all admission requests for this hospital with insurance true
+    const requests = await AdmissionRequest.find({
+      hospital: hospitalId,
+      "admissionDetails.insurance.hasInsurance": true
+    })
+      .populate("patient", "name patId email phone hasInsurance insuranceDetails")
+      .populate("admissionDetails.room", "roomID") // optional
+      .populate("admissionDetails.bed", "bedNumber") // optional
+      .populate("doctor", "name specialization") // optional
+      .lean();
+
+    if (!requests || requests.length === 0) {
+      return res.status(404).json({ message: "No insured admissions found." });
+    }
+
+    res.status(200).json({
+      message: "Insured admission requests retrieved successfully.",
+      count: requests.length,
+      data: requests
+    });
+  } catch (error) {
+    console.error("❌ Error fetching insured admissions:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+
 
 export const dischargePatient = async (req, res) => {
   const session = await mongoose.startSession();  // Start a session for the current request
