@@ -428,36 +428,36 @@ export const getProgressTracker = async (req, res) => {
 
     // Process phases
     // Process phases
-if (phases.length) {
-  phases.forEach((p, index) => {
-    if (!p.date) return;
+    if (phases.length) {
+      phases.forEach((p, index) => {
+        if (!p.date) return;
 
-    let status = 'ongoing';
-    if (p.isFinal) {
-      status = 'completed';
-    } else if (p.isDone) {
-      status = 'completed';
+        let status = 'ongoing';
+        if (p.isFinal) {
+          status = 'Final';
+        } else if (p.isDone) {
+          status = 'completed';
+        }
+
+        if (index === phases.length - 1 && p.title === 'initial') {
+          status = 'completed';
+        }
+
+        progress.push({
+          type: 'phase',
+          id: p._id,
+          date: p.date,
+          doctor: p.assignedDoctor,
+          title: p.title,
+          status,
+          caseId,
+          data: p.data || null,        // ✅ Include phase data
+          files: p.files || [],        // ✅ Include attached files if needed
+          sourceId: p._id,
+          sourceType: 'phase'
+        });
+      });
     }
-
-    if (index === phases.length - 1 && p.title === 'initial') {
-      status = 'completed'; 
-    }
-
-    progress.push({
-      type: 'phase',
-      id: p._id,
-      date: p.date,
-      doctor: p.assignedDoctor,
-      title: p.title,
-      status,
-      caseId,
-      data: p.data || null,        // ✅ Include phase data
-      files: p.files || [],        // ✅ Include attached files if needed
-      sourceId: p._id,
-      sourceType: 'phase'
-    });
-  });
-}
 
     // Final sort by date (timestamp)
     progress.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -569,7 +569,7 @@ export const addProgressPhase = async (req, res) => {
       title,
       date, // user-provided date string like "2025-08-13"
       assignedDoctor,
-  
+
       isFinalPhase,
       data // dynamic data field (with arrays of strings)
     } = req.body;
@@ -647,8 +647,6 @@ export const addProgressPhase = async (req, res) => {
 
 
 
-
-
 export const updatePhase = async (req, res) => {
   const { sourceType, sourceId } = req.params; // sourceType: "phase" or "consultation"
   const updates = req.body;
@@ -657,9 +655,15 @@ export const updatePhase = async (req, res) => {
     let updatedItem;
 
     if (sourceType === "phase") {
+      // Find the existing phase by sourceId
       updatedItem = await ProgressPhase.findById(sourceId);
       if (!updatedItem) {
         return res.status(404).json({ message: "Progress phase not found" });
+      }
+
+      // Handle dynamic 'data' field update (Mixed type)
+      if (updates.data) {
+        updatedItem.data = { ...updatedItem.data, ...updates.data };  // Merge new data with existing data
       }
 
       // Convert isFinal / isDone to booleans if present
@@ -674,16 +678,14 @@ export const updatePhase = async (req, res) => {
 
       // Update other fields
       if (updates.title !== undefined) updatedItem.title = updates.title;
-      if (updates.date !== undefined) updatedItem.date = updates.date;
       if (updates.description !== undefined) updatedItem.description = updates.description;
       if (updates.files !== undefined) updatedItem.files = updates.files;
       if (updates.assignedDoctor !== undefined) updatedItem.assignedDoctor = updates.assignedDoctor;
       if (updates.consultation !== undefined) updatedItem.consultation = updates.consultation;
 
+      // Save the updated phase
       await updatedItem.save();
-    }
-
-    else if (sourceType === "consultation") {
+    } else if (sourceType === "consultation") {
       updatedItem = await Consultation.findById(sourceId);
       if (!updatedItem) {
         return res.status(404).json({ message: "Consultation not found" });
@@ -702,13 +704,13 @@ export const updatePhase = async (req, res) => {
         }
       });
 
+      // Save the updated consultation
       await updatedItem.save();
-    }
-
-    else {
+    } else {
       return res.status(400).json({ message: "Invalid sourceType. Use 'phase' or 'consultation'" });
     }
 
+    // Send the response with the updated phase or consultation
     res.status(200).json({
       message: `${sourceType} updated successfully`,
       data: updatedItem
@@ -719,6 +721,7 @@ export const updatePhase = async (req, res) => {
     res.status(500).json({ message: "Internal server error", error: error.message });
   }
 };
+
 
 
 
