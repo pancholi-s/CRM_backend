@@ -473,39 +473,45 @@ if (phases.length) {
       department: item.department?._id || null,
       date: item.date,
       title: item.title || null,
-      consultationData: item.data || null
+      consultationData: item.data || {}  // Ensure `data` is always returned, even if empty
     }));
 
-    // 5️⃣ Insert or update ProgressLog
-    const existingLog = await ProgressLog.findOne({
-      patient: patientId,
-      'logs.caseId': caseId,
-      $or: [
-        { 'logs.sourceId': { $ne: null } },
-        { 'logs.sourceType': { $ne: null } }
-      ]
-    });
-
-    if (!existingLog) {
-      await ProgressLog.create({
+    // 5️⃣ Insert or update ProgressLog (Error handling if this fails)
+    try {
+      const existingLog = await ProgressLog.findOne({
         patient: patientId,
-        date: new Date(),
-        status: 'ongoing',
-        logs: logEntries
+        'logs.caseId': caseId,
+        $or: [
+          { 'logs.sourceId': { $ne: null } },
+          { 'logs.sourceType': { $ne: null } }
+        ]
       });
-    } else {
-      await ProgressLog.findOneAndUpdate(
-        { patient: patientId, 'logs.caseId': caseId },
-        {
-          $addToSet: {
-            'logs': { $each: logEntries }
-          }
-        },
-        { new: true }
-      );
+
+      if (!existingLog) {
+        await ProgressLog.create({
+          patient: patientId,
+          date: new Date(),
+          status: 'ongoing',
+          logs: logEntries
+        });
+      } else {
+        await ProgressLog.findOneAndUpdate(
+          { patient: patientId, 'logs.caseId': caseId },
+          {
+            $addToSet: {
+              'logs': { $each: logEntries }
+            }
+          },
+          { new: true }
+        );
+      }
+    } catch (logError) {
+      console.error("Error updating ProgressLog:", logError);
+      // Optionally log the error but continue the response
+      // You can log it or handle it as per your use case
     }
 
-    // 6️⃣ Send response
+    // 6️⃣ Send response with progress
     res.status(200).json({
       message: 'Progress tracker data fetched successfully.',
       progress
