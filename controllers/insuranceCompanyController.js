@@ -26,6 +26,35 @@ export const addInsuranceCompany = async (req, res) => {
   }
 };
 
+// Add a new service to an existing insurance company
+export const addServiceToCompany = async (req, res) => {
+  try {
+    const { companyId } = req.params; // The ID of the insurance company
+    const { serviceName, pricingDetails } = req.body; // Service details to be added
+    
+    if (!serviceName || !pricingDetails) {
+      return res.status(400).json({ message: "Service name and pricing details are required." });
+    }
+
+    // Find the insurance company by ID
+    const company = await InsuranceCompany.findById(companyId);
+
+    if (!company) {
+      return res.status(404).json({ message: "Insurance company not found." });
+    }
+
+    // Add the new service to the services array
+    company.services.push({ serviceName, pricingDetails });
+
+    // Save the updated company document
+    await company.save();
+
+    res.status(200).json({ message: "Service added successfully", company });
+  } catch (error) {
+    res.status(500).json({ message: "Error adding service to insurance company.", error: error.message });
+  }
+};
+
 
 // Get all insurance companies
 export const getInsuranceCompanies = async (req, res) => {
