@@ -32,6 +32,7 @@ import prescriptionRoutes from './routes/prescriptionRoutes.js';
 import admissionRouters from './routes/admissionRoutes.js';
 import nursingRoutes from './routes/nursingRoutes.js';
 import departmentStatRoutes from './routes/departmentStatRoutes.js';
+import insuranceCompanyController from './routes/insuranceCompanyRoutes.js';
 
 dotenv.config();
 
@@ -88,6 +89,7 @@ app.use('/', prescriptionRoutes);
 app.use('/', admissionRouters);
 app.use('/', nursingRoutes);
 app.use('/', departmentStatRoutes);
+app.use('/', insuranceCompanyController);
 
 // Base route
 app.get('/', (req, res) => {

@@ -1,0 +1,18 @@
+import express from 'express';
+import { addInsuranceCompany, getInsuranceCompanies, getInsuranceCompanyDetails } from '../controllers/insuranceCompanyController.js';
+import { requireHospitalContext } from '../middleware/hospitalContext.js';
+import { authorizeRoles } from "../middleware/roleMiddleware.js";
+
+const router = express.Router();
+router.use(requireHospitalContext);
+
+// Add a new insurance company
+router.post('/addInsuranceCompany', authorizeRoles("hospitalAdmin"), addInsuranceCompany);
+
+// Get all insurance companies
+router.get('/getInsuranceCompanies', authorizeRoles("hospitalAdmin"), getInsuranceCompanies);
+
+// Get details of a specific insurance company by ID
+router.get('/getInsuranceCompanyDetails/:id', authorizeRoles("hospitalAdmin"), getInsuranceCompanyDetails);
+
+export default router;
