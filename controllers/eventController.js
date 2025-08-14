@@ -65,11 +65,16 @@ export const createEvent = async (req, res) => {
       });
     }
 
-    if (
-      !allDay &&
-      (!startTime || !endTime || !validateTimeRange(startTime, endTime))
-    ) {
-      return res.status(400).json({ message: "Invalid or missing times" });
+    if (!startTime || !endTime) {
+      return res
+        .status(400)
+        .json({ message: "Start time and end time are required" });
+    }
+
+    if (!validateTimeRange(startTime, endTime)) {
+      return res
+        .status(400)
+        .json({ message: "End time must be after start time" });
     }
 
     const eventDate = new Date(date);
@@ -81,8 +86,8 @@ export const createEvent = async (req, res) => {
       title: title.trim(),
       date: eventDate,
       allDay: !!allDay,
-      startTime: allDay ? undefined : startTime,
-      endTime: allDay ? undefined : endTime,
+      startTime: startTime,
+      endTime: endTime,
       participants,
       eventType,
       labelTag: labelTag || "Medium",
@@ -219,7 +224,7 @@ export const updateEvent = async (req, res) => {
     delete updates.hospital;
     delete updates.createdBy;
 
-    if (updates.startTime && updates.endTime && !updates.allDay) {
+    if (updates.startTime && updates.endTime) {
       if (!validateTimeRange(updates.startTime, updates.endTime)) {
         return res.status(400).json({ message: "Invalid time range" });
       }
@@ -228,11 +233,6 @@ export const updateEvent = async (req, res) => {
     if (updates.date) {
       updates.date = new Date(updates.date);
       updates.date.setUTCHours(0, 0, 0, 0);
-    }
-
-    if (updates.allDay) {
-      updates.startTime = undefined;
-      updates.endTime = undefined;
     }
 
     const event = await Event.findOneAndUpdate(

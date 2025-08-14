@@ -10,31 +10,27 @@ const eventSchema = new mongoose.Schema(
     allDay: { type: Boolean, default: false },
     startTime: {
       type: String,
-      required: function () {
-        return !this.allDay;
-      },
+      required: true,
       validate: {
         validator: function (v) {
-          return this.allDay || timeRegex.test(v);
+          return timeRegex.test(v);
         },
         message: "Invalid start time format",
       },
     },
     endTime: {
       type: String,
-      required: function () {
-        return !this.allDay;
-      },
+      required: true,
       validate: [
         {
           validator: function (v) {
-            return this.allDay || timeRegex.test(v);
+            return timeRegex.test(v);
           },
           message: "Invalid end time format",
         },
         {
           validator: function (v) {
-            return this.allDay || validateTimeRange(this.startTime, v);
+            return validateTimeRange(this.startTime, v);
           },
           message: "End time must be after start time",
         },
@@ -80,13 +76,5 @@ const eventSchema = new mongoose.Schema(
 
 eventSchema.index({ hospital: 1, date: 1 });
 eventSchema.index({ hospital: 1, eventType: 1 });
-
-eventSchema.pre("save", function (next) {
-  if (this.allDay) {
-    this.startTime = undefined;
-    this.endTime = undefined;
-  }
-  next();
-});
 
 export default mongoose.model("Event", eventSchema);
