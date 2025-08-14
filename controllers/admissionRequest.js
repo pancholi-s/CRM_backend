@@ -381,34 +381,35 @@ export const getAdmittedPatients = async (req, res) => {
 
     const patientMap = {};
 
-    // 1. Get all admitted patients, including healthStatus
+    // Step 1: Get all admitted patients, including healthStatus
     const admitted = await Patient.find({
       hospital: hospitalId,
       admissionStatus: "Admitted"
     }).select("name age gender contact phone admissionStatus healthStatus");
 
-    // 2. Get their IDs
+    // Step 2: Get their IDs
     const admittedPatientIds = admitted.map(p => p._id);
 
-    // 3. Fetch related admission requests
+    // Step 3: Fetch related admission requests
     const admissionRequests = await AdmissionRequest.find({
       patient: { $in: admittedPatientIds },
       status: "Admitted"
     })
-    .sort({ createdAt: -1 }) // get the latest
-    .select("patient admissionDetails.medicalNote admissionDetails.date")
-    .lean();
+      .sort({ createdAt: -1 }) // get the latest
+      .select("patient caseId admissionDetails.medicalNote admissionDetails.date")
+      .lean();
 
-    // 4. Create map for admissionDetails
+    // Step 4: Create map for admissionDetails
     const admissionDataMap = {};
     admissionRequests.forEach(req => {
       admissionDataMap[req.patient.toString()] = {
+        caseId: req.caseId,
         medicalNote: req.admissionDetails?.medicalNote || null,
         date: req.admissionDetails?.date || null
       };
     });
 
-    // 5. Construct admitted map with healthStatus included
+    // Step 5: Construct admitted map with healthStatus and admission data
     admitted.forEach(p => {
       const id = p._id.toString();
 
@@ -419,10 +420,10 @@ export const getAdmittedPatients = async (req, res) => {
       };
     });
 
-    // 6. Follow-up consultations
+    // Step 6: Follow-up consultations
     const followUpConsultations = await Consultation.find({
       followUpRequired: true
-    }).select("patient");
+    }).select("patient caseId");
 
     const followUpPatientIds = [...new Set(
       followUpConsultations.map(c => c.patient.toString())
@@ -442,31 +443,45 @@ export const getAdmittedPatients = async (req, res) => {
       }
     });
 
-    // 7. Remove critical patients and map to patientMap
+    // Step 7: Compare caseIds between admission and consultation
     const finalPatients = Object.values(patientMap);
 
-    // 8. Adjust type sequence to always maintain: [admitted+followup], [followup], [admitted]
-    finalPatients.forEach(p => {
-      const types = p.type.split("+").sort((a, b) => {
-        const order = ["admitted", "followup"];
-        return order.indexOf(a) - order.indexOf(b); // Ensure fixed order
-      });
-      p.type = types.join("+");
-      // Remove healthStatus from the response data (if needed)
-      // delete p.healthStatus;  // If you still want to remove healthStatus, uncomment this line
-    });
-
-        // 9. Fetch the latest caseId from consultations
     for (let patient of finalPatients) {
-      const latestConsultation = await Consultation.findOne({
-        patient: patient._id,
-      }).sort({ date: -1 }).select('caseId');  // Get the latest consultation's caseId
+      const patientId = patient._id;
 
-      if (latestConsultation) {
-        patient.latestCaseId = latestConsultation.caseId;  // Add the latest caseId
+      // Fetch the latest consultation for the patient
+      const latestConsultation = await Consultation.findOne({
+        patient: patientId,
+      }).sort({ date: -1 }).select('caseId'); // Get the latest consultation's caseId
+
+      // Fetch the latest admission request for the patient
+      const latestAdmissionRequest = await AdmissionRequest.findOne({
+        patient: patientId,
+      }).sort({ createdAt: -1 }).select('caseId'); // Get the latest admission's caseId
+
+      let latestCaseId = "";
+
+      // Compare caseIds from admission and consultation
+      if (latestConsultation && latestAdmissionRequest) {
+        // Compare both caseIds based on the most recent entry (using createdAt for admission)
+        const latestConsultationDate = new Date(latestConsultation.createdAt);
+        const latestAdmissionRequestDate = new Date(latestAdmissionRequest.createdAt);
+
+        // If admission request was created later
+        if (latestAdmissionRequestDate > latestConsultationDate) {
+          latestCaseId = latestAdmissionRequest.caseId;
+        } else {
+          latestCaseId = latestConsultation.caseId;
+        }
+      } else if (latestConsultation) {
+        latestCaseId = latestConsultation.caseId;
+      } else if (latestAdmissionRequest) {
+        latestCaseId = latestAdmissionRequest.caseId;
       }
+
+      // Add the latest caseId to the patient
+      patient.latestCaseId = latestCaseId;
     }
-    
 
     res.status(200).json({
       message: "Admitted, follow-up, and critical patients fetched successfully.",
@@ -477,9 +492,8 @@ export const getAdmittedPatients = async (req, res) => {
     console.error("Error fetching tracked patients:", error);
     res.status(500).json({ message: "Internal server error", error: error.message });
   }
-
-  
 };
+
 
 export const getAdmissionRequestsWithInsurance = async (req, res) => {
   try {

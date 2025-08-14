@@ -9,8 +9,12 @@ const progressPhaseSchema = new mongoose.Schema({
   assignedDoctor: { type: mongoose.Schema.Types.ObjectId, ref: 'Doctor', required: true },
   isDone: { type: Boolean, default: false },
   isFinal: { type: Boolean, default: false },
-  description: { type: String },
-  files: [{ type: String }], // file URLs
+  // description: { type: String },
+  // files: [{ type: String }], // file URLs
+  data:{
+  type: mongoose.Schema.Types.Mixed, // Flexible data structure
+  default: {},
+  },
   consultation: [
     {
       type: mongoose.Schema.Types.ObjectId,
