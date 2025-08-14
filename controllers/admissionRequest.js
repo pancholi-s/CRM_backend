@@ -9,6 +9,7 @@ import Room from '../models/roomModel.js';
 import Patient from '../models/patientModel.js';
 import Consultation from '../models/consultationModel.js';
 import Discharge from '../models/DischargeModel.js';
+import Appointment from '../models/appointmentModel.js';
 
 export const createAdmissionRequest = async (req, res) => {
   try {
@@ -564,6 +565,23 @@ export const dischargePatient = async (req, res) => {
     });
     await discharge.save();
 
+    // Check the caseId in both Appointment and AdmissionRequest models
+    let appointmentDoc = await Appointment.findOne({ caseId }).session(session);
+    let admissionRequestDoc = null;
+
+    if (!appointmentDoc) {
+      admissionRequestDoc = await AdmissionRequest.findOne({ caseId }).session(session);
+      if (!admissionRequestDoc) {
+        return res.status(404).json({ message: "Case ID not found in either Appointment or Admission Request." });
+      }
+    }
+
+    // Update admission request status if found
+    if (admissionRequestDoc) {
+      admissionRequestDoc.status = 'discharged';
+      await admissionRequestDoc.save({ session });
+    }
+
     // Dereference bed
     const bed = await Bed.findOne({ assignedPatient: patientId }).session(session);
     if (bed) {
@@ -576,17 +594,6 @@ export const dischargePatient = async (req, res) => {
     // Update patient status
     patient.admissionStatus = 'Not Admitted';
     await patient.save({ session });
-
-    // Update admission request
-    const admissionRequest = await AdmissionRequest.findOne({
-      patient: patientId,
-      status: 'Admitted'
-    });
-
-    if (admissionRequest) {
-      admissionRequest.status = 'discharged';
-      await admissionRequest.save({ session });
-    }
 
     // ---- Add Bed Charges Logic Here ----
     const bedChargeRate = bed?.charges?.dailyRate || 0;  // If bed has a daily rate, use it

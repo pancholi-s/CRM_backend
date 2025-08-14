@@ -5,31 +5,53 @@ import Bed from "../models/bedModel.js";
 import Consultation from "../models/consultationModel.js";
 import Appointment from "../models/appointmentModel.js";
 import Room from "../models/roomModel.js";
+import AdmissionRequest from '../models/admissionReqModel.js';
 
 export const updateBillAfterAction = async (caseId, session, medicationCharge) => {
   try {
     if (!caseId) throw new Error("Case ID is required.");
 
-    const appointment = await Appointment.findOne({ caseId })
-      .populate('patient doctor hospital department')
+    let appointment = await Appointment.findOne({ caseId })
+      .populate('patient doctor hospital department', null, null, { strictPopulate: false })
       .session(session);
-    if (!appointment) throw new Error("Appointment not found.");
+
+    let admissionRequest = null;
+
+    if (!appointment) {
+      // Check AdmissionRequest if no appointment found
+      admissionRequest = await AdmissionRequest.findOne({ caseId })
+        .populate('patient doctor hospital department', null, null, { strictPopulate: false })
+        .session(session);
+
+      if (admissionRequest) {
+        appointment = {
+          patient: admissionRequest.patient,
+          doctor: admissionRequest.doctor,
+          hospital: admissionRequest.hospital,
+          department: admissionRequest.department,
+          status: 'Ongoing' // Default for discharge/billing
+        };
+      }
+    }
+
+    if (!appointment) throw new Error("Appointment or Admission Request not found.");
 
     const patient = appointment.patient;
     const hospitalId = appointment.hospital;
     const isIPD = appointment.status === 'Ongoing' || appointment.status === 'Completed';
 
-    const consultationService = await Service.findOne({
-      name: 'Consultation',
-      hospital: hospitalId
-    }).session(session);
+    // Get the caseId to use in bill (from Appointment or AdmissionRequest)
+    const caseIdValue = appointment.caseId || (admissionRequest && admissionRequest.caseId);
+    if (!caseIdValue) throw new Error("caseId not found for bill.");
+
+    const consultationService = await Service.findOne({ name: 'Consultation', hospital: hospitalId }).session(session);
     if (!consultationService) throw new Error("Consultation service not found.");
 
     const consultations = await Consultation.find({ caseId, status: "Completed" }).session(session);
 
     let services = [];
 
-    // ✅ Add medication charges if available
+    // Add medication charges if available
     if (medicationCharge) {
       services.push({
         service: medicationCharge.service || null,
@@ -40,11 +62,9 @@ export const updateBillAfterAction = async (caseId, session, medicationCharge) =
       });
     }
 
-    // ✅ Add consultation services
+    // Add consultation services
     consultations.forEach(consultation => {
-      const consultationRateCategory = consultationService.categories.find(
-        c => c.subCategoryName === "Doctor Consultation"
-      );
+      const consultationRateCategory = consultationService.categories.find(c => c.subCategoryName === "Doctor Consultation");
       const consultationRate = consultationRateCategory ? consultationRateCategory.rate : 0;
 
       services.push({
@@ -56,40 +76,36 @@ export const updateBillAfterAction = async (caseId, session, medicationCharge) =
       });
     });
 
-    // ✅ Room & Bed Charges (IPD)
+    // Room & Bed Charges (IPD)
     let roomAndBedCharges = [];
     if (isIPD) {
       const bed = await Bed.findOne({ assignedPatient: patient._id, status: "Occupied" }).session(session);
       if (bed) {
         const room = await Room.findById(bed.room).session(session);
 
-        // Calculate the number of days the bed was occupied
-        const assignedDate = bed?.assignedDate ? new Date(bed?.assignedDate) : null;
-        const dischargeDateObj = new Date();  // Use current date if dischargeDate isn't provided
+        const assignedDate = bed?.assignedDate ? new Date(bed.assignedDate) : null;
+        const dischargeDateObj = new Date();
 
         const daysOccupied = assignedDate ? Math.ceil((dischargeDateObj - assignedDate) / (1000 * 3600 * 24)) : 0;
-
-        // Calculate the bed charge based on daily rate and occupied days
         const bedCharge = daysOccupied * bed.charges.dailyRate;
 
-        // Push the bed charge into the services array
         roomAndBedCharges.push({
-          service: null,  // No service ID for room & bed
+          service: null,
           category: room?.name || 'Unknown Room',
-          quantity: daysOccupied,  // Quantity = number of days occupied
-          rate: bed.charges.dailyRate,  // Daily rate from the bed model
+          quantity: daysOccupied,
+          rate: bed.charges.dailyRate,
           details: {
             bedType: bed?.bedType || "Not Specified",
             features: bed?.features || "No features specified",
             bedNumber: bed?.bedNumber || "Not Specified",
-            daysOccupied,  // Added for reference
-            totalCharge: bedCharge,  // Total charge for the bed occupancy
+            daysOccupied,
+            totalCharge: bedCharge,
           }
         });
       }
     }
 
-    // ✅ Diagnostics from consultations
+    // Diagnostics from consultations
     const diagnostics = consultations.flatMap(consultation => {
       return consultation.consultationData?.diagnosis ? [{
         service: 'Lab Tests',
@@ -104,7 +120,7 @@ export const updateBillAfterAction = async (caseId, session, medicationCharge) =
 
     const newServices = [...services, ...roomAndBedCharges, ...diagnostics];
 
-    let bill = await Bill.findOne({ caseId }).session(session);
+    let bill = await Bill.findOne({ caseId: caseIdValue }).session(session);
 
     if (!bill) {
       // Create a new bill
@@ -112,8 +128,8 @@ export const updateBillAfterAction = async (caseId, session, medicationCharge) =
 
       bill = new Bill({
         patient: patient._id,
-        doctor: appointment.doctor._id,
-        caseId: appointment.caseId,
+        doctor: appointment.doctor?._id || null,
+        caseId: caseIdValue, // ✅ Always use valid caseId
         services: newServices,
         totalAmount,
         paidAmount: 0,
@@ -126,10 +142,9 @@ export const updateBillAfterAction = async (caseId, session, medicationCharge) =
 
       await bill.save({ session });
     } else {
-      // ✅ Update the bill
+      // Update the bill
       bill.services.push(...newServices);
 
-      // ✅ Recalculate total after pushing services
       let newTotal = 0;
       bill.services.forEach(item => {
         newTotal += item.quantity * (item.rate || 0);
@@ -141,16 +156,15 @@ export const updateBillAfterAction = async (caseId, session, medicationCharge) =
       await bill.save({ session });
     }
 
-    await session.commitTransaction();  // Commit the transaction here
+    await session.commitTransaction();
     session.endSession();
 
     return { bill };
 
   } catch (error) {
     console.error("❌ Error updating bill:", error);
-    await session.abortTransaction();  // Abort if error occurs
+    await session.abortTransaction();
     session.endSession();
     throw new Error("Failed to update bill.");
   }
 };
-
