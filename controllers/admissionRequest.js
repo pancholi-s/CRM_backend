@@ -11,12 +11,11 @@ import Consultation from '../models/consultationModel.js';
 import Discharge from '../models/DischargeModel.js';
 import Appointment from '../models/appointmentModel.js';
 
+
 export const createAdmissionRequest = async (req, res) => {
   try {
     const hospitalId = req.session.hospitalId;
-    if (!hospitalId) {
-      return res.status(403).json({ message: "No hospital context found." });
-    }
+    if (!hospitalId) return res.status(403).json({ message: "No hospital context found." });
 
     const { patId, doctor, sendTo, admissionDetails, hasInsurance } = req.body;
     const createdBy = req.user._id;
@@ -31,9 +30,7 @@ export const createAdmissionRequest = async (req, res) => {
 
     // Step 2: Validate room
     const room = await Room.findOne({ roomID: admissionDetails.room, hospital: hospitalId });
-    if (!room) {
-      return res.status(404).json({ message: "Room not found with given roomID." });
-    }
+    if (!room) return res.status(404).json({ message: "Room not found with given roomID." });
 
     // Step 3: Validate bed
     const bed = await Bed.findOne({
@@ -42,35 +39,29 @@ export const createAdmissionRequest = async (req, res) => {
       room: room._id,
       status: 'Available'
     });
-    if (!bed) {
-      return res.status(409).json({ message: "Bed not available. Already reserved or occupied." });
-    }
+    if (!bed) return res.status(409).json({ message: "Bed not available. Already reserved or occupied." });
 
     // Step 4: If patient doesn't exist, register
     if (!patient) {
       const { name, mobileNumber, email } = req.body;
-      if (!name || !mobileNumber || !email) {
+      if (!name || !mobileNumber || !email)
         return res.status(400).json({ message: "Missing patient registration details." });
-      }
 
-      // Validate insurance if enabled
+      // Validate insurance fields if enabled
       if (hasInsurance === true || hasInsurance === 'true') {
         const requiredFields = [
           "employerName", "insuranceIdNumber", "policyNumber",
           "insuranceCompany", "employeeCode", "insuranceStartDate", "insuranceExpiryDate"
         ];
-
         for (const field of requiredFields) {
-          if (!req.body[field]) {
-            return res.status(400).json({ message: `Missing required insurance field: ${field}` });
-          }
+          if (!req.body[field]) return res.status(400).json({ message: `Missing required insurance field: ${field}` });
         }
       }
 
       const defaultPassword = "changeme";
       const hashedPassword = await bcrypt.hash(defaultPassword, 10);
 
-      // ✅ Generate unique caseId
+      // Generate unique caseId
       const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
       const randomPart = Math.random().toString(36).substring(2, 8).toUpperCase();
       generatedCaseId = `CASE-${datePart}-${randomPart}`;
@@ -90,7 +81,8 @@ export const createAdmissionRequest = async (req, res) => {
           insuranceCompany: req.body.insuranceCompany,
           employeeCode: req.body.employeeCode,
           insuranceStartDate: req.body.insuranceStartDate,
-          insuranceExpiryDate: req.body.insuranceExpiryDate
+          insuranceExpiryDate: req.body.insuranceExpiryDate,
+          insuranceApproved: "pending", // ✅ default for new patient
         } : undefined
       });
 
@@ -98,24 +90,31 @@ export const createAdmissionRequest = async (req, res) => {
       console.log(`✅ New patient registered: ${patient.patId}`);
     }
 
+    // Step 4b: Ensure existing patients have insuranceApproved if missing
+    if (patient.hasInsurance && (!patient.insuranceDetails?.insuranceApproved)) {
+      patient.insuranceDetails = {
+        ...patient.insuranceDetails,
+        insuranceApproved: "pending"
+      };
+      await patient.save();
+    }
+
     // Step 5: Reserve bed
     bed.status = 'Reserved';
     await bed.save();
 
     // Step 6: Construct admission details
-    const insurancePayload =
-      hasInsurance === true || hasInsurance === 'true'
-        ? {
-            hasInsurance: true,
-            employerName: req.body.employerName,
-            insuranceIdNumber: req.body.insuranceIdNumber,
-            policyNumber: req.body.policyNumber,
-            insuranceCompany: req.body.insuranceCompany,
-            employeeCode: req.body.employeeCode,
-            insuranceStartDate: req.body.insuranceStartDate,
-            insuranceExpiryDate: req.body.insuranceExpiryDate,
-          }
-        : { hasInsurance: false };
+    const insurancePayload = {
+      hasInsurance: hasInsurance === true || hasInsurance === 'true',
+      employerName: req.body.employerName || "",
+      insuranceIdNumber: req.body.insuranceIdNumber || "",
+      policyNumber: req.body.policyNumber || "",
+      insuranceCompany: req.body.insuranceCompany || "",
+      employeeCode: req.body.employeeCode || "",
+      insuranceStartDate: req.body.insuranceStartDate || null,
+      insuranceExpiryDate: req.body.insuranceExpiryDate || null,
+      insuranceApproved: hasInsurance === true || hasInsurance === 'true' ? 'pending' : null // ✅ guaranteed
+    };
 
     const admissionData = {
       ...admissionDetails,
@@ -133,7 +132,7 @@ export const createAdmissionRequest = async (req, res) => {
       doctor,
       createdBy,
       sendTo,
-      caseId: generatedCaseId, // may be null for existing patients
+      caseId: generatedCaseId,
       admissionDetails: admissionData
     });
 
@@ -151,6 +150,7 @@ export const createAdmissionRequest = async (req, res) => {
     res.status(500).json({ message: "Internal Server Error", error: error.message });
   }
 };
+
 
 
 
@@ -503,31 +503,82 @@ export const getAdmissionRequestsWithInsurance = async (req, res) => {
       return res.status(403).json({ message: "Unauthorized: No hospital context." });
     }
 
-    // Step 1: Find all admission requests for this hospital with insurance true
+    // Fetch all admission requests for the hospital with insurance
     const requests = await AdmissionRequest.find({
       hospital: hospitalId,
       "admissionDetails.insurance.hasInsurance": true
     })
       .populate("patient", "name patId email phone hasInsurance insuranceDetails")
-      .populate("admissionDetails.room", "roomID") // optional
-      .populate("admissionDetails.bed", "bedNumber") // optional
-      .populate("doctor", "name specialization") // optional
-      .lean();
+      .populate("admissionDetails.room", "roomID")
+      .populate("admissionDetails.bed", "bedNumber")
+      .populate("doctor", "name specialization")
+      .lean(); // Convert to plain objects
 
     if (!requests || requests.length === 0) {
       return res.status(404).json({ message: "No insured admissions found." });
     }
 
+    // Ensure insuranceApproved is always present and include the AdmissionRequest _id
+    const dataWithInsuranceApproved = requests.map(admission => {
+      if (admission.admissionDetails.insurance && !admission.admissionDetails.insurance.insuranceApproved) {
+        admission.admissionDetails.insurance.insuranceApproved = "pending";
+      }
+
+      // Make sure _id of AdmissionRequest is returned explicitly
+      return {
+        _id: admission._id,
+        ...admission
+      };
+    });
+
     res.status(200).json({
       message: "Insured admission requests retrieved successfully.",
-      count: requests.length,
-      data: requests
+      count: dataWithInsuranceApproved.length,
+      data: dataWithInsuranceApproved
     });
   } catch (error) {
     console.error("❌ Error fetching insured admissions:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
+
+export const updateInsuranceStatus = async (req, res) => {
+  try {
+    const { admissionId } = req.params;
+    const { insuranceApproved } = req.body;
+
+    const validStatuses = ['pending', 'approved', 'rejected'];
+    if (!validStatuses.includes(insuranceApproved)) {
+      return res.status(400).json({ message: "Invalid insuranceApproved value. Must be 'pending', 'approved', or 'rejected'." });
+    }
+
+    // Find the admission request
+    const admissionRequest = await AdmissionRequest.findById(admissionId);
+    if (!admissionRequest) {
+      return res.status(404).json({ message: "Admission request not found." });
+    }
+
+    // Check if patient has insurance
+    if (!admissionRequest.admissionDetails.insurance?.hasInsurance) {
+      return res.status(400).json({ message: "Patient does not have insurance." });
+    }
+
+    // Update the insuranceApproved field
+    admissionRequest.admissionDetails.insurance.insuranceApproved = insuranceApproved;
+
+    await admissionRequest.save();
+
+    res.status(200).json({
+      message: `Insurance status updated successfully to '${insuranceApproved}'`,
+      admissionRequest
+    });
+  } catch (error) {
+    console.error("Error updating insurance status:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
 
 
 

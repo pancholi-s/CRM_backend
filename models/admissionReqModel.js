@@ -49,7 +49,8 @@ const admissionRequestSchema = new mongoose.Schema({
       insuranceCompany: String,
       employeeCode: String,
       insuranceStartDate: Date,
-      insuranceExpiryDate: Date
+      insuranceExpiryDate: Date,
+      insuranceApproved:{ type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' }
     }
   },
 }, {
