@@ -5,6 +5,11 @@ import Appointment from "../models/appointmentModel.js";
 import Bed from "../models/bedModel.js";
 import ProgressPhase from "../models/ProgressPhase.js";
 import Progress from "../models/progressLog.js";
+import AdmissionRequest from "../models/admissionReqModel.js";
+import Staff from "../models/staffModel.js";
+import Doctor from "../models/doctorModel.js";
+import Admin from "../models/hospitalAdminModel.js";
+import Receptionist from "../models/receptionistModel.js";
 import moment from "moment";
 // Get Patients by Hospital with Sorting
 export const getPatientsByHospital = async (req, res) => {
@@ -262,17 +267,41 @@ export const getPatientDetailsById = async (req, res) => {
       consultations.length > 0 ? consultations[0] : null;
     const latestConsultationData = latestConsultation?.consultationData || null;
 
+    const admissionRequest = await AdmissionRequest.findOne({ patient: patientId })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const admissionDetails = admissionRequest?.admissionDetails || {};
+
+    let createdByName = null;
+    if (admissionRequest?.createdBy) {
+      createdByName =
+        (await Doctor.findById(admissionRequest.createdBy).select("name").lean())?.name ||
+        (await Staff.findById(admissionRequest.createdBy).select("name").lean())?.name ||
+        (await Admin.findById(admissionRequest.createdBy).select("name").lean())?.name ||
+        (await Receptionist.findById(admissionRequest.createdBy).select("name").lean())?.name ||
+        null;
+    }
+
     const additionalFields = {
       bloodGroup: latestConsultationData?.bloodGroup ?? null,
       visitType: latestConsultationData?.visitType ?? null,
-      condition: latestConsultationData?.condition ?? null,
-      emergencyContact: latestConsultationData?.emergencyContact ?? null,
+      // condition: latestConsultationData?.condition ?? null,
+      // emergencyContact: latestConsultationData?.emergencyContact ?? null,
       relationship: latestConsultationData?.relationship ?? null,
-      emergencyContactName:
-        latestConsultationData?.emergencyContactName ?? null,
+      // emergencyContactName:
+      //   latestConsultationData?.emergencyContactName ?? null,
       MRN: latestConsultationData?.MRN ?? null,
-      admittingBy: latestConsultationData?.admittingBy ?? null,
-      admissionDateTime: latestConsultationData?.admissionDateTime ?? null,
+      // admittingBy: latestConsultationData?.admittingBy ?? null,
+      // admissionDateTime: latestConsultationData?.admissionDateTime ?? null,
+      condition: admissionDetails?.medicalNote ?? null,
+      admissionDate: admissionDetails?.date ?? null,
+      contact: admissionDetails?.contact ?? null,
+      address: admissionDetails?.address ?? null,
+      Age: admissionDetails?.age ?? null,
+      emergencyContact: admissionDetails?.emergencyContact ?? null,
+      emergencyName: admissionDetails?.emergencyName ?? null,
+      createdByName,
     };
 
     return res.status(200).json({
