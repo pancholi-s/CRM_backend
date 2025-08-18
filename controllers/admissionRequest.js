@@ -571,7 +571,7 @@ export const updateInsuranceStatus = async (req, res) => {
 
     res.status(200).json({
       message: `Insurance status updated successfully to '${insuranceApproved}'`,
-      admissionRequest
+      insurance: admissionRequest.admissionDetails.insurance
     });
   } catch (error) {
     console.error("Error updating insurance status:", error);
