@@ -626,6 +626,7 @@ export const dischargePatient = async (req, res) => {
         return res.status(404).json({ message: "Case ID not found in either Appointment or Admission Request." });
       }
     }
+    //compare both caseIds and use the latest one
 
     // Update admission request status if found
     if (admissionRequestDoc) {

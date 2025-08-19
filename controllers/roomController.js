@@ -4,12 +4,13 @@ import Hospital from "../models/hospitalModel.js";
 import Department from "../models/departmentModel.js";
 import Doctor from "../models/doctorModel.js";
 import Bed from "../models/bedModel.js";
+import Service from "../models/serviceModel.js";
 
 export const addRoom = async (req, res) => {
   const {
     roomID,
     name,
-    roomType,
+    roomTypeName,  // <-- Expect subCategoryName like "Deluxe"
     doctorId,
     floor,
     wing,
@@ -25,62 +26,119 @@ export const addRoom = async (req, res) => {
   session.startTransaction();
 
   try {
+    // Validate hospital
     const hospital = await Hospital.findById(hospitalId);
     if (!hospital) throw new Error("Hospital not found.");
 
+    // Validate doctor
     const doctor = await Doctor.findById(doctorId);
     if (!doctor || !hospital.doctors.includes(doctorId)) {
       throw new Error("Doctor not found in hospital.");
     }
 
+    // Get doctor's department
     const departmentId = doctor.departments?.[0];
     if (!departmentId) throw new Error("Doctor not assigned to a department.");
-    
+
     const department = await Department.findById(departmentId);
     if (!department || !hospital.departments.includes(departmentId)) {
       throw new Error("Department not found in hospital.");
     }
 
+    // Step 1: Find matching room type service by hospital + subCategoryName
+    const roomTypeService = await Service.findOne({
+      hospital: hospitalId,
+      "categories.subCategoryName": roomTypeName,
+    });
+
+    if (!roomTypeService) {
+      return res.status(404).json({ message: "Room type not found in the service catalog." });
+    }
+
+    // Step 2: Extract the matching category
+    const roomCategory = roomTypeService.categories.find(
+      (category) => category.subCategoryName === roomTypeName
+    );
+
+    if (!roomCategory) {
+      return res.status(404).json({ message: "Room category not found." });
+    }
+
+    const roomDetails = roomCategory.additionaldetails || {};
+
+    // Step 3: Calculate total room rate (sum of all details)
+    const totalRoomRate = Object.values(roomDetails).reduce(
+      (sum, price) => sum + (Number(price) || 0),
+      0
+    );
+
+    // Step 4: Create the room
     const newRoom = new Room({
       roomID,
       name,
-      roomType,
+      roomType: roomCategory.subCategoryName, // "Deluxe"
       hospital: hospitalId,
       department: departmentId,
       assignedDoctor: doctorId,
       floor,
       wing,
+      totalRoomRate,
     });
 
     await newRoom.save({ session });
 
-    await Hospital.findByIdAndUpdate(hospitalId, { $push: { rooms: newRoom._id } }, { session });
-    await Department.findByIdAndUpdate(departmentId, { $push: { rooms: newRoom._id } }, { session });
-    await Doctor.findByIdAndUpdate(doctorId, { $push: { assignedRooms: newRoom._id } }, { session });
+    // Step 5: Create beds
+    // Ensure no duplicate bedNumbers
+    const uniqueBedNumbers = new Set();
+    const bedsToInsert = [];
 
-    // Add beds (can be one or many)
-    const bedsToInsert = beds?.map((bed) => ({
-      bedNumber: bed.bedId,
-      // bedType: bed.roomType || roomType,
-      room: newRoom._id,
-      hospital: hospitalId,
-      department: departmentId,
-      status: bed.status || 'Available',
-      assignedPatient: null,
-      features: bed.features || {},
-      charges: {
-        dailyRate: bed.cost || 0,
-        currency: "INR",
-      },
-    })) || [];
+    for (const bed of beds) {
+      if (uniqueBedNumbers.has(bed.bedNumber)) {
+        continue; // skip duplicates
+      }
+      uniqueBedNumbers.add(bed.bedNumber);
+
+      bedsToInsert.push({
+        bedNumber: bed.bedNumber,
+        room: newRoom._id,
+        hospital: hospitalId,
+        department: departmentId,
+        status: bed.status || "Available",
+        assignedPatient: null,
+        features: bed.features || {},
+        charges: {
+          dailyRate: totalRoomRate,
+          currency: "INR",
+        },
+      });
+    }
 
     if (bedsToInsert.length > 0) {
       await Bed.insertMany(bedsToInsert, { session });
     }
 
+    // Step 6: Update hospital, department, and doctor
+    await Hospital.findByIdAndUpdate(
+      hospitalId,
+      { $push: { rooms: newRoom._id } },
+      { session }
+    );
+    await Department.findByIdAndUpdate(
+      departmentId,
+      { $push: { rooms: newRoom._id } },
+      { session }
+    );
+    await Doctor.findByIdAndUpdate(
+      doctorId,
+      { $push: { assignedRooms: newRoom._id } },
+      { session }
+    );
+
+    // Commit
     await session.commitTransaction();
     session.endSession();
 
+    // Populate for response
     const populatedRoom = await Room.findById(newRoom._id)
       .populate("hospital", "name")
       .populate("department", "name")
@@ -91,13 +149,14 @@ export const addRoom = async (req, res) => {
       message: "Room and beds added successfully.",
       room: populatedRoom,
     });
-
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
     res.status(500).json({ message: error.message });
   }
 };
+
+
 
 
 export const getRoomsByHospital = async (req, res) => {
