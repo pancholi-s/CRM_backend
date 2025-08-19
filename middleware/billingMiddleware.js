@@ -82,8 +82,13 @@ export const updateBillAfterAction = async (caseId, session, medicationCharge) =
       const bed = await Bed.findOne({ assignedPatient: patient._id, status: "Occupied" }).session(session);
       if (bed) {
         const room = await Room.findById(bed.room).session(session);
+        
+        // Fetch room details (additionaldetails) from Service
+        const roomService = await Service.findOne({ _id: room.roomType }).session(session);
+        const roomCategory = roomService.categories.find(category => category.subCategoryName === room.roomType);
+        const roomDetails = roomCategory ? roomCategory.additionaldetails : {};
 
-        const assignedDate = bed?.assignedDate ? new Date(bed.assignedDate) : null;
+        const assignedDate = bed?.assignedDate ? new Date(bed?.assignedDate) : null;
         const dischargeDateObj = new Date();
 
         const daysOccupied = assignedDate ? Math.ceil((dischargeDateObj - assignedDate) / (1000 * 3600 * 24)) : 0;
@@ -100,6 +105,7 @@ export const updateBillAfterAction = async (caseId, session, medicationCharge) =
             bedNumber: bed?.bedNumber || "Not Specified",
             daysOccupied,
             totalCharge: bedCharge,
+            roomDetails,  // Include room details like stayCharges, admissionFee, etc.
           }
         });
       }

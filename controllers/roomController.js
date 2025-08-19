@@ -156,9 +156,6 @@ export const addRoom = async (req, res) => {
   }
 };
 
-
-
-
 export const getRoomsByHospital = async (req, res) => {
   const { departmentId, sort, roomType, status } = req.query;
   const hospitalId = req.session.hospitalId;
