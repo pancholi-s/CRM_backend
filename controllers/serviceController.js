@@ -1,6 +1,6 @@
 import Service from "../models/serviceModel.js";
-import Hospital from "../models/hospitalModel.js";
 import Department from "../models/departmentModel.js";
+import Hospital from "../models/hospitalModel.js";
 
 export const addService = async (req, res) => {
   const {
@@ -12,7 +12,9 @@ export const addService = async (req, res) => {
     effectiveDate,
     amenities,
     departmentName,
+    additionaldetails, // Only for room services
   } = req.body;
+
   const hospitalId = req.session.hospitalId;
 
   if (!hospitalId) {
@@ -58,6 +60,7 @@ export const addService = async (req, res) => {
         rate,
         effectiveDate,
         amenities,
+        additionaldetails: additionaldetails || null,  // Add details only if available (for room-type services)
         hospital: hospitalId,
       });
       existingService.lastUpdated = new Date();
@@ -85,6 +88,7 @@ export const addService = async (req, res) => {
           rate,
           effectiveDate,
           amenities,
+          additionaldetails: additionaldetails || null,  // Add details if it's a room-type service
           hospital: hospitalId,
         },
       ],

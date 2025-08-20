@@ -10,6 +10,7 @@ import Patient from '../models/patientModel.js';
 import Consultation from '../models/consultationModel.js';
 import Discharge from '../models/DischargeModel.js';
 import Appointment from '../models/appointmentModel.js';
+import Service from '../models/serviceModel.js';
 
 
 export const createAdmissionRequest = async (req, res) => {
@@ -571,16 +572,13 @@ export const updateInsuranceStatus = async (req, res) => {
 
     res.status(200).json({
       message: `Insurance status updated successfully to '${insuranceApproved}'`,
-      admissionRequest
+      insurance: admissionRequest.admissionDetails.insurance
     });
   } catch (error) {
     console.error("Error updating insurance status:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
-
-
 
 export const dischargePatient = async (req, res) => {
   const session = await mongoose.startSession();  // Start a session for the current request
@@ -653,7 +651,6 @@ export const dischargePatient = async (req, res) => {
 
     // Ensure both dates are valid Date objects
     if (assignedDate && dischargeDateObj) {
-      // Calculate the number of days the bed was occupied
       const timeDiff = dischargeDateObj - assignedDate;
       const daysOccupied = Math.floor(timeDiff / (1000 * 3600 * 24));  // Convert milliseconds to days
 
@@ -665,29 +662,59 @@ export const dischargePatient = async (req, res) => {
       // Calculate total bed charges for the occupied days
       const bedCharges = daysOccupied * bedChargeRate;
 
-      // Prepare the bed charge details (without referencing service)
+      // Fetch the room from the bed (roomType)
+      const room = await Room.findById(bed.room).session(session);
+      if (!room) throw new Error("Room not found for this bed.");
+
+      // Ensure roomType exists and fetch corresponding service
+      const roomType = room?.roomType; // Use room.roomType instead of bedType
+      if (!roomType) {
+        throw new Error("Room type is not defined for the assigned bed.");
+      }
+
+      // Fetch room service details dynamically from the Service model using roomType (subCategoryName)
+      const roomService = await Service.findOne({
+        hospital: bed.hospital,
+        "categories.subCategoryName": roomType
+      }).session(session);
+
+      if (!roomService) {
+        throw new Error(`Room service for room type ${roomType} not found.`);
+      }
+
+      // Find the correct category based on the roomType (subCategoryName)
+      const roomCategory = roomService.categories.find(cat => cat.subCategoryName === roomType);
+      if (!roomCategory) {
+        throw new Error(`No category found for room type ${roomType} in the service model.`);
+      }
+
+      // Fetch additional room details (stayCharges, admissionFee, etc.)
+      const roomDetails = roomCategory.additionaldetails || {};
+
+      // Prepare the bed charge details (with service reference)
       const bedChargeDetails = {
-        service: null,  // No service ID for room & bed, so we keep it null
-        category: bed?.room?.name || 'Unknown Room',
+        service: roomService._id,  // Reference to the room service ID
+        category: "Room",  // Category is "Room" for room-related services
         quantity: daysOccupied,  // Quantity = number of days occupied
         rate: bedChargeRate,  // Daily rate from the bed model
         details: {
-          bedType: bed?.bedType || "Not Specified",
-          features: bed?.features || "No features specified",
+          bedType: roomCategory.subCategoryName || "Not Specified",  // Use subCategoryName as bedType
+          features: bed?.features || {},
           bedNumber: bed?.bedNumber || "Not Specified",
-          daysOccupied,  // Added for reference
+          daysOccupied,
           totalCharge: bedCharges,  // Total charge for the bed occupancy
+          roomDetails,  // Include room details like stayCharges, admissionFee, etc.
         }
       };
 
       // Call the centralized function to update or create the bill (only bed charges)
-      await updateBillAfterAction(caseId, session, bedChargeDetails);  // Pass the bed charge details to update bill
+      await updateBillAfterAction(caseId, session, bedChargeDetails);
     } else {
       throw new Error("Assigned date or discharge date is missing.");
     }
 
     res.status(200).json({ message: 'Patient discharged successfully', discharge });
-    
+
   } catch (error) {
     console.error('Error discharging patient:', error);
     res.status(500).json({ message: 'Internal server error', error: error.message });

@@ -192,10 +192,6 @@ export const submitConsultation = async (req, res) => {
   }
 };
 
-
-
-
-
 export const getConsultationByAppointment = async (req, res) => {
   try {
     const hospitalId = req.session.hospitalId;

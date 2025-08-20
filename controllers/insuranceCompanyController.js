@@ -30,10 +30,18 @@ export const addInsuranceCompany = async (req, res) => {
 export const addServiceToCompany = async (req, res) => {
   try {
     const { companyId } = req.params; // The ID of the insurance company
-    const { serviceName, pricingDetails } = req.body; // Service details to be added
+    const { services } = req.body; // An array of services to be added
     
-    if (!serviceName || !pricingDetails) {
-      return res.status(400).json({ message: "Service name and pricing details are required." });
+    // Ensure that the services array is provided and is an array
+    if (!Array.isArray(services) || services.length === 0) {
+      return res.status(400).json({ message: "Services must be an array and cannot be empty." });
+    }
+
+    // Ensure that each service has a serviceName and pricingDetails
+    for (let service of services) {
+      if (!service.serviceName || !service.pricingDetails) {
+        return res.status(400).json({ message: "Each service must have a serviceName and pricingDetails." });
+      }
     }
 
     // Find the insurance company by ID
@@ -43,17 +51,18 @@ export const addServiceToCompany = async (req, res) => {
       return res.status(404).json({ message: "Insurance company not found." });
     }
 
-    // Add the new service to the services array
-    company.services.push({ serviceName, pricingDetails });
+    // Add the new services to the services array
+    company.services.push(...services);
 
     // Save the updated company document
     await company.save();
 
-    res.status(200).json({ message: "Service added successfully", company });
+    res.status(200).json({ message: "Services added successfully", company });
   } catch (error) {
-    res.status(500).json({ message: "Error adding service to insurance company.", error: error.message });
+    res.status(500).json({ message: "Error adding services to insurance company.", error: error.message });
   }
 };
+
 
 
 // Get all insurance companies
