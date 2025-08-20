@@ -17,14 +17,21 @@ export const addBedsToRoom = async (req, res) => {
   session.startTransaction();
 
   try {
-    const room = await Room.findOne({ _id: roomId, hospital: hospitalId }).session(session);
+    const room = await Room.findOne({
+      _id: roomId,
+      hospital: hospitalId,
+    }).session(session);
     if (!room) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ message: "Room not found in your hospital." });
+      return res
+        .status(404)
+        .json({ message: "Room not found in your hospital." });
     }
 
-    const existingBedCount = await Bed.countDocuments({ room: roomId }).session(session);
+    const existingBedCount = await Bed.countDocuments({ room: roomId }).session(
+      session
+    );
     if (existingBedCount + beds.length > room.capacity.totalBeds) {
       await session.abortTransaction();
       session.endSession();
@@ -75,7 +82,9 @@ export const addBedsToRoom = async (req, res) => {
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    res.status(500).json({ message: "Error adding beds.", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Error adding beds.", error: error.message });
   }
 };
 
@@ -91,11 +100,9 @@ export const getBedsByHospital = async (req, res) => {
 
   const hospitalId = req.session.hospitalId;
   if (!hospitalId) {
-    return res
-      .status(403)
-      .json({
-        message: "Unauthorized access. Hospital ID not found in session.",
-      });
+    return res.status(403).json({
+      message: "Unauthorized access. Hospital ID not found in session.",
+    });
   }
 
   try {
@@ -138,11 +145,9 @@ export const assignPatientToBed = async (req, res) => {
 
   const hospitalId = req.session.hospitalId;
   if (!hospitalId) {
-    return res
-      .status(403)
-      .json({
-        message: "Unauthorized access. Hospital ID not found in session.",
-      });
+    return res.status(403).json({
+      message: "Unauthorized access. Hospital ID not found in session.",
+    });
   }
 
   const session = await mongoose.startSession();
@@ -205,12 +210,10 @@ export const assignPatientToBed = async (req, res) => {
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    res
-      .status(500)
-      .json({
-        message: "Error assigning patient to bed.",
-        error: error.message,
-      });
+    res.status(500).json({
+      message: "Error assigning patient to bed.",
+      error: error.message,
+    });
   }
 };
 
@@ -219,11 +222,9 @@ export const dischargePatientFromBed = async (req, res) => {
 
   const hospitalId = req.session.hospitalId;
   if (!hospitalId) {
-    return res
-      .status(403)
-      .json({
-        message: "Unauthorized access. Hospital ID not found in session.",
-      });
+    return res.status(403).json({
+      message: "Unauthorized access. Hospital ID not found in session.",
+    });
   }
 
   const session = await mongoose.startSession();
@@ -261,12 +262,10 @@ export const dischargePatientFromBed = async (req, res) => {
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    res
-      .status(500)
-      .json({
-        message: "Error discharging patient from bed.",
-        error: error.message,
-      });
+    res.status(500).json({
+      message: "Error discharging patient from bed.",
+      error: error.message,
+    });
   }
 };
 
@@ -325,7 +324,9 @@ export const getHospitalStatistics = async (req, res) => {
       {
         $match: {
           hospital: new mongoose.Types.ObjectId(hospitalId),
-          ...(departmentId && { department: new mongoose.Types.ObjectId(departmentId) }),
+          ...(departmentId && {
+            department: new mongoose.Types.ObjectId(departmentId),
+          }),
         },
       },
       {
@@ -518,12 +519,13 @@ export const getPatientBedInfo = async (req, res) => {
   }
 };
 
-// controllers/bedController.js
 
 export const getAvailableBeds = async (req, res) => {
   const hospitalId = req.session.hospitalId;
   if (!hospitalId) {
-    return res.status(403).json({ message: "Unauthorized. Hospital ID not found in session." });
+    return res
+      .status(403)
+      .json({ message: "Unauthorized. Hospital ID not found in session." });
   }
 
   try {
@@ -548,9 +550,9 @@ export const getAvailableBeds = async (req, res) => {
   }
 };
 
-export const transferBedToRoom = async (req, res) => {
-  const { bedId, targetRoomId } = req.body;
-  
+export const transferPatientToBed = async (req, res) => {
+  const { currentBedId, targetBedId } = req.body;
+
   const hospitalId = req.session.hospitalId;
   if (!hospitalId) {
     return res.status(403).json({
@@ -562,110 +564,114 @@ export const transferBedToRoom = async (req, res) => {
   session.startTransaction();
 
   try {
-    // 1. Find and validate bed
-    const bed = await Bed.findOne({ 
-      _id: bedId, 
-      hospital: hospitalId 
-    }).populate('room').session(session);
-    
-    if (!bed) {
+    const currentBed = await Bed.findOne({
+      _id: currentBedId,
+      hospital: hospitalId,
+      status: "Occupied",
+    })
+      .populate("assignedPatient", "name patientID")
+      .session(session);
+
+    if (!currentBed) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ 
-        message: "Bed not found in your hospital." 
+      return res.status(404).json({
+        message: "Current bed not found or not occupied.",
       });
     }
 
-    // 2. Find and validate target room
-    const targetRoom = await Room.findOne({ 
-      _id: targetRoomId, 
-      hospital: hospitalId 
+    if (!currentBed.assignedPatient) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        message: "No patient assigned to current bed.",
+      });
+    }
+
+    const targetBed = await Bed.findOne({
+      _id: targetBedId,
+      hospital: hospitalId,
+      status: "Available",
     }).session(session);
-    
-    if (!targetRoom) {
+
+    if (!targetBed) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(404).json({ 
-        message: "Target room not found in your hospital." 
+      return res.status(404).json({
+        message: "Target bed not found or not available.",
       });
     }
 
-    // 3. Check if bed is already in target room
-    if (bed.room._id.toString() === targetRoomId) {
+    if (currentBedId === targetBedId) {
       await session.abortTransaction();
       session.endSession();
-      return res.status(400).json({ 
-        message: "Bed is already in the target room." 
+      return res.status(400).json({
+        message: "Cannot transfer patient to the same bed.",
       });
     }
 
-    // 4. Check target room capacity
-    const currentBedsInTargetRoom = await Bed.countDocuments({ 
-      room: targetRoomId 
-    }).session(session);
-    
-    if (currentBedsInTargetRoom >= targetRoom.capacity.totalBeds) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({ 
-        message: `Target room is at full capacity. Current beds: ${currentBedsInTargetRoom}, Max capacity: ${targetRoom.capacity.totalBeds}` 
-      });
-    }
-
-    // 5. Store original room info for response
-    const originalRoom = {
-      id: bed.room._id,
-      roomID: bed.room.roomID,
-      name: bed.room.name
+    const patientId = currentBed.assignedPatient._id;
+    const patientInfo = {
+      name: currentBed.assignedPatient.name,
+      patientID: currentBed.assignedPatient.patientID,
     };
 
-    // 6. Update bed's room and department
-    bed.room = targetRoomId;
-    bed.department = targetRoom.department;
-    
-    await bed.save({ session });
+    currentBed.assignedPatient = null;
+    currentBed.status = "Available";
+    currentBed.dischargeDate = new Date();
+    await currentBed.save({ session });
 
-    // 7. Commit transaction
+    targetBed.assignedPatient = patientId;
+    targetBed.status = "Occupied";
+    targetBed.assignedDate = new Date();
+    targetBed.dischargeDate = null;
+    await targetBed.save({ session });
+
     await session.commitTransaction();
     session.endSession();
 
-    // 8. Update room statistics (after transaction)
-    const originalRoomObj = await Room.findById(originalRoom.id);
-    const targetRoomObj = await Room.findById(targetRoomId);
-    
-    await originalRoomObj.updateAvailableBeds();
-    await targetRoomObj.updateAvailableBeds();
+    const currentRoom = await Room.findById(currentBed.room);
+    const targetRoom = await Room.findById(targetBed.room);
 
-    // 9. Get updated bed info
-    const updatedBed = await Bed.findById(bedId)
-      .populate('room', 'roomID name roomType floor wing')
-      .populate('department', 'name')
-      .populate('assignedPatient', 'name patientID age gender')
+    await currentRoom.updateAvailableBeds();
+    if (currentRoom._id.toString() !== targetRoom._id.toString()) {
+      await targetRoom.updateAvailableBeds();
+    }
+
+    const updatedTargetBed = await Bed.findById(targetBedId)
+      .populate("room", "roomID name roomType floor wing")
+      .populate("department", "name")
+      .populate("assignedPatient", "name patientID age gender")
+      .lean();
+
+    const updatedCurrentBed = await Bed.findById(currentBedId)
+      .populate("room", "roomID name")
       .lean();
 
     res.status(200).json({
-      message: "Bed transferred successfully.",
+      message: "Patient transferred successfully.",
       transfer: {
-        bedId: bed._id,
-        bedNumber: bed.bedNumber,
-        fromRoom: originalRoom,
-        toRoom: {
-          id: targetRoom._id,
-          roomID: targetRoom.roomID,
-          name: targetRoom.name
+        patient: patientInfo,
+        fromBed: {
+          bedId: currentBed._id,
+          bedNumber: currentBed.bedNumber,
+          room: updatedCurrentBed.room,
         },
-        patientAffected: bed.assignedPatient ? true : false,
-        transferDate: new Date()
+        toBed: {
+          bedId: targetBed._id,
+          bedNumber: targetBed.bedNumber,
+          room: updatedTargetBed.room,
+        },
+        transferDate: new Date(),
       },
-      bed: updatedBed
+      updatedTargetBed,
     });
-
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
     res.status(500).json({
-      message: "Error transferring bed.",
-      error: error.message
+      message: "Error transferring patient.",
+      error: error.message,
     });
   }
 };
