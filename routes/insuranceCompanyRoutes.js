@@ -12,10 +12,10 @@ router.post('/addInsuranceCompany', authorizeRoles("hospitalAdmin"), addInsuranc
 router.post('/addServiceToCompany/:companyId', authorizeRoles("hospitalAdmin"), addServiceToCompany);
 
 // Get all insurance companies
-router.get('/getInsuranceCompanies', authorizeRoles("hospitalAdmin"), getInsuranceCompanies);
+router.get('/getInsuranceCompanies', authorizeRoles("hospitalAdmin", "doctor"), getInsuranceCompanies);
 
 // Get details of a specific insurance company by ID
-router.get('/getInsuranceCompanyDetails/:id', authorizeRoles("hospitalAdmin"), getInsuranceCompanyDetails);
+router.get('/getInsuranceCompanyDetails/:id', authorizeRoles("hospitalAdmin", "doctor"), getInsuranceCompanyDetails);
 router.patch('/editService/:companyId/:serviceId', authorizeRoles("hospitalAdmin"), editServiceInCompany);
 
 // Delete a specific service from an insurance company
