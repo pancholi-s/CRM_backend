@@ -90,3 +90,92 @@ export const getInsuranceCompanyDetails = async (req, res) => {
     res.status(500).json({ message: "Error fetching insurance company details.", error: error.message });
   }
 };
+
+export const editServiceInCompany = async (req, res) => {
+  try {
+    const { companyId, serviceId } = req.params; 
+    const { serviceName, pricingDetails, rate, description } = req.body; 
+
+    if (!serviceName && !pricingDetails && !rate && !description) {
+      return res.status(400).json({ 
+        message: "At least one field (serviceName, pricingDetails, rate, or description) must be provided for update." 
+      });
+    }
+
+    const company = await InsuranceCompany.findById(companyId);
+
+    if (!company) {
+      return res.status(404).json({ message: "Insurance company not found." });
+    }
+
+    const service = company.services.id(serviceId);
+
+    if (!service) {
+      return res.status(404).json({ message: "Service not found in this insurance company." });
+    }
+
+    if (serviceName) {
+      service.serviceName = serviceName;
+    }
+
+    if (pricingDetails) {
+      service.pricingDetails = pricingDetails;
+    } else if (rate !== undefined || description !== undefined) {
+      if (typeof service.pricingDetails !== 'object' || service.pricingDetails === null) {
+        service.pricingDetails = {};
+      }
+      
+      if (rate !== undefined) {
+        service.pricingDetails.rate = rate;
+      }
+      if (description !== undefined) {
+        service.pricingDetails.description = description;
+      }
+    }
+
+    await company.save();
+
+    res.status(200).json({ 
+      message: "Service updated successfully", 
+      company,
+      updatedService: service 
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Error updating service.", error: error.message });
+  }
+};
+
+export const deleteServiceFromCompany = async (req, res) => {
+  try {
+    const { companyId, serviceId } = req.params;
+    const company = await InsuranceCompany.findById(companyId);
+
+    if (!company) {
+      return res.status(404).json({ message: "Insurance company not found." });
+    }
+
+    const service = company.services.id(serviceId);
+
+    if (!service) {
+      return res.status(404).json({ message: "Service not found in this insurance company." });
+    }
+
+    const deletedService = {
+      _id: service._id,
+      serviceName: service.serviceName,
+      pricingDetails: service.pricingDetails
+    };
+
+    company.services.pull(serviceId);
+
+    await company.save();
+
+    res.status(200).json({ 
+      message: "Service deleted successfully", 
+      company,
+      deletedService 
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Error deleting service.", error: error.message });
+  }
+};

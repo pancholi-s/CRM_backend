@@ -1,5 +1,6 @@
 import express from 'express';
-import { addInsuranceCompany,  addServiceToCompany , getInsuranceCompanies, getInsuranceCompanyDetails } from '../controllers/insuranceCompanyController.js';
+import { addInsuranceCompany,  addServiceToCompany , getInsuranceCompanies, getInsuranceCompanyDetails,editServiceInCompany,
+  deleteServiceFromCompany, } from '../controllers/insuranceCompanyController.js';
 import { requireHospitalContext } from '../middleware/hospitalContext.js';
 import { authorizeRoles } from "../middleware/roleMiddleware.js";
 
@@ -15,5 +16,9 @@ router.get('/getInsuranceCompanies', authorizeRoles("hospitalAdmin"), getInsuran
 
 // Get details of a specific insurance company by ID
 router.get('/getInsuranceCompanyDetails/:id', authorizeRoles("hospitalAdmin"), getInsuranceCompanyDetails);
+router.patch('/editService/:companyId/:serviceId', authorizeRoles("hospitalAdmin"), editServiceInCompany);
+
+// Delete a specific service from an insurance company
+router.delete('/deleteService/:companyId/:serviceId', authorizeRoles("hospitalAdmin"), deleteServiceFromCompany);
 
 export default router;
