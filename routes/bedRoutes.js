@@ -7,7 +7,7 @@ import {
   getHospitalStatistics,
   getPatientBedInfo,
   getAvailableBeds,
-  transferBedToRoom,
+transferPatientToBed,
 } from "../controllers/bedController.js";
 import { authorizeRoles } from "../middleware/roleMiddleware.js";
 import { requireHospitalContext } from "../middleware/hospitalContext.js";
@@ -63,10 +63,10 @@ router.get(
 );
 
 router.patch(
-  "/beds/transfer",
+  "/beds/transfer-patient",
   requireHospitalContext,
   authorizeRoles("hospitalAdmin", "doctor", "receptionist"),
-  transferBedToRoom
+  transferPatientToBed
 );
 
 export default router;
