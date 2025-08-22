@@ -161,7 +161,9 @@ export const getServices = async (req, res) => {
 };
 
 export const editService = async (req, res) => {
-  const { serviceId, name, description, revenueType, categories } = req.body;
+  const { serviceId } = req.params;
+  const { name, description, revenueType, categories, rate, subCategoryName } = req.body;
+  
   const hospitalId = req.session.hospitalId;
 
   if (!hospitalId) {
@@ -187,19 +189,51 @@ export const editService = async (req, res) => {
     if (description) service.description = description;
     if (revenueType) service.revenueType = revenueType;
 
-    // Update existing categories or add new ones
+    // Handle direct rate update (for simple rate changes)
+    if (rate && !categories) {
+      if (subCategoryName) {
+        const categoryToUpdate = service.categories.find(
+          cat => cat.subCategoryName === subCategoryName
+        );
+        if (categoryToUpdate) {
+          categoryToUpdate.rate = parseInt(rate);
+        } else {
+          return res.status(404).json({ 
+            message: `Subcategory '${subCategoryName}' not found.` 
+          });
+        }
+      } else if (service.categories.length > 0) {
+        service.categories[0].rate = parseInt(rate);
+      }
+    }
+
+    // Handle categories array updates
     if (categories && Array.isArray(categories)) {
       categories.forEach((newCategory) => {
-        const existingCategory = service.categories.find(
-          (cat) => cat._id.toString() === newCategory._id
-        );
-
-        if (existingCategory) {
+        if (newCategory._id) {
           // Update existing category
-          Object.assign(existingCategory, newCategory);
+          const existingCategory = service.categories.find(
+            (cat) => cat._id.toString() === newCategory._id
+          );
+
+          if (existingCategory) {
+            Object.keys(newCategory).forEach(key => {
+              if (key !== '_id' && newCategory[key] !== undefined) {
+                if (key === 'rate') {
+                  existingCategory[key] = parseInt(newCategory[key]);
+                } else {
+                  existingCategory[key] = newCategory[key];
+                }
+              }
+            });
+          }
         } else {
           // Add new category
-          service.categories.push({ ...newCategory, hospital: hospitalId });
+          const categoryToAdd = { ...newCategory, hospital: hospitalId };
+          if (categoryToAdd.rate) {
+            categoryToAdd.rate = parseInt(categoryToAdd.rate);
+          }
+          service.categories.push(categoryToAdd);
         }
       });
     }
@@ -207,17 +241,15 @@ export const editService = async (req, res) => {
     service.lastUpdated = new Date();
     await service.save();
 
-    const updatedService = await Service.findById(serviceId).populate(
-      "department",
-      "name"
-    );
+    const updatedService = await Service.findById(serviceId)
+      .populate("department", "name")
+      .populate("hospital", "name");
 
-    res
-      .status(200)
-      .json({
-        message: "Service updated successfully.",
-        service: updatedService,
-      });
+    res.status(200).json({
+      message: "Service updated successfully.",
+      service: updatedService,
+    });
+    
   } catch (error) {
     res
       .status(500)
