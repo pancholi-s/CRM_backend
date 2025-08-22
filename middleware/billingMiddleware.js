@@ -1,24 +1,24 @@
-import Bill from "../models/billModel.js";
-import Service from "../models/serviceModel.js";
-import MedicalRecord from "../models/medicalRecordsModel.js";
-import Bed from "../models/bedModel.js";
-import Consultation from "../models/consultationModel.js";
-import Appointment from "../models/appointmentModel.js";
-import Room from "../models/roomModel.js";
+import Bill from '../models/billModel.js';
+import InsuranceCompany from '../models/insuranceCompanyModel.js';
+import Service from '../models/serviceModel.js';
+import Bed from '../models/bedModel.js';
+import Room from '../models/roomModel.js';
+import Consultation from '../models/consultationModel.js';
+import Appointment from '../models/appointmentModel.js';
 import AdmissionRequest from '../models/admissionReqModel.js';
+import Hospital from '../models/hospitalModel.js';
 
 export const updateBillAfterAction = async (caseId, session, medicationCharge) => {
   try {
     if (!caseId) throw new Error("Case ID is required.");
 
+    // Fetch appointment or admission request
     let appointment = await Appointment.findOne({ caseId })
       .populate('patient doctor hospital department', null, null, { strictPopulate: false })
       .session(session);
 
     let admissionRequest = null;
-
     if (!appointment) {
-      // Check AdmissionRequest if no appointment found
       admissionRequest = await AdmissionRequest.findOne({ caseId })
         .populate('patient doctor hospital department', null, null, { strictPopulate: false })
         .session(session);
@@ -29,7 +29,7 @@ export const updateBillAfterAction = async (caseId, session, medicationCharge) =
           doctor: admissionRequest.doctor,
           hospital: admissionRequest.hospital,
           department: admissionRequest.department,
-          status: 'Ongoing' // Default for discharge/billing
+          status: 'Ongoing'
         };
       }
     }
@@ -40,10 +40,10 @@ export const updateBillAfterAction = async (caseId, session, medicationCharge) =
     const hospitalId = appointment.hospital;
     const isIPD = appointment.status === 'Ongoing' || appointment.status === 'Completed';
 
-    // Get the caseId to use in bill (from Appointment or AdmissionRequest)
     const caseIdValue = appointment.caseId || (admissionRequest && admissionRequest.caseId);
     if (!caseIdValue) throw new Error("caseId not found for bill.");
 
+    // Fetch consultation service
     const consultationService = await Service.findOne({ name: 'Consultation', hospital: hospitalId }).session(session);
     if (!consultationService) throw new Error("Consultation service not found.");
 
@@ -76,21 +76,19 @@ export const updateBillAfterAction = async (caseId, session, medicationCharge) =
       });
     });
 
-    // Room & Bed Charges (IPD)
+    // Room & Bed Charges
     let roomAndBedCharges = [];
     if (isIPD) {
       const bed = await Bed.findOne({ assignedPatient: patient._id, status: "Occupied" }).session(session);
       if (bed) {
         const room = await Room.findById(bed.room).session(session);
-        
-        // Fetch room details (additionaldetails) from Service
+
         const roomService = await Service.findOne({ _id: room.roomType }).session(session);
-        const roomCategory = roomService.categories.find(category => category.subCategoryName === room.roomType);
+        const roomCategory = roomService?.categories.find(category => category.subCategoryName === room.roomType);
         const roomDetails = roomCategory ? roomCategory.additionaldetails : {};
 
         const assignedDate = bed?.assignedDate ? new Date(bed?.assignedDate) : null;
         const dischargeDateObj = new Date();
-
         const daysOccupied = assignedDate ? Math.ceil((dischargeDateObj - assignedDate) / (1000 * 3600 * 24)) : 0;
         const bedCharge = daysOccupied * bed.charges.dailyRate;
 
@@ -105,37 +103,54 @@ export const updateBillAfterAction = async (caseId, session, medicationCharge) =
             bedNumber: bed?.bedNumber || "Not Specified",
             daysOccupied,
             totalCharge: bedCharge,
-            roomDetails,  // Include room details like stayCharges, admissionFee, etc.
+            roomDetails,
           }
         });
       }
     }
 
-    // Diagnostics from consultations
-    const diagnostics = consultations.flatMap(consultation => {
-      return consultation.consultationData?.diagnosis ? [{
-        service: 'Lab Tests',
-        category: consultation.consultationData.diagnosis,
-        quantity: 1,
-        rate: 0,
-        details: {
-          diagnosis: consultation.consultationData.diagnosis || "No diagnosis specified",
-        }
-      }] : [];
-    });
+    // ----------------- INSURANCE LOGIC -----------------
+    const insuranceApproved = admissionRequest?.admissionDetails?.insurance?.insuranceApproved;
+    if (patient.hasInsurance && insuranceApproved === "approved") {
+      const insuranceCompany = await InsuranceCompany.findOne({ hospitalId }).session(session);
+      if (!insuranceCompany) throw new Error("Insurance company not found.");
 
-    const newServices = [...services, ...roomAndBedCharges, ...diagnostics];
+      const insuranceServices = insuranceCompany.services.map(service => ({
+        ...service,
+        categories: service.categories?.map(category => ({
+          ...category,
+          rate: category.rate
+        }))
+      }));
+
+      // Add insurance-approved services to bill
+      insuranceServices.forEach(service => {
+        service.categories?.forEach(category => {
+          services.push({
+            service: service._id,
+            category: category.subCategoryName,
+            quantity: 1,
+            rate: category.rate,
+            details: category.additionaldetails || {}
+          });
+        });
+      });
+    }
+    // ----------------- NON-INSURED PATIENTS -----------------
+    // For non-insured patients → we DO NOT fetch all hospital services
+    // Only use what was already added above: consultations, medications, room/bed charges
+    // Nothing extra needs to be pushed for non-insured patients
+
+    const newServices = [...services, ...roomAndBedCharges];
 
     let bill = await Bill.findOne({ caseId: caseIdValue }).session(session);
 
     if (!bill) {
-      // Create a new bill
       const totalAmount = newServices.reduce((sum, item) => sum + item.quantity * (item.rate || 0), 0);
-
       bill = new Bill({
         patient: patient._id,
         doctor: appointment.doctor?._id || null,
-        caseId: caseIdValue, // ✅ Always use valid caseId
+        caseId: caseIdValue,
         services: newServices,
         totalAmount,
         paidAmount: 0,
@@ -145,10 +160,8 @@ export const updateBillAfterAction = async (caseId, session, medicationCharge) =
         hospital: hospitalId,
         mode: "Cash",
       });
-
       await bill.save({ session });
     } else {
-      // Update the bill
       bill.services.push(...newServices);
 
       let newTotal = 0;

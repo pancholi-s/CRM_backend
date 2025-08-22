@@ -1,22 +1,23 @@
 import InsuranceCompany from '../models/insuranceCompanyModel.js';
+import mongoose from 'mongoose';
 
 // Add a new insurance company
 export const addInsuranceCompany = async (req, res) => {
   try {
     const { id, name, services } = req.body;
-    const hospitalId = req.session.hospitalId;  // Automatically fetch hospitalId from session
-    const createdBy = req.user._id; // Assuming the user ID is available in `req.user`
+    const hospitalId = req.session.hospitalId;
+    const createdBy = req.user._id;
 
-    if (!id || !name || !services || !hospitalId) {
+    if (!id || !name || !hospitalId) {
       return res.status(400).json({ message: "Missing required fields." });
     }
 
     const newInsuranceCompany = new InsuranceCompany({
       id,
       name,
-      services,
-      hospitalId,  // Automatically associated with the hospital from the session
-      createdBy,
+      services: services || [], // Optional initial services
+      hospitalId,
+      createdBy
     });
 
     await newInsuranceCompany.save();
@@ -29,57 +30,60 @@ export const addInsuranceCompany = async (req, res) => {
 // Add a new service to an existing insurance company
 export const addServiceToCompany = async (req, res) => {
   try {
-    const { companyId } = req.params; // The ID of the insurance company
-    const { services } = req.body; // An array of services to be added
-    
-    // Ensure that the services array is provided and is an array
-    if (!Array.isArray(services) || services.length === 0) {
-      return res.status(400).json({ message: "Services must be an array and cannot be empty." });
+    const { companyId } = req.params;
+    const { serviceName, categories } = req.body;
+
+    if (!serviceName || !categories || !Array.isArray(categories) || categories.length === 0) {
+      return res.status(400).json({ message: "Service name and categories are required, with at least one category." });
     }
 
-    // Ensure that each service has a serviceName and pricingDetails
-    for (let service of services) {
-      if (!service.serviceName || !service.pricingDetails) {
-        return res.status(400).json({ message: "Each service must have a serviceName and pricingDetails." });
-      }
-    }
-
-    // Find the insurance company by ID
     const company = await InsuranceCompany.findById(companyId);
-
     if (!company) {
       return res.status(404).json({ message: "Insurance company not found." });
     }
 
-    // Add the new services to the services array
-    company.services.push(...services);
+    // Check if the service already exists
+    const existingService = company.services.find(s => s.serviceName === serviceName);
+    if (existingService) {
+      // Add new categories or update existing ones
+      categories.forEach(newCategory => {
+        const existingCategory = existingService.categories.find(c => c.subCategoryName === newCategory.subCategoryName);
+        if (existingCategory) {
+          // Update existing category
+          Object.assign(existingCategory, newCategory);
+        } else {
+          // Add new category
+          existingService.categories.push(newCategory);
+        }
+      });
+    } else {
+      // Add the new service with categories
+      company.services.push({ serviceName, categories });
+    }
 
-    // Save the updated company document
     await company.save();
+    res.status(200).json({ message: "Service added/updated successfully", company });
 
-    res.status(200).json({ message: "Services added successfully", company });
   } catch (error) {
-    res.status(500).json({ message: "Error adding services to insurance company.", error: error.message });
+    res.status(500).json({ message: "Error adding service to insurance company.", error: error.message });
   }
 };
-
-
 
 // Get all insurance companies
 export const getInsuranceCompanies = async (req, res) => {
   try {
-    const companies = await InsuranceCompany.find();
+    const companies = await InsuranceCompany.find().lean();
     res.status(200).json({ message: "Insurance companies fetched successfully", companies });
   } catch (error) {
     res.status(500).json({ message: "Error fetching insurance companies.", error: error.message });
   }
 };
 
-// Get details of a specific insurance company
+// Get a specific insurance company by ID
 export const getInsuranceCompanyDetails = async (req, res) => {
   try {
-    const { id } = req.params;
-    const company = await InsuranceCompany.findOne({ id });
+    const { companyId } = req.params;
+    const company = await InsuranceCompany.findById(companyId).lean();
 
     if (!company) {
       return res.status(404).json({ message: "Insurance company not found." });
@@ -91,91 +95,59 @@ export const getInsuranceCompanyDetails = async (req, res) => {
   }
 };
 
+// Edit an existing service in an insurance company
 export const editServiceInCompany = async (req, res) => {
   try {
-    const { companyId, serviceId } = req.params; 
-    const { serviceName, pricingDetails, rate, description } = req.body; 
+    const { companyId, serviceName, categories } = req.body;
 
-    if (!serviceName && !pricingDetails && !rate && !description) {
-      return res.status(400).json({ 
-        message: "At least one field (serviceName, pricingDetails, rate, or description) must be provided for update." 
-      });
+    if (!companyId || !serviceName || !categories) {
+      return res.status(400).json({ message: "Missing required fields." });
     }
 
     const company = await InsuranceCompany.findById(companyId);
+    if (!company) return res.status(404).json({ message: "Insurance company not found." });
 
-    if (!company) {
-      return res.status(404).json({ message: "Insurance company not found." });
-    }
+    const service = company.services.find(s => s.serviceName === serviceName);
+    if (!service) return res.status(404).json({ message: "Service not found in this insurance company." });
 
-    const service = company.services.id(serviceId);
-
-    if (!service) {
-      return res.status(404).json({ message: "Service not found in this insurance company." });
-    }
-
-    if (serviceName) {
-      service.serviceName = serviceName;
-    }
-
-    if (pricingDetails) {
-      service.pricingDetails = pricingDetails;
-    } else if (rate !== undefined || description !== undefined) {
-      if (typeof service.pricingDetails !== 'object' || service.pricingDetails === null) {
-        service.pricingDetails = {};
+    categories.forEach(newCategory => {
+      const existingCategory = service.categories.find(c => c.subCategoryName === newCategory.subCategoryName);
+      if (existingCategory) {
+        Object.assign(existingCategory, newCategory);
+      } else {
+        service.categories.push(newCategory);
       }
-      
-      if (rate !== undefined) {
-        service.pricingDetails.rate = rate;
-      }
-      if (description !== undefined) {
-        service.pricingDetails.description = description;
-      }
-    }
+    });
 
     await company.save();
+    res.status(200).json({ message: "Service updated successfully", company });
 
-    res.status(200).json({ 
-      message: "Service updated successfully", 
-      company,
-      updatedService: service 
-    });
   } catch (error) {
     res.status(500).json({ message: "Error updating service.", error: error.message });
   }
 };
 
-export const deleteServiceFromCompany = async (req, res) => {
+// Delete a category from a service in insurance company
+export const deleteCategoryFromService = async (req, res) => {
   try {
-    const { companyId, serviceId } = req.params;
+    const { companyId, serviceName, subCategoryName } = req.body;
+
+    if (!companyId || !serviceName || !subCategoryName) {
+      return res.status(400).json({ message: "Missing required fields." });
+    }
+
     const company = await InsuranceCompany.findById(companyId);
+    if (!company) return res.status(404).json({ message: "Insurance company not found." });
 
-    if (!company) {
-      return res.status(404).json({ message: "Insurance company not found." });
-    }
+    const service = company.services.find(s => s.serviceName === serviceName);
+    if (!service) return res.status(404).json({ message: "Service not found in insurance company." });
 
-    const service = company.services.id(serviceId);
-
-    if (!service) {
-      return res.status(404).json({ message: "Service not found in this insurance company." });
-    }
-
-    const deletedService = {
-      _id: service._id,
-      serviceName: service.serviceName,
-      pricingDetails: service.pricingDetails
-    };
-
-    company.services.pull(serviceId);
+    service.categories = service.categories.filter(c => c.subCategoryName !== subCategoryName);
 
     await company.save();
+    res.status(200).json({ message: "Category deleted successfully", company });
 
-    res.status(200).json({ 
-      message: "Service deleted successfully", 
-      company,
-      deletedService 
-    });
   } catch (error) {
-    res.status(500).json({ message: "Error deleting service.", error: error.message });
+    res.status(500).json({ message: "Error deleting category.", error: error.message });
   }
 };

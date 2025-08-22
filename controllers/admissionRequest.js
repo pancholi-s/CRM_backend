@@ -11,6 +11,8 @@ import Consultation from '../models/consultationModel.js';
 import Discharge from '../models/DischargeModel.js';
 import Appointment from '../models/appointmentModel.js';
 import Service from '../models/serviceModel.js';
+import InsuranceCompany from '../models/insuranceCompanyModel.js';
+import Hospital from '../models/hospitalModel.js';
 
 
 export const createAdmissionRequest = async (req, res) => {
@@ -580,6 +582,189 @@ export const updateInsuranceStatus = async (req, res) => {
   }
 };
 
+// export const dischargePatient = async (req, res) => {
+//   const session = await mongoose.startSession();  // Start a session for the current request
+//   session.startTransaction();  // Start the transaction
+
+//   try {
+//     const {
+//       patientId,
+//       caseId,
+//       admissionDate,
+//       dischargeDate,
+//       onAdmissionNotes,
+//       onDischargeNotes,
+//       diagnosis,
+//       followUpDay,
+//       followUpTime
+//     } = req.body;
+
+//     const patient = await Patient.findById(patientId);
+//     if (!patient) return res.status(404).json({ message: 'Patient not found' });
+
+//     // Save discharge summary
+//     const discharge = new Discharge({
+//       patient: patientId,
+//       caseId,
+//       admissionDate,
+//       dischargeDate,
+//       onAdmissionNotes,
+//       onDischargeNotes,
+//       diagnosis,
+//       followUpDay,
+//       followUpTime
+//     });
+//     await discharge.save();
+
+//     // Check the caseId in both Appointment and AdmissionRequest models
+//     let appointmentDoc = await Appointment.findOne({ caseId }).session(session);
+//     let admissionRequestDoc = null;
+
+//     if (!appointmentDoc) {
+//       admissionRequestDoc = await AdmissionRequest.findOne({ caseId }).session(session);
+//       if (!admissionRequestDoc) {
+//         return res.status(404).json({ message: "Case ID not found in either Appointment or Admission Request." });
+//       }
+//     }
+
+//     // Update admission request status if found
+//     if (admissionRequestDoc) {
+//       admissionRequestDoc.status = 'discharged';
+//       await admissionRequestDoc.save({ session });
+//     }
+
+//     // Dereference bed
+//     const bed = await Bed.findOne({ assignedPatient: patientId }).session(session);
+//     if (bed) {
+//       bed.status = 'Available';
+//       bed.assignedPatient = null;
+//       bed.dischargeDate = dischargeDate;
+//       await bed.save({ session });
+//     }
+
+//     // Update patient status
+//     patient.admissionStatus = 'Not Admitted';
+//     await patient.save({ session });
+
+//     // ---- Add Bed Charges Logic Here ----
+//     const bedChargeRate = bed?.charges?.dailyRate || 0;  // If bed has a daily rate, use it
+//     const assignedDate = bed?.assignedDate ? new Date(bed?.assignedDate) : null;
+//     const dischargeDateObj = dischargeDate ? new Date(dischargeDate) : new Date();
+
+//     // Ensure both dates are valid Date objects
+//     if (assignedDate && dischargeDateObj) {
+//       const timeDiff = dischargeDateObj - assignedDate;
+//       const daysOccupied = Math.floor(timeDiff / (1000 * 3600 * 24));  // Convert milliseconds to days
+
+//       // Avoid negative days (in case of erroneous data)
+//       if (daysOccupied < 0) {
+//         throw new Error("Discharge date cannot be earlier than assigned date.");
+//       }
+
+//       // Calculate total bed charges for the occupied days
+//       const bedCharges = daysOccupied * bedChargeRate;
+
+//       // Fetch the room from the bed
+//       const room = await Room.findById(bed.room).session(session);
+//       if (!room) throw new Error("Room not found for this bed.");
+
+//       // Use bedType if roomType is missing
+//       const roomType = room?.roomType || bed?.bedType; // <-- Ensure we use roomType from Room model
+//       console.log("Room Type from Room model:", roomType);  // **Debug Log**
+
+//       if (!roomType) {
+//         throw new Error("Room type or bed type is not defined for the assigned bed.");
+//       }
+
+//       // ---- Fetch Insurance Company Services if Insurance is Approved ----
+//       const insuranceApproved = admissionRequestDoc?.admissionDetails?.insurance?.insuranceApproved;  // **Insurance approval status**
+//       let roomService;
+//       let roomCategory;
+
+//       // If insurance is approved, use insurance company rates
+//       if (patient.hasInsurance && insuranceApproved === "approved") {
+//         // Fetch the insurance company using the insurance company name from the patient's insurance details
+//         const insuranceCompany = await InsuranceCompany.findOne({ name: patient.insuranceDetails?.insuranceCompany }).session(session);
+
+//         // Log to verify correct insurance company is being fetched
+//         console.log("Insurance Company: ", insuranceCompany);  // **Debug Log**
+
+//         // If insurance company is found, fetch its services
+//         if (insuranceCompany) {
+//           roomService = insuranceCompany.services.find(service => service.serviceName === "Room Type Service");
+
+//           if (!roomService) {
+//             throw new Error(`Room service for room type ${roomType} not found in insurance company services.`);
+//           }
+
+//           // Log the categories to debug the match
+//           console.log("Categories in Room Type Service:", roomService.categories);  // **Debug Log**
+
+//           // Fetch the correct room category based on roomType
+//           roomCategory = roomService.categories.find(cat => cat.subCategoryName === roomType);
+
+//           if (!roomCategory) {
+//             throw new Error(`No category found for room type ${roomType} in insurance company services.`);
+//           }
+
+//           // Use insurance company rate
+//           const insuranceRate = roomCategory.rate || 0; // Get the rate from the insurance company service
+//           console.log("Insurance Rate for Room Type:", insuranceRate);  // **Debug Log**
+
+//         } else {
+//           throw new Error(`Insurance company "${patient.insuranceDetails?.insuranceCompany}" not found.`);
+//         }
+//       } else {
+//         // fallback to hospital service
+//         roomService = await Service.findOne({
+//           hospital: bed.hospital,
+//           "categories.subCategoryName": roomType  // <-- Compare roomType with subCategoryName
+//         }).session(session);
+
+//         roomCategory = roomService.categories.find(cat => cat.subCategoryName === roomType);
+//         if (!roomCategory) {
+//           throw new Error(`No category found for room type ${roomType} in the service model.`);
+//         }
+//       }
+
+//       // Fetch additional room details (stayCharges, admissionFee, etc.)
+//       const roomDetails = roomCategory?.additionaldetails || {};
+
+//       // Prepare the bed charge details (with service reference)
+//       const bedChargeDetails = {
+//         service: roomService._id,  // Reference to the room service ID
+//         category: "Room",  // Category is "Room" for room-related services
+//         quantity: daysOccupied,  // Quantity = number of days occupied
+//         rate: roomCategory.rate || bedChargeRate,  // **Use insurance company rate or hospital rate**
+//         details: {
+//           bedType: roomCategory.subCategoryName || "Not Specified",  // Use subCategoryName as bedType
+//           features: bed?.features || {},
+//           bedNumber: bed?.bedNumber || "Not Specified",
+//           daysOccupied,
+//           totalCharge: (roomCategory.rate || bedChargeRate) * daysOccupied,  // **Total charge based on correct rate**
+//           roomDetails,  // Include room details like stayCharges, admissionFee, etc.
+//         }
+//       };
+
+//       // Call the centralized function to update or create the bill (only bed charges)
+//       await updateBillAfterAction(caseId, session, bedChargeDetails);
+//     } else {
+//       throw new Error("Assigned date or discharge date is missing.");
+//     }
+
+//     res.status(200).json({ message: 'Patient discharged successfully', discharge });
+
+//   } catch (error) {
+//     console.error('Error discharging patient:', error);
+//     res.status(500).json({ message: 'Internal server error', error: error.message });
+//   } finally {
+//     // Always ensure the session is closed
+//     if (session) {
+//       session.endSession();
+//     }
+//   }
+// };
+
 export const dischargePatient = async (req, res) => {
   const session = await mongoose.startSession();  // Start a session for the current request
   session.startTransaction();  // Start the transaction
@@ -668,41 +853,79 @@ export const dischargePatient = async (req, res) => {
 
       // Ensure roomType exists and fetch corresponding service
       const roomType = room?.roomType; // Use room.roomType instead of bedType
+      console.log("Room Type from Room model:", roomType);  // **Debug Log**
+
       if (!roomType) {
         throw new Error("Room type is not defined for the assigned bed.");
       }
 
-      // Fetch room service details dynamically from the Service model using roomType (subCategoryName)
-      const roomService = await Service.findOne({
-        hospital: bed.hospital,
-        "categories.subCategoryName": roomType
-      }).session(session);
+      // ---- Fetch Insurance Company Services if Insurance is Approved ----
+      const insuranceApproved = admissionRequestDoc?.admissionDetails?.insurance?.insuranceApproved;  // **Insurance approval status**
+      let roomService;
+      let roomCategory;
+      let hospitalService;
 
-      if (!roomService) {
-        throw new Error(`Room service for room type ${roomType} not found.`);
-      }
+      // If insurance is approved, use insurance company rates
+      if (patient.hasInsurance && insuranceApproved === "approved") {
+        // Fetch the insurance company using the insurance company name from the patient's insurance details
+        const insuranceCompany = await InsuranceCompany.findOne({ name: patient.insuranceDetails?.insuranceCompany }).session(session);
 
-      // Find the correct category based on the roomType (subCategoryName)
-      const roomCategory = roomService.categories.find(cat => cat.subCategoryName === roomType);
-      if (!roomCategory) {
-        throw new Error(`No category found for room type ${roomType} in the service model.`);
+        // Log to verify correct insurance company is being fetched
+        console.log("Insurance Company: ", insuranceCompany);  // **Debug Log**
+
+        // If insurance company is found, fetch its services
+        if (insuranceCompany) {
+          roomService = insuranceCompany.services.find(service => service.serviceName === "Room Type Service");
+
+          if (!roomService) {
+            throw new Error(`Room service for room type ${roomType} not found in insurance company services.`);
+          }
+
+          // Log the categories to debug the match
+          console.log("Categories in Room Type Service:", roomService.categories);  // **Debug Log**
+
+          // Fetch the correct room category based on roomType
+          roomCategory = roomService.categories.find(cat => cat.subCategoryName === roomType);
+
+          if (!roomCategory) {
+            throw new Error(`No category found for room type ${roomType} in insurance company services.`);
+          }
+
+          // Use insurance company rate
+          const insuranceRate = roomCategory.rate || 0; // Get the rate from the insurance company service
+          console.log("Insurance Rate for Room Type:", insuranceRate);  // **Debug Log**
+
+        } else {
+          throw new Error(`Insurance company "${patient.insuranceDetails?.insuranceCompany}" not found.`);
+        }
+      } else {
+        // fallback to hospital service
+        hospitalService = await Service.findOne({
+          hospital: bed.hospital,
+          "categories.subCategoryName": roomType  // <-- Compare roomType with subCategoryName
+        }).session(session);
+
+        roomCategory = hospitalService.categories.find(cat => cat.subCategoryName === roomType);
+        if (!roomCategory) {
+          throw new Error(`No category found for room type ${roomType} in the service model.`);
+        }
       }
 
       // Fetch additional room details (stayCharges, admissionFee, etc.)
-      const roomDetails = roomCategory.additionaldetails || {};
+      const roomDetails = roomCategory?.additionaldetails || {};
 
       // Prepare the bed charge details (with service reference)
       const bedChargeDetails = {
-        service: roomService._id,  // Reference to the room service ID
+        service: roomService?._id || hospitalService._id,  // Reference to the room service ID
         category: "Room",  // Category is "Room" for room-related services
         quantity: daysOccupied,  // Quantity = number of days occupied
-        rate: bedChargeRate,  // Daily rate from the bed model
+        rate: roomCategory?.rate || bedChargeRate,  // **Use insurance company rate or hospital rate**
         details: {
-          bedType: roomCategory.subCategoryName || "Not Specified",  // Use subCategoryName as bedType
+          bedType: roomCategory?.subCategoryName || "Not Specified",  // Use subCategoryName as bedType
           features: bed?.features || {},
           bedNumber: bed?.bedNumber || "Not Specified",
           daysOccupied,
-          totalCharge: bedCharges,  // Total charge for the bed occupancy
+          totalCharge: (roomCategory?.rate || bedChargeRate) * daysOccupied,  // **Total charge based on correct rate**
           roomDetails,  // Include room details like stayCharges, admissionFee, etc.
         }
       };
