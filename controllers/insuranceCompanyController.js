@@ -1,5 +1,5 @@
-import InsuranceCompany from '../models/insuranceCompanyModel.js';
-import mongoose from 'mongoose';
+import InsuranceCompany from "../models/insuranceCompanyModel.js";
+import mongoose from "mongoose";
 
 // Add a new insurance company
 export const addInsuranceCompany = async (req, res) => {
@@ -17,13 +17,23 @@ export const addInsuranceCompany = async (req, res) => {
       name,
       services: services || [], // Optional initial services
       hospitalId,
-      createdBy
+      createdBy,
     });
 
     await newInsuranceCompany.save();
-    res.status(201).json({ message: "Insurance company added successfully", company: newInsuranceCompany });
+    res
+      .status(201)
+      .json({
+        message: "Insurance company added successfully",
+        company: newInsuranceCompany,
+      });
   } catch (error) {
-    res.status(500).json({ message: "Error adding insurance company.", error: error.message });
+    res
+      .status(500)
+      .json({
+        message: "Error adding insurance company.",
+        error: error.message,
+      });
   }
 };
 
@@ -33,8 +43,18 @@ export const addServiceToCompany = async (req, res) => {
     const { companyId } = req.params;
     const { serviceName, categories } = req.body;
 
-    if (!serviceName || !categories || !Array.isArray(categories) || categories.length === 0) {
-      return res.status(400).json({ message: "Service name and categories are required, with at least one category." });
+    if (
+      !serviceName ||
+      !categories ||
+      !Array.isArray(categories) ||
+      categories.length === 0
+    ) {
+      return res
+        .status(400)
+        .json({
+          message:
+            "Service name and categories are required, with at least one category.",
+        });
     }
 
     const company = await InsuranceCompany.findById(companyId);
@@ -43,11 +63,15 @@ export const addServiceToCompany = async (req, res) => {
     }
 
     // Check if the service already exists
-    const existingService = company.services.find(s => s.serviceName === serviceName);
+    const existingService = company.services.find(
+      (s) => s.serviceName === serviceName
+    );
     if (existingService) {
       // Add new categories or update existing ones
-      categories.forEach(newCategory => {
-        const existingCategory = existingService.categories.find(c => c.subCategoryName === newCategory.subCategoryName);
+      categories.forEach((newCategory) => {
+        const existingCategory = existingService.categories.find(
+          (c) => c.subCategoryName === newCategory.subCategoryName
+        );
         if (existingCategory) {
           // Update existing category
           Object.assign(existingCategory, newCategory);
@@ -62,10 +86,16 @@ export const addServiceToCompany = async (req, res) => {
     }
 
     await company.save();
-    res.status(200).json({ message: "Service added/updated successfully", company });
-
+    res
+      .status(200)
+      .json({ message: "Service added/updated successfully", company });
   } catch (error) {
-    res.status(500).json({ message: "Error adding service to insurance company.", error: error.message });
+    res
+      .status(500)
+      .json({
+        message: "Error adding service to insurance company.",
+        error: error.message,
+      });
   }
 };
 
@@ -73,9 +103,16 @@ export const addServiceToCompany = async (req, res) => {
 export const getInsuranceCompanies = async (req, res) => {
   try {
     const companies = await InsuranceCompany.find().lean();
-    res.status(200).json({ message: "Insurance companies fetched successfully", companies });
+    res
+      .status(200)
+      .json({ message: "Insurance companies fetched successfully", companies });
   } catch (error) {
-    res.status(500).json({ message: "Error fetching insurance companies.", error: error.message });
+    res
+      .status(500)
+      .json({
+        message: "Error fetching insurance companies.",
+        error: error.message,
+      });
   }
 };
 
@@ -89,65 +126,132 @@ export const getInsuranceCompanyDetails = async (req, res) => {
       return res.status(404).json({ message: "Insurance company not found." });
     }
 
-    res.status(200).json({ message: "Insurance company details fetched successfully", company });
+    res
+      .status(200)
+      .json({
+        message: "Insurance company details fetched successfully",
+        company,
+      });
   } catch (error) {
-    res.status(500).json({ message: "Error fetching insurance company details.", error: error.message });
+    res
+      .status(500)
+      .json({
+        message: "Error fetching insurance company details.",
+        error: error.message,
+      });
   }
 };
 
-// Edit an existing service in an insurance company
-export const editServiceInCompany = async (req, res) => {
+export const editServiceCategory = async (req, res) => {
   try {
-    const { companyId, serviceName, categories } = req.body;
+    const { companyId, serviceId, categoryId } = req.params;
+    const updateData = req.body;
 
-    if (!companyId || !serviceName || !categories) {
-      return res.status(400).json({ message: "Missing required fields." });
+    if (!companyId || !serviceId || !categoryId) {
+      return res.status(400).json({ message: "Missing required parameters." });
     }
 
     const company = await InsuranceCompany.findById(companyId);
-    if (!company) return res.status(404).json({ message: "Insurance company not found." });
+    if (!company) {
+      return res.status(404).json({ message: "Insurance company not found." });
+    }
 
-    const service = company.services.find(s => s.serviceName === serviceName);
-    if (!service) return res.status(404).json({ message: "Service not found in this insurance company." });
+    const service = company.services.id(serviceId);
+    if (!service) {
+      return res.status(404).json({ message: "Service not found." });
+    }
 
-    categories.forEach(newCategory => {
-      const existingCategory = service.categories.find(c => c.subCategoryName === newCategory.subCategoryName);
-      if (existingCategory) {
-        Object.assign(existingCategory, newCategory);
-      } else {
-        service.categories.push(newCategory);
-      }
+    const category = service.categories.id(categoryId);
+    if (!category) {
+      return res.status(404).json({ message: "Category not found." });
+    }
+
+    // Update the category with new data
+    Object.assign(category, updateData);
+
+    await company.save();
+    res.status(200).json({ 
+      message: "Category updated successfully", 
+      company,
+      updatedCategory: category 
     });
 
-    await company.save();
-    res.status(200).json({ message: "Service updated successfully", company });
-
   } catch (error) {
-    res.status(500).json({ message: "Error updating service.", error: error.message });
+    res.status(500).json({ message: "Error updating category.", error: error.message });
   }
 };
 
-// Delete a category from a service in insurance company
-export const deleteCategoryFromService = async (req, res) => {
+// Delete a single category from a service
+export const deleteSingleCategory = async (req, res) => {
   try {
-    const { companyId, serviceName, subCategoryName } = req.body;
+    const { companyId, serviceId, categoryId } = req.params;
 
-    if (!companyId || !serviceName || !subCategoryName) {
-      return res.status(400).json({ message: "Missing required fields." });
+    if (!companyId || !serviceId || !categoryId) {
+      return res.status(400).json({ message: "Missing required parameters." });
     }
 
     const company = await InsuranceCompany.findById(companyId);
-    if (!company) return res.status(404).json({ message: "Insurance company not found." });
+    if (!company) {
+      return res.status(404).json({ message: "Insurance company not found." });
+    }
 
-    const service = company.services.find(s => s.serviceName === serviceName);
-    if (!service) return res.status(404).json({ message: "Service not found in insurance company." });
+    const service = company.services.id(serviceId);
+    if (!service) {
+      return res.status(404).json({ message: "Service not found." });
+    }
 
-    service.categories = service.categories.filter(c => c.subCategoryName !== subCategoryName);
+    const category = service.categories.id(categoryId);
+    if (!category) {
+      return res.status(404).json({ message: "Category not found." });
+    }
+
+    // Remove the specific category
+    category.deleteOne();
 
     await company.save();
-    res.status(200).json({ message: "Category deleted successfully", company });
+    res.status(200).json({ 
+      message: "Category deleted successfully", 
+      company,
+      remainingCategories: service.categories.length 
+    });
 
   } catch (error) {
     res.status(500).json({ message: "Error deleting category.", error: error.message });
+  }
+};
+
+// Delete all categories from a service 
+export const deleteAllCategories = async (req, res) => {
+  try {
+    const { companyId, serviceId } = req.params;
+
+    if (!companyId || !serviceId) {
+      return res.status(400).json({ message: "Missing required parameters." });
+    }
+
+    const company = await InsuranceCompany.findById(companyId);
+    if (!company) {
+      return res.status(404).json({ message: "Insurance company not found." });
+    }
+
+    const service = company.services.id(serviceId);
+    if (!service) {
+      return res.status(404).json({ message: "Service not found." });
+    }
+
+    const deletedCount = service.categories.length;
+    
+    // Clear all categories
+    service.categories = [];
+
+    await company.save();
+    res.status(200).json({ 
+      message: "All categories deleted successfully", 
+      company,
+      deletedCategoriesCount: deletedCount 
+    });
+
+  } catch (error) {
+    res.status(500).json({ message: "Error deleting all categories.", error: error.message });
   }
 };
