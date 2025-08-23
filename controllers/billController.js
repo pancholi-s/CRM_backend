@@ -120,12 +120,35 @@ export const getAllBills = async (req, res) => {
       .skip(skip)
       .limit(parseInt(limit));
 
+    const formattedBills = bills.map(bill => ({
+      _id: bill._id,
+      caseId: bill.caseId,
+      patient: bill.patient,
+      doctor: bill.doctor,
+      services: bill.services.map(service => ({
+        service: service.service,
+        category: service.category,
+        quantity: service.quantity,
+        rate: service.rate,
+        details: service.details 
+      })),
+      totalAmount: bill.totalAmount,
+      paidAmount: bill.paidAmount,
+      outstanding: bill.outstanding,
+      status: bill.status,
+      invoiceNumber: bill.invoiceNumber,
+      invoiceDate: bill.invoiceDate,
+      mode: bill.mode,
+      createdAt: bill.createdAt,
+      updatedAt: bill.updatedAt
+    }));
+
     res.status(200).json({
-      count: bills.length,
+      count: formattedBills.length,
       totalBills: total,
       totalPages: Math.ceil(total / limit),
       currentPage: parseInt(page),
-      bills
+      bills: formattedBills
     });
   } catch (error) {
     res.status(500).json({ message: "Error fetching bills.", error: error.message });
@@ -341,34 +364,38 @@ export const getBillsByPatient = async (req, res) => {
 
 
 export const editBillDetails = async (req, res) => {
-  const { billId } = req.params;  // Get billId from URL params
-  const { services, paidAmount, status, mode } = req.body;  // Extract fields from request body
+  const { billId } = req.params;
+  const { services, paidAmount, status, mode } = req.body;
 
   try {
-    // Fetch the bill by its ID
-    let bill = await Bill.findById(billId)
-      .populate("services.service", "name categories");
+   let bill = await Bill.findById(billId);
 
     if (!bill) {
       return res.status(404).json({ message: "Bill not found." });
     }
 
-    // Update the services (if provided in the request body)
-    if (services) {
-      bill.services = services;
+    if (services && Array.isArray(services)) {
+      bill.services = services.map(service => ({
+        service: service.service || null,
+        category: service.category,
+        quantity: service.quantity || 1,
+        rate: service.rate || 0,
+        details: service.details || {} 
+      }));
     }
 
-    // Recalculate totalAmount based on services (quantity * rate for each service)
     let totalAmount = 0;
     bill.services.forEach(item => {
-      totalAmount += item.quantity * (item.rate || 0);  // Ensure we handle cases where rate might be null or 0
+      totalAmount += (item.quantity || 1) * (item.rate || 0);
     });
 
-    // Update paid amount and status (if provided)
+    bill.totalAmount = totalAmount;
+
     if (paidAmount !== undefined) {
       bill.paidAmount = paidAmount;
-      bill.outstanding = totalAmount - paidAmount;  // Recalculate outstanding amount
     }
+
+    bill.outstanding = bill.totalAmount - bill.paidAmount;
 
     if (status) {
       bill.status = status;
@@ -378,17 +405,37 @@ export const editBillDetails = async (req, res) => {
       bill.mode = mode;
     }
 
-    // Update the totalAmount and outstanding in the bill
-    bill.totalAmount = totalAmount;
-    bill.outstanding = totalAmount - bill.paidAmount;
-
-    // Save the updated bill
     await bill.save();
 
-    // Send the updated bill back in the response
+    const updatedBill = await Bill.findById(billId)
+      .populate("patient", "name phone")
+      .populate("doctor", "name specialization")
+      .populate("services.service", "name");
+
     res.status(200).json({
       message: "Bill updated successfully",
-      bill
+      bill: {
+        _id: updatedBill._id,
+        caseId: updatedBill.caseId,
+        patient: updatedBill.patient,
+        doctor: updatedBill.doctor,
+        services: updatedBill.services.map(service => ({
+          service: service.service,
+          category: service.category,
+          quantity: service.quantity,
+          rate: service.rate,
+          details: service.details
+        })),
+        totalAmount: updatedBill.totalAmount,
+        paidAmount: updatedBill.paidAmount,
+        outstanding: updatedBill.outstanding,
+        status: updatedBill.status,
+        invoiceNumber: updatedBill.invoiceNumber,
+        invoiceDate: updatedBill.invoiceDate,
+        mode: updatedBill.mode,
+        createdAt: updatedBill.createdAt,
+        updatedAt: updatedBill.updatedAt
+      }
     });
 
   } catch (error) {
