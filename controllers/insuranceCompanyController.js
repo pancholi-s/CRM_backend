@@ -239,16 +239,15 @@ export const deleteAllCategories = async (req, res) => {
       return res.status(404).json({ message: "Service not found." });
     }
 
-    const deletedCount = service.categories.length;
-    
-    // Clear all categories
-    service.categories = [];
+    const deletedCategoriesCount = service.categories.length;
+
+    service.deleteOne();
 
     await company.save();
     res.status(200).json({ 
       message: "All categories deleted successfully", 
       company,
-      deletedCategoriesCount: deletedCount 
+      deletedCategoriesCount,
     });
 
   } catch (error) {

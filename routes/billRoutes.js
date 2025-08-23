@@ -14,7 +14,7 @@ router.post("/addToBill/:billId", authorizeRoles("receptionist", "hospitalAdmin"
 router.get("/getAllBills", authorizeRoles("receptionist", "hospitalAdmin","doctor"), getAllBills);
 router.get("/getBillsByPatient/:patientId", authorizeRoles("receptionist", "hospitalAdmin", "doctor"), getBillsByPatient);
 router.get("/getBillDetails/:billId", authorizeRoles("receptionist", "hospitalAdmin", "doctor"), getBillDetails);
-router.put("/editBillDetails/:billId", authorizeRoles("receptionist", "hospitalAdmin", "doctor"), editBillDetails);
+router.patch("/editBillDetails/:billId", authorizeRoles("receptionist", "hospitalAdmin", "doctor"), editBillDetails);
 router.get("/getRevenueByYear", authorizeRoles("hospitalAdmin"), getRevenueByYear);
 
 export default router;
