@@ -549,31 +549,41 @@ export const getAdmissionRequestsWithInsurance = async (req, res) => {
 export const updateInsuranceStatus = async (req, res) => {
   try {
     const { admissionId } = req.params;
-    const { insuranceApproved } = req.body;
+    const { insuranceApproved, amountApproved } = req.body;
 
     const validStatuses = ['pending', 'approved', 'rejected'];
-    if (!validStatuses.includes(insuranceApproved)) {
-      return res.status(400).json({ message: "Invalid insuranceApproved value. Must be 'pending', 'approved', or 'rejected'." });
+    if (insuranceApproved && !validStatuses.includes(insuranceApproved)) {
+      return res.status(400).json({
+        message: "Invalid insuranceApproved value. Must be 'pending', 'approved', or 'rejected'."
+      });
     }
 
-    // Find the admission request
     const admissionRequest = await AdmissionRequest.findById(admissionId);
     if (!admissionRequest) {
       return res.status(404).json({ message: "Admission request not found." });
     }
 
-    // Check if patient has insurance
     if (!admissionRequest.admissionDetails.insurance?.hasInsurance) {
       return res.status(400).json({ message: "Patient does not have insurance." });
     }
 
-    // Update the insuranceApproved field
-    admissionRequest.admissionDetails.insurance.insuranceApproved = insuranceApproved;
+    // ✅ Update insuranceApproved if passed
+    if (insuranceApproved) {
+      admissionRequest.admissionDetails.insurance.insuranceApproved = insuranceApproved;
+    }
+
+    // ✅ Update amountApproved if passed
+    if (amountApproved !== undefined) {
+      if (amountApproved < 0) {
+        return res.status(400).json({ message: "amountApproved cannot be negative." });
+      }
+      admissionRequest.admissionDetails.insurance.amountApproved = amountApproved;
+    }
 
     await admissionRequest.save();
 
     res.status(200).json({
-      message: `Insurance status updated successfully to '${insuranceApproved}'`,
+      message: `Insurance details updated successfully.`,
       insurance: admissionRequest.admissionDetails.insurance
     });
   } catch (error) {
@@ -581,6 +591,8 @@ export const updateInsuranceStatus = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
+
 
 // export const dischargePatient = async (req, res) => {
 //   const session = await mongoose.startSession();  // Start a session for the current request
