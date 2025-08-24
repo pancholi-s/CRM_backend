@@ -143,10 +143,10 @@ export const getInsuranceCompanyDetails = async (req, res) => {
 };
 
 export const editServiceCategory = async (req, res) => {
-  try {
-    const { companyId, serviceId, categoryId } = req.params;
-    const updateData = req.body;
+  const { companyId, serviceId, categoryId } = req.params;
+  const { service: serviceData, category: categoryData } = req.body;
 
+  try {
     if (!companyId || !serviceId || !categoryId) {
       return res.status(400).json({ message: "Missing required parameters." });
     }
@@ -166,18 +166,83 @@ export const editServiceCategory = async (req, res) => {
       return res.status(404).json({ message: "Category not found." });
     }
 
-    // Update the category with new data
-    Object.assign(category, updateData);
+    // Update service-level fields if provided
+    if (serviceData && typeof serviceData === 'object') {
+      const serviceFields = ['serviceName'];
+      
+      Object.keys(serviceData).forEach(key => {
+        if (serviceFields.includes(key) && serviceData[key] !== undefined) {
+          service[key] = serviceData[key];
+        }
+      });
+    }
 
+    // Update category-level fields if provided
+    if (categoryData && typeof categoryData === 'object') {
+      const categoryFields = [
+        'subCategoryName',
+        'rateType',
+        'rate',
+        'effectiveDate',
+        'amenities',
+        'additionaldetails'
+      ];
+
+      Object.keys(categoryData).forEach(key => {
+        if (categoryFields.includes(key) && categoryData[key] !== undefined) {
+          if (key === 'rate') {
+            category[key] = parseInt(categoryData[key]);
+          } else if (key === 'additionaldetails') {
+            if (category.additionaldetails && typeof categoryData[key] === 'object') {
+              let existingDetails;
+              
+              if (typeof category.additionaldetails.toObject === 'function') {
+                existingDetails = category.additionaldetails.toObject();
+              } else {
+                existingDetails = category.additionaldetails;
+              }
+              
+              const updatedAdditionalDetails = {
+                ...existingDetails,
+                ...categoryData[key]
+              };
+              
+              category.additionaldetails = updatedAdditionalDetails;
+              
+              category.markModified('additionaldetails');
+            } else {
+              category[key] = categoryData[key];
+              category.markModified('additionaldetails');
+            }
+          } else {
+            category[key] = categoryData[key];
+          }
+        }
+      });
+    }
+
+    service.lastUpdated = new Date();
+    
+    service.markModified('categories');
+    company.markModified('services');
+    
     await company.save();
-    res.status(200).json({ 
-      message: "Category updated successfully", 
-      company,
-      updatedCategory: category 
+
+    const updatedCompany = await InsuranceCompany.findById(companyId);
+
+    res.status(200).json({
+      message: "Service and category updated successfully",
+      company: updatedCompany,
+      updatedService: service,
+      updatedCategory: category
     });
 
   } catch (error) {
-    res.status(500).json({ message: "Error updating category.", error: error.message });
+    console.error('Error updating service and category:', error);
+    res.status(500).json({
+      message: "Error updating service and category.",
+      error: error.message
+    });
   }
 };
 
