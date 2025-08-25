@@ -338,3 +338,20 @@ export const deleteSubcategory = async (req, res) => {
       .json({ message: "Error deleting subcategory.", error: error.message });
   }
 };
+
+export const getPackages = async (req, res) => {
+  try {
+    const packages = await Service.find({ name: "Packages" })
+      .populate("hospital", "name address")     // optional populate
+      .populate("department", "name");          // optional populate
+
+    if (!packages || packages.length === 0) {
+      return res.status(404).json({ message: "No packages found" });
+    }
+
+    res.status(200).json(packages);
+  } catch (error) {
+    console.error("Error fetching packages:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};

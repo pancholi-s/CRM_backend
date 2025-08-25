@@ -3,7 +3,7 @@ import express from "express";
 import { authorizeRoles } from "../middleware/roleMiddleware.js";
 import { requireHospitalContext } from "../middleware/hospitalContext.js";
 
-import { createBill, getAllBills, getBillDetails, getRevenueByYear, getBillsByPatient, editBillDetails, addToBill } from "../controllers/billController.js";
+import { createBill, getAllBills, getBillDetails, getRevenueByYear, getBillsByPatient, editBillDetails, addToBill, createEstimatedBill,getEstimatedBills, editEstimatedBill } from "../controllers/billController.js";
 
 const router = express.Router();
 router.use(requireHospitalContext);
@@ -16,5 +16,11 @@ router.get("/getBillsByPatient/:patientId", authorizeRoles("receptionist", "hosp
 router.get("/getBillDetails/:billId", authorizeRoles("receptionist", "hospitalAdmin", "doctor"), getBillDetails);
 router.patch("/editBillDetails/:billId", authorizeRoles("receptionist", "hospitalAdmin", "doctor"), editBillDetails);
 router.get("/getRevenueByYear", authorizeRoles("hospitalAdmin"), getRevenueByYear);
+
+router.patch("/editBillDetails/:billId", authorizeRoles("receptionist", "hospitalAdmin", "doctor"), editBillDetails);
+
+router.post("/createEstimatedBill", authorizeRoles("receptionist", "hospitalAdmin"), createEstimatedBill);
+router.get("/getEstimatedBills/:admissionRequestId", authorizeRoles("receptionist", "hospitalAdmin","doctor"), getEstimatedBills);
+router.put("/editEstimatedBill/:estimateId", editEstimatedBill);
 
 export default router;
