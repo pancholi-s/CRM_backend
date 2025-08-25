@@ -299,6 +299,7 @@ export const getPatientDetailsById = async (req, res) => {
       contact: admissionDetails?.contact ?? null,
       address: admissionDetails?.address ?? null,
       Age: admissionDetails?.age ?? null,
+      gender: admissionDetails?.gender ?? null,
       emergencyContact: admissionDetails?.emergencyContact ?? null,
       emergencyName: admissionDetails?.emergencyName ?? null,
       createdByName,

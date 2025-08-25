@@ -35,9 +35,7 @@ export const createAdmissionRequest = async (req, res) => {
     const room = await Room.findOne({ roomID: admissionDetails.room, hospital: hospitalId });
     if (!room) return res.status(404).json({ message: "Room not found with given roomID." });
 
-    if (!admissionDetails.gender) {
-      return res.status(400).json({ message: "Gender is required in admission details." });
-    }
+
     // Step 3: Validate bed
     const bed = await Bed.findOne({
       bedNumber: admissionDetails.bed,
@@ -343,10 +341,14 @@ export const getAdmissionRequests = async (req, res) => {
     // Filter out null patients (those who were excluded by match)
     const filteredRequests = requests.filter(r => r.patient !== null);
 
+    const mappedRequests = filteredRequests.map(r => r.toObject());
+
+
+
     res.status(200).json({
       message: "Admission requests fetched successfully.",
       count: filteredRequests.length,
-      requests: filteredRequests,
+      requests: mappedRequests,
     });
   } catch (error) {
     console.error("Error fetching admission requests:", error);
@@ -392,7 +394,7 @@ export const getAdmittedPatients = async (req, res) => {
     const admitted = await Patient.find({
       hospital: hospitalId,
       admissionStatus: "Admitted"
-    }).select("name age gender contact phone admissionStatus healthStatus");
+    }).select("name contact phone admissionStatus healthStatus");
 
     // Step 2: Get their IDs
     const admittedPatientIds = admitted.map(p => p._id);
@@ -403,7 +405,7 @@ export const getAdmittedPatients = async (req, res) => {
       status: "Admitted"
     })
       .sort({ createdAt: -1 }) // get the latest
-      .select("patient caseId admissionDetails.medicalNote admissionDetails.date")
+      .select("patient caseId admissionDetails.medicalNote admissionDetails.date admissionDetails.gender admissionDetails.age createdAt")
       .lean();
 
     // Step 4: Create map for admissionDetails
@@ -412,7 +414,9 @@ export const getAdmittedPatients = async (req, res) => {
       admissionDataMap[req.patient.toString()] = {
         caseId: req.caseId,
         medicalNote: req.admissionDetails?.medicalNote || null,
-        date: req.admissionDetails?.date || null
+        date: req.admissionDetails?.date || null,
+        gender: req.admissionDetails?.gender || null,
+        age: req.admissionDetails?.age || null 
       };
     });
 
@@ -439,7 +443,7 @@ export const getAdmittedPatients = async (req, res) => {
     const followUpPatients = await Patient.find({
       hospital: hospitalId,
       _id: { $in: followUpPatientIds }
-    }).select("name age gender contact phone admissionStatus healthStatus");
+    }).select("name contact phone admissionStatus healthStatus");
 
     followUpPatients.forEach(p => {
       const id = p._id.toString();
