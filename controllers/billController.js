@@ -5,6 +5,8 @@ import Bill from "../models/billModel.js";
 import Patient from "../models/patientModel.js";
 import Service from "../models/serviceModel.js";
 import Hospital from "../models/hospitalModel.js";
+import EstimatedBill from "../models/estimatedBillModel.js";
+import AdmissionRequest from '../models/admissionReqModel.js';
 
 export const createBill = async (req, res) => {
   const { patientId, caseID, services, paidAmount, mode } = req.body;
@@ -99,7 +101,6 @@ export const createBill = async (req, res) => {
     return { error: `Error generating bill: ${error.message}` };
   }
 };
-
 
 export const getAllBills = async (req, res) => {
   const { hospitalId } = req.session;
@@ -555,5 +556,102 @@ export const getRevenueByYear = async (req, res) => {
   } catch (error) {
     console.error("Error calculating revenue:", error);
     res.status(500).json({ message: "Error calculating revenue", error: error.message });
+  }
+};
+
+
+export const createEstimatedBill = async (req, res) => {
+  try {
+    const { admissionRequestId, grandTotal, categories } = req.body;
+    const hospitalId = req.session.hospitalId;
+
+    if (!hospitalId) return res.status(403).json({ message: "No hospital context." });
+
+    const admissionRequest = await AdmissionRequest.findById(admissionRequestId).populate("patient");
+    if (!admissionRequest) {
+      return res.status(404).json({ message: "Admission request not found." });
+    }
+
+    const newEstimate = new EstimatedBill({
+      admissionRequest: admissionRequest._id,
+      hospital: hospitalId,
+      grandTotal,
+      categories
+    });
+
+    await newEstimate.save();
+
+    res.status(201).json({
+      message: "Estimated bill created successfully",
+      estimate: newEstimate,
+      patient: {
+        id: admissionRequest.patient._id,
+        name: admissionRequest.patient.name,
+        hasInsurance: admissionRequest.patient.hasInsurance,
+        insurance: admissionRequest.patient.insuranceDetails
+      }
+    });
+  } catch (error) {
+    console.error("Error creating estimated bill:", error);
+    res.status(500).json({ message: "Error creating estimated bill", error: error.message });
+  }
+};
+
+// ✅ GET: all estimates for one admission
+export const getEstimatedBills = async (req, res) => {
+  try {
+    const { admissionRequestId } = req.params;
+
+    const estimates = await EstimatedBill.find({ admissionRequest: admissionRequestId })
+      .populate({
+        path: "admissionRequest",
+        populate: { path: "patient", select: "name patId hasInsurance insuranceDetails" }
+      })
+      .sort({ createdAt: -1 });
+
+    if (!estimates.length) {
+      return res.status(404).json({ message: "No estimated bills found for this admission request." });
+    }
+
+    res.status(200).json({
+      message: "Estimated bills fetched successfully",
+      count: estimates.length,
+      estimates
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching estimated bills", error: error.message });
+  }
+};
+
+export const editEstimatedBill = async (req, res) => {
+  try {
+    const { estimateId } = req.params;
+    const { grandTotal, categories, isFinalized } = req.body;
+    const hospitalId = req.session.hospitalId;
+
+    if (!hospitalId) {
+      return res.status(403).json({ message: "No hospital context." });
+    }
+
+    // Find bill
+    const estimate = await EstimatedBill.findOne({ _id: estimateId, hospital: hospitalId });
+    if (!estimate) {
+      return res.status(404).json({ message: "Estimated bill not found." });
+    }
+
+    // Update fields if provided
+    if (grandTotal !== undefined) estimate.grandTotal = grandTotal;
+    if (categories && Array.isArray(categories)) estimate.categories = categories;
+    if (typeof isFinalized === "boolean") estimate.isFinalized = isFinalized;
+
+    await estimate.save();
+
+    res.status(200).json({
+      message: "Estimated bill updated successfully",
+      estimate,
+    });
+  } catch (error) {
+    console.error("Error updating estimated bill:", error);
+    res.status(500).json({ message: "Error updating estimated bill", error: error.message });
   }
 };
