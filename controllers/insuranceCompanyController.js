@@ -21,19 +21,15 @@ export const addInsuranceCompany = async (req, res) => {
     });
 
     await newInsuranceCompany.save();
-    res
-      .status(201)
-      .json({
-        message: "Insurance company added successfully",
-        company: newInsuranceCompany,
-      });
+    res.status(201).json({
+      message: "Insurance company added successfully",
+      company: newInsuranceCompany,
+    });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        message: "Error adding insurance company.",
-        error: error.message,
-      });
+    res.status(500).json({
+      message: "Error adding insurance company.",
+      error: error.message,
+    });
   }
 };
 
@@ -49,12 +45,10 @@ export const addServiceToCompany = async (req, res) => {
       !Array.isArray(categories) ||
       categories.length === 0
     ) {
-      return res
-        .status(400)
-        .json({
-          message:
-            "Service name and categories are required, with at least one category.",
-        });
+      return res.status(400).json({
+        message:
+          "Service name and categories are required, with at least one category.",
+      });
     }
 
     const company = await InsuranceCompany.findById(companyId);
@@ -90,12 +84,10 @@ export const addServiceToCompany = async (req, res) => {
       .status(200)
       .json({ message: "Service added/updated successfully", company });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        message: "Error adding service to insurance company.",
-        error: error.message,
-      });
+    res.status(500).json({
+      message: "Error adding service to insurance company.",
+      error: error.message,
+    });
   }
 };
 
@@ -107,12 +99,10 @@ export const getInsuranceCompanies = async (req, res) => {
       .status(200)
       .json({ message: "Insurance companies fetched successfully", companies });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        message: "Error fetching insurance companies.",
-        error: error.message,
-      });
+    res.status(500).json({
+      message: "Error fetching insurance companies.",
+      error: error.message,
+    });
   }
 };
 
@@ -126,19 +116,15 @@ export const getInsuranceCompanyDetails = async (req, res) => {
       return res.status(404).json({ message: "Insurance company not found." });
     }
 
-    res
-      .status(200)
-      .json({
-        message: "Insurance company details fetched successfully",
-        company,
-      });
+    res.status(200).json({
+      message: "Insurance company details fetched successfully",
+      company,
+    });
   } catch (error) {
-    res
-      .status(500)
-      .json({
-        message: "Error fetching insurance company details.",
-        error: error.message,
-      });
+    res.status(500).json({
+      message: "Error fetching insurance company details.",
+      error: error.message,
+    });
   }
 };
 
@@ -167,10 +153,10 @@ export const editServiceCategory = async (req, res) => {
     }
 
     // Update service-level fields if provided
-    if (serviceData && typeof serviceData === 'object') {
-      const serviceFields = ['serviceName'];
-      
-      Object.keys(serviceData).forEach(key => {
+    if (serviceData && typeof serviceData === "object") {
+      const serviceFields = ["serviceName"];
+
+      Object.keys(serviceData).forEach((key) => {
         if (serviceFields.includes(key) && serviceData[key] !== undefined) {
           service[key] = serviceData[key];
         }
@@ -178,41 +164,63 @@ export const editServiceCategory = async (req, res) => {
     }
 
     // Update category-level fields if provided
-    if (categoryData && typeof categoryData === 'object') {
+    if (categoryData && typeof categoryData === "object") {
       const categoryFields = [
-        'subCategoryName',
-        'rateType',
-        'rate',
-        'effectiveDate',
-        'amenities',
-        'additionaldetails'
+        "subCategoryName",
+        "rateType",
+        "rate",
+        "effectiveDate",
+        "amenities",
+        "additionaldetails",
       ];
 
-      Object.keys(categoryData).forEach(key => {
+      Object.keys(categoryData).forEach((key) => {
         if (categoryFields.includes(key) && categoryData[key] !== undefined) {
-          if (key === 'rate') {
+          if (key === "rate") {
             category[key] = parseInt(categoryData[key]);
-          } else if (key === 'additionaldetails') {
-            if (category.additionaldetails && typeof categoryData[key] === 'object') {
+          } else if (key === "additionaldetails") {
+            if (
+              category.additionaldetails &&
+              typeof categoryData[key] === "object"
+            ) {
               let existingDetails;
-              
-              if (typeof category.additionaldetails.toObject === 'function') {
+
+              if (typeof category.additionaldetails.toObject === "function") {
                 existingDetails = category.additionaldetails.toObject();
               } else {
                 existingDetails = category.additionaldetails;
               }
-              
+
               const updatedAdditionalDetails = {
                 ...existingDetails,
-                ...categoryData[key]
+                ...categoryData[key],
               };
-              
+
               category.additionaldetails = updatedAdditionalDetails;
-              
-              category.markModified('additionaldetails');
+
+              category.markModified("additionaldetails");
             } else {
               category[key] = categoryData[key];
-              category.markModified('additionaldetails');
+              category.markModified("additionaldetails");
+            }
+          } else {
+            category[key] = categoryData[key];
+          }
+        }
+      });
+
+      Object.keys(categoryData).forEach((key) => {
+        if (categoryFields.includes(key) && categoryData[key] !== undefined) {
+          if (key === "rate") {
+            category[key] = parseInt(categoryData[key]);
+          } else if (key === "additionaldetails") {
+            if (typeof categoryData[key] === "object") {
+              // Overwrite completely with new object
+              category.additionaldetails = categoryData[key];
+              category.markModified("additionaldetails");
+            } else {
+              category[key] = categoryData[key];
+              category.markModified("additionaldetails");
             }
           } else {
             category[key] = categoryData[key];
@@ -222,10 +230,10 @@ export const editServiceCategory = async (req, res) => {
     }
 
     service.lastUpdated = new Date();
-    
-    service.markModified('categories');
-    company.markModified('services');
-    
+
+    service.markModified("categories");
+    company.markModified("services");
+
     await company.save();
 
     const updatedCompany = await InsuranceCompany.findById(companyId);
@@ -234,14 +242,13 @@ export const editServiceCategory = async (req, res) => {
       message: "Service and category updated successfully",
       company: updatedCompany,
       updatedService: service,
-      updatedCategory: category
+      updatedCategory: category,
     });
-
   } catch (error) {
-    console.error('Error updating service and category:', error);
+    console.error("Error updating service and category:", error);
     res.status(500).json({
       message: "Error updating service and category.",
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -274,18 +281,19 @@ export const deleteSingleCategory = async (req, res) => {
     category.deleteOne();
 
     await company.save();
-    res.status(200).json({ 
-      message: "Category deleted successfully", 
+    res.status(200).json({
+      message: "Category deleted successfully",
       company,
-      remainingCategories: service.categories.length 
+      remainingCategories: service.categories.length,
     });
-
   } catch (error) {
-    res.status(500).json({ message: "Error deleting category.", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Error deleting category.", error: error.message });
   }
 };
 
-// Delete all categories from a service 
+// Delete all categories from a service
 export const deleteAllCategories = async (req, res) => {
   try {
     const { companyId, serviceId } = req.params;
@@ -309,13 +317,17 @@ export const deleteAllCategories = async (req, res) => {
     service.deleteOne();
 
     await company.save();
-    res.status(200).json({ 
-      message: "All categories deleted successfully", 
+    res.status(200).json({
+      message: "All categories deleted successfully",
       company,
       deletedCategoriesCount,
     });
-
   } catch (error) {
-    res.status(500).json({ message: "Error deleting all categories.", error: error.message });
+    res
+      .status(500)
+      .json({
+        message: "Error deleting all categories.",
+        error: error.message,
+      });
   }
 };
