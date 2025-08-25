@@ -34,6 +34,7 @@ const admissionRequestSchema = new mongoose.Schema({
     contact: { type: String, required: true },
     address: { type: String, required: true },
     age: { type: Number, required: true },
+    gender:{type: String, enum:['Male','Female','Other'], required: true},
     emergencyContact: { type: String },
     emergencyName: { type: String },
     medicalNote: { type: String },

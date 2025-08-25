@@ -474,6 +474,7 @@ export const getPatientBedInfo = async (req, res) => {
     }
 
     const {
+      _id,
       bedNumber,
       bedType,
       features,
@@ -483,6 +484,7 @@ export const getPatientBedInfo = async (req, res) => {
     } = bed;
 
     const bedInfo = {
+      bedId: _id,
       bedNumber,
       bedType,
       features,

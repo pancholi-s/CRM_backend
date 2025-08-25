@@ -35,6 +35,9 @@ export const createAdmissionRequest = async (req, res) => {
     const room = await Room.findOne({ roomID: admissionDetails.room, hospital: hospitalId });
     if (!room) return res.status(404).json({ message: "Room not found with given roomID." });
 
+    if (!admissionDetails.gender) {
+      return res.status(400).json({ message: "Gender is required in admission details." });
+    }
     // Step 3: Validate bed
     const bed = await Bed.findOne({
       bedNumber: admissionDetails.bed,
