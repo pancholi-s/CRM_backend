@@ -128,7 +128,7 @@ export const updateBillAfterAction = async (caseId, session, medicationCharge) =
         service.categories?.forEach(category => {
           services.push({
             service: service._id,
-            category: category.subCategoryName,
+            category: category.subCategoryName || "Unknown",
             quantity: 1,
             rate: category.rate,
             details: category.additionaldetails || {}
