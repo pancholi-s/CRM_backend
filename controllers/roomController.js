@@ -395,3 +395,41 @@ export const getAvailableRooms = async (req, res) => {
     });
   }
 };
+
+export const getRoomSubcategories = async (req, res) => {
+  try {
+    const hospitalId = req.session.hospitalId;
+    if (!hospitalId) {
+      return res.status(403).json({ message: "Unauthorized. Hospital context missing." });
+    }
+
+    // Find the Room Type Service for the hospital
+    const roomService = await Service.findOne({
+      hospital: hospitalId,
+      name: "Room Type Service"
+    }).lean();
+
+    if (!roomService) {
+      return res.status(404).json({ message: "Room Type Service not found for this hospital." });
+    }
+
+    // Extract subCategoryName values
+    const subcategories = roomService.categories.map(cat => ({
+      id: cat._id,
+      subCategoryName: cat.subCategoryName,
+      rate: cat.rate,
+      rateType: cat.rateType,
+      amenities: cat.amenities,
+      additionaldetails: cat.additionaldetails
+    }));
+
+    res.status(200).json({
+      message: "Room type subcategories retrieved successfully",
+      count: subcategories.length,
+      subcategories
+    });
+  } catch (error) {
+    console.error("Error fetching room subcategories:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
