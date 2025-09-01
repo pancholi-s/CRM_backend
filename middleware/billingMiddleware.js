@@ -83,8 +83,14 @@ export const updateBillAfterAction = async (caseId, session, medicationCharge) =
       if (bed) {
         const room = await Room.findById(bed.room).session(session);
 
-        const roomService = await Service.findOne({ _id: room.roomType }).session(session);
-        const roomCategory = roomService?.categories.find(category => category.subCategoryName === room.roomType);
+        const roomService = await Service.findOne({
+          hospital: hospitalId,
+          "categories.subCategoryName": room.roomType,  // e.g. "Private"
+        }).session(session);
+
+        const roomCategory = roomService?.categories.find(
+          category => category.subCategoryName === room.roomType
+        );
         const roomDetails = roomCategory ? roomCategory.additionaldetails : {};
 
         const assignedDate = bed?.assignedDate ? new Date(bed?.assignedDate) : null;
