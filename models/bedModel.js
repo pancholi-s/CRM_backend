@@ -63,6 +63,66 @@ const bedSchema = new mongoose.Schema(
       dailyRate: { type: Number, default: 0 },
       currency: { type: String, default: "INR" },
     },
+    linkedAttendantBed: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Bed",
+      default: null,
+    },
+    hasAttendant: {
+      type: Boolean,
+      default: false,
+    },
+    isAttendantBed: {
+      type: Boolean,
+      default: false,
+    },
+    linkedPatientBed: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Bed",
+      default: null,
+    },
+    attendantDetails: {
+      name: String,
+      relationship: {
+        type: String,
+        enum: [
+          "Father",
+          "Mother",
+          "Son",
+          "Daughter",
+          "Spouse",
+          "Sibling",
+          "Guardian",
+          "Other",
+        ],
+      },
+      contactNumber: String,
+      purpose: String,
+      expectedDuration: String,
+      additionalNotes: String,
+      approvedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Doctor",
+      },
+      requestedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        refPath: "requestedByModel",
+      },
+      requestedByModel: {
+        type: String,
+        enum: ["hospitalAdmin", "receptionist", "doctor"],
+      },
+      status: {
+        type: String,
+        enum: ["Pending", "Approved", "Rejected"],
+        default: "Pending",
+      },
+      requestDate: {
+        type: Date,
+        default: Date.now,
+      },
+      approvalDate: Date,
+    },
   },
   {
     timestamps: true,
