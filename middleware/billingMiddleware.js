@@ -83,8 +83,14 @@ export const updateBillAfterAction = async (caseId, session, medicationCharge) =
       if (bed) {
         const room = await Room.findById(bed.room).session(session);
 
-        const roomService = await Service.findOne({ _id: room.roomType }).session(session);
-        const roomCategory = roomService?.categories.find(category => category.subCategoryName === room.roomType);
+        const roomService = await Service.findOne({
+          hospital: hospitalId,
+          "categories.subCategoryName": room.roomType,  // e.g. "Private"
+        }).session(session);
+
+        const roomCategory = roomService?.categories.find(
+          category => category.subCategoryName === room.roomType
+        );
         const roomDetails = roomCategory ? roomCategory.additionaldetails : {};
 
         const assignedDate = bed?.assignedDate ? new Date(bed?.assignedDate) : null;
@@ -115,27 +121,25 @@ export const updateBillAfterAction = async (caseId, session, medicationCharge) =
       const insuranceCompany = await InsuranceCompany.findOne({ hospitalId }).session(session);
       if (!insuranceCompany) throw new Error("Insurance company not found.");
 
-      const insuranceServices = insuranceCompany.services.map(service => ({
-        ...service,
-        categories: service.categories?.map(category => ({
-          ...category,
-          rate: category.rate
-        }))
-      }));
+      // remap existing services to insurance rates where available
+      services = services.map(svc => {
+        const insuranceSvc = insuranceCompany.services.find(insSvc => String(insSvc._id) === String(svc.service));
+        if (!insuranceSvc) return svc;
 
-      // Add insurance-approved services to bill
-      insuranceServices.forEach(service => {
-        service.categories?.forEach(category => {
-          services.push({
-            service: service._id,
-            category: category.subCategoryName || "Unknown",
-            quantity: 1,
-            rate: category.rate,
-            details: category.additionaldetails || {}
-          });
-        });
+        const category = insuranceSvc.categories.find(cat => cat.subCategoryName === svc.category);
+        if (!category) return svc;
+
+        return {
+          ...svc,
+          rate: category.rate, // overwrite with insurance rate
+          details: {
+            ...svc.details,
+            coveredByInsurance: true
+          }
+        };
       });
     }
+
     // ----------------- NON-INSURED PATIENTS -----------------
     // For non-insured patients → we DO NOT fetch all hospital services
     // Only use what was already added above: consultations, medications, room/bed charges

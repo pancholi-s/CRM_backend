@@ -6,7 +6,8 @@ import {
   getInsuranceCompanyDetails,
   editServiceCategory,
   deleteSingleCategory,
-  deleteAllCategories
+  deleteAllCategories,
+  updateAdmissionInsuranceDetails
 } from "../controllers/insuranceCompanyController.js";
 import { requireHospitalContext } from "../middleware/hospitalContext.js";
 import { authorizeRoles } from "../middleware/roleMiddleware.js";
@@ -42,6 +43,8 @@ router.get(
 
 // Edit a specific category within a service
 router.patch('/editCategory/:companyId/:serviceId/:categoryId', authorizeRoles("hospitalAdmin"), editServiceCategory);
+
+router.patch('/updateAdmissionInsuranceDetails/:admissionId', authorizeRoles("hospitalAdmin"), updateAdmissionInsuranceDetails);
 
 // Delete a single category from a service
 router.delete('/deleteCategory/:companyId/:serviceId/:categoryId', authorizeRoles("hospitalAdmin"), deleteSingleCategory);

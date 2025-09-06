@@ -54,7 +54,7 @@ export const createAdmissionRequest = async (req, res) => {
       // Validate insurance fields if enabled
       if (hasInsurance === true || hasInsurance === 'true') {
         const requiredFields = [
-          "employerName", "insuranceIdNumber", "policyNumber",
+          "insuranceIdNumber", "policyNumber",
           "insuranceCompany", "employeeCode", "insuranceStartDate", "insuranceExpiryDate"
         ];
         for (const field of requiredFields) {

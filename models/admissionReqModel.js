@@ -47,7 +47,7 @@ const admissionRequestSchema = new mongoose.Schema({
       employerName: String,
       insuranceIdNumber: String,
       policyNumber: String,
-      insuranceCompany: String,
+      insuranceCompany: String ,
       employeeCode: String,
       insuranceStartDate: Date,
       insuranceExpiryDate: Date,

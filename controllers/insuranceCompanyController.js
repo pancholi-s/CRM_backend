@@ -1,5 +1,6 @@
 import InsuranceCompany from "../models/insuranceCompanyModel.js";
 import mongoose from "mongoose";
+import AdmissionRequest from "../models/admissionReqModel.js";
 
 // Add a new insurance company
 export const addInsuranceCompany = async (req, res) => {
@@ -329,5 +330,69 @@ export const deleteAllCategories = async (req, res) => {
         message: "Error deleting all categories.",
         error: error.message,
       });
+  }
+};
+
+export const updateAdmissionInsuranceDetails = async (req, res) => {
+  try {
+    const { admissionId } = req.params;
+    const hospitalId = req.session.hospitalId;
+
+    if (!hospitalId) {
+      return res.status(403).json({ message: "Unauthorized: No hospital context." });
+    }
+
+    const {
+      employerName,
+      insuranceIdNumber,
+      policyNumber,
+      insuranceCompany,
+      employeeCode,
+      insuranceStartDate,
+      insuranceExpiryDate,
+      insuranceApproved,
+      amountApproved
+    } = req.body;
+
+    // ✅ Validate status if provided
+    const validStatuses = ["pending", "approved", "rejected"];
+    if (insuranceApproved && !validStatuses.includes(insuranceApproved)) {
+      return res.status(400).json({
+        message: "Invalid insuranceApproved value. Must be 'pending', 'approved', or 'rejected'."
+      });
+    }
+
+    // ✅ Find admission request
+    const admissionRequest = await AdmissionRequest.findOne({
+      _id: admissionId,
+      hospital: hospitalId
+    });
+
+    if (!admissionRequest) {
+      return res.status(404).json({ message: "Admission request not found." });
+    }
+
+    // ✅ Update fields dynamically
+    if (admissionRequest.admissionDetails && admissionRequest.admissionDetails.insurance) {
+      if (employerName !== undefined) admissionRequest.admissionDetails.insurance.employerName = employerName;
+      if (insuranceIdNumber !== undefined) admissionRequest.admissionDetails.insurance.insuranceIdNumber = insuranceIdNumber;
+      if (policyNumber !== undefined) admissionRequest.admissionDetails.insurance.policyNumber = policyNumber;
+      if (insuranceCompany !== undefined) admissionRequest.admissionDetails.insurance.insuranceCompany = insuranceCompany;
+      if (employeeCode !== undefined) admissionRequest.admissionDetails.insurance.employeeCode = employeeCode;
+      if (insuranceStartDate !== undefined) admissionRequest.admissionDetails.insurance.insuranceStartDate = insuranceStartDate;
+      if (insuranceExpiryDate !== undefined) admissionRequest.admissionDetails.insurance.insuranceExpiryDate = insuranceExpiryDate;
+      if (insuranceApproved !== undefined) admissionRequest.admissionDetails.insurance.insuranceApproved = insuranceApproved;
+      if (insuranceApproved !== undefined) admissionRequest.admissionDetails.insurance.amountApproved = amountApproved;
+    }
+
+    await admissionRequest.save();
+
+    res.status(200).json({
+      message: "Insurance details updated successfully",
+      admissionRequest
+    });
+  } catch (error) {
+    console.error("❌ Error updating insurance details:", error);
+    res.status(500).json({ message: "Server error", error: error.message });
   }
 };
