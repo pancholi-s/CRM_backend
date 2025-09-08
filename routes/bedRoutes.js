@@ -7,7 +7,11 @@ import {
   getHospitalStatistics,
   getPatientBedInfo,
   getAvailableBeds,
-transferPatientToBed,
+  transferPatientToBed,
+  requestAttendantBed,
+  getAttendantRequests,
+  processAttendantRequest,
+  releaseAttendantBed,
 } from "../controllers/bedController.js";
 import { authorizeRoles } from "../middleware/roleMiddleware.js";
 import { requireHospitalContext } from "../middleware/hospitalContext.js";
@@ -67,6 +71,34 @@ router.patch(
   requireHospitalContext,
   authorizeRoles("hospitalAdmin", "doctor", "receptionist"),
   transferPatientToBed
+);
+
+router.post(
+  "/attendant-bed/request",
+  requireHospitalContext,
+  authorizeRoles("doctor"),
+  requestAttendantBed
+);
+
+router.get(
+  "/attendant-bed/requests",
+  requireHospitalContext,
+  authorizeRoles("hospitalAdmin", "doctor", "receptionist"),
+  getAttendantRequests
+);
+
+router.patch(
+  "/attendant-bed/:attendantBedId/process",
+  requireHospitalContext,
+  authorizeRoles("hospitalAdmin", "doctor","receptionist"),
+  processAttendantRequest
+);
+
+router.patch(
+  "/attendant-bed/:attendantBedId/release",
+  requireHospitalContext,
+  authorizeRoles("hospitalAdmin", "doctor", "receptionist"),
+  releaseAttendantBed
 );
 
 export default router;
