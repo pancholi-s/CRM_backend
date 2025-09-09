@@ -3,12 +3,12 @@ import express from 'express';
 import { authorizeRoles } from '../middleware/roleMiddleware.js';
 import { requireHospitalContext } from '../middleware/hospitalContext.js';
 import { submitConsultation, getConsultationByAppointment,getPatientConsultationHistory,getMostCommonDiagnoses, getProgressTracker, addProgressPhase, updateConsultation, updatePhase, getProgressPhaseCounts } from '../controllers/consultationController.js';
-
+import upload from '../middleware/fileUpload.js';
 
 const router = express.Router();
 router.use(requireHospitalContext);
 
-router.post('/submitConsultation', authorizeRoles('doctor'), submitConsultation);
+router.post('/submitConsultation', authorizeRoles('doctor'), upload.array('files', 5), submitConsultation);
 router.post('/addProgressPhase', authorizeRoles('doctor'), addProgressPhase);
 router.get('/getProgressTracker/:patientId/:caseId', authorizeRoles('doctor', 'receptionist','hospitalAdmin'), getProgressTracker);
 router.get('/getProgressPhaseCounts', authorizeRoles('doctor'), getProgressPhaseCounts);
