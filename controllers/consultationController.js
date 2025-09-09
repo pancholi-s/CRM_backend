@@ -6,6 +6,8 @@ import Patient from '../models/patientModel.js';
 import ProgressPhase from '../models/ProgressPhase.js';
 import ProgressLog from '../models/progressLog.js';
 import Service from '../models/serviceModel.js';
+import Doctor from '../models/doctorModel.js';
+
 import { updateBillAfterAction } from '../middleware/billingMiddleware.js'; // Import the billing middleware function
 
 export const submitConsultation = async (req, res) => {
@@ -48,6 +50,14 @@ export const submitConsultation = async (req, res) => {
       return res.status(400).json({ message: "All required fields including action must be provided." });
     }
 
+    const doctorDoc = await Doctor.findById(doctor).select('name').session(session);
+    if (!doctorDoc) {
+      throw new Error("Doctor not found");
+    }
+
+    // Now the doctor name can be accessed as doctorDoc.name
+    const doctorName = doctorDoc.name;
+
     const validActions = ["complete", "refer", "schedule"];
     if (!validActions.includes(action)) {
       return res.status(400).json({ message: "Invalid action type." });
@@ -84,6 +94,7 @@ export const submitConsultation = async (req, res) => {
     // Prepare consultation payload
     const consultationPayload = {
       doctor,
+      doctorName, // Pass doctorName here
       patient,
       appointment,
       department,
@@ -167,7 +178,11 @@ export const submitConsultation = async (req, res) => {
       category: "Doctor Consultation",
       quantity: 1,
       rate: consultationRate,  // Use the fetched rate
-      details: consultationData,  // Pass the consultationData details here
+      details: {
+        consultationData: consultationData,
+        doctorName: doctorName, // Add doctor's name here in details
+        consultationDate: new Date(),  // Add the current date or the consultation date here
+      },  // Pass the consultationData details here
     };
 
     console.log("Consultation Charge:", consultationCharge);  // Log the consultation charge before passing to `updateBillAfterAction`

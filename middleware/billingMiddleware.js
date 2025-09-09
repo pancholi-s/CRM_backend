@@ -72,7 +72,11 @@ export const updateBillAfterAction = async (caseId, session, medicationCharge) =
         category: "Doctor Consultation",
         quantity: 1,
         rate: consultationRate,
-        details: consultation.consultationData || {},
+        details: {
+          consultationData: consultation.consultationData || {},
+          doctorName: consultation.doctor.name,  // Add doctor's name
+          consultationDate: consultation.date,  // Add consultation date
+        },
       });
     });
 
