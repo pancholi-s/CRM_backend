@@ -8,7 +8,7 @@ import upload from '../middleware/fileUpload.js';
 const router = express.Router();
 router.use(requireHospitalContext);
 
-router.post('/submitConsultation', authorizeRoles('doctor'), upload.array('files', 5), submitConsultation);
+router.post('/submitConsultation', authorizeRoles('doctor', 'receptionist','hospitalAdmin'), upload.array('files', 5), submitConsultation);
 router.post('/addProgressPhase', authorizeRoles('doctor'), addProgressPhase);
 router.get('/getProgressTracker/:patientId/:caseId', authorizeRoles('doctor', 'receptionist','hospitalAdmin'), getProgressTracker);
 router.get('/getProgressPhaseCounts', authorizeRoles('doctor'), getProgressPhaseCounts);
