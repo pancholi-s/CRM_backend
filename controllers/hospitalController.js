@@ -1,6 +1,5 @@
 import Hospital from "../models/hospitalModel.js";
-import fs from "fs";
-
+import { uploadToCloudinary } from "../utils/cloudinary.js";
 export const registerHospital = async (req, res) => {
   const {
     name,
@@ -13,19 +12,23 @@ export const registerHospital = async (req, res) => {
     administrativeDetails,
     licenses,
     nabhAccreditation,
-    description
+    description,
   } = req.body;
 
   // Check for required fields
-  if (!name || !address || !phone || !email ) {
+  if (!name || !address || !phone || !email) {
     return res.status(400).json({ message: "Required fields are missing." });
   }
 
   try {
     // Check if the hospital name or phone number already exists
-    const existingHospital = await Hospital.findOne({ $or: [{ name }, { phone }] });
+    const existingHospital = await Hospital.findOne({
+      $or: [{ name }, { phone }],
+    });
     if (existingHospital) {
-      return res.status(400).json({ message: "Hospital with this name or phone already exists." });
+      return res
+        .status(400)
+        .json({ message: "Hospital with this name or phone already exists." });
     }
 
     // Create a new hospital object
@@ -37,10 +40,10 @@ export const registerHospital = async (req, res) => {
       website,
       establishedDate,
       departments,
-      administrativeDetails,  // Optional
-      licenses,  // Optional
-      nabhAccreditation,  // Optional
-      description  // Optional
+      administrativeDetails, // Optional
+      licenses, // Optional
+      nabhAccreditation, // Optional
+      description, // Optional
     });
 
     // Save the hospital to the database
@@ -61,18 +64,23 @@ export const addHospitalImage = async (req, res) => {
     const { hospitalId } = req.body;
 
     if (!hospitalId || !req.file) {
-      return res.status(400).json({ 
-        message: "hospitalId and image file are required." 
+      return res.status(400).json({
+        message: "hospitalId and image file are required.",
       });
     }
 
-    const imageBase64 = fs.readFileSync(req.file.path, { encoding: "base64" });
-    const mimeType = req.file.mimetype; // e.g., "image/png"
-    const imageData = `data:${mimeType};base64,${imageBase64}`;
+    const cloudinaryResult = await uploadToCloudinary(
+      req.file.buffer,
+      req.file.originalname,
+      req.file.mimetype
+    );
 
     const updatedHospital = await Hospital.findByIdAndUpdate(
       hospitalId,
-      { hospitalImage: imageData },
+      {
+        hospitalImage: cloudinaryResult.secure_url,
+        hospitalImagePublicId: cloudinaryResult.public_id,
+      },
       { new: true }
     );
 
@@ -85,8 +93,8 @@ export const addHospitalImage = async (req, res) => {
       hospital: {
         _id: updatedHospital._id,
         name: updatedHospital.name,
-        hospitalImage: updatedHospital.hospitalImage
-      }
+        hospitalImage: updatedHospital.hospitalImage,
+      },
     });
   } catch (error) {
     console.error("Error updating hospital image:", error);
