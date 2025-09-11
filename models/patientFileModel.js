@@ -69,6 +69,6 @@ const fileSchema = new mongoose.Schema(
 fileSchema.index({ hospital: 1, patient: 1 });
 fileSchema.index({ patient: 1, uploadedAt: -1 });
 
-const File = mongoose.model("File", fileSchema);
+const PatientFile = mongoose.model("PatientFile", fileSchema);
 
-export default File;
+export default PatientFile;

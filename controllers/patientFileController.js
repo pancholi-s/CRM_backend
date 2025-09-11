@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
-import File from "../models/patientFileModel.js";
-import { uploadToCloudinary } from "../utils/cloudinary.js";
+import PatientFile from "../models/patientFileModel.js";
+import { uploadToCloudinary, cloudinary } from "../utils/cloudinary.js";
 
 export const uploadFiles = async (req, res) => {
   try {
@@ -34,7 +34,7 @@ export const uploadFiles = async (req, res) => {
           file.mimetype
         );
 
-        const fileData = new File({
+        const fileData = new PatientFile({
           filename: result.public_id,
           originalName: file.originalname,
           url: result.secure_url,
@@ -97,7 +97,7 @@ export const getAllFiles = async (req, res) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 100);
     const skip = (page - 1) * limit;
 
-    const files = await File.find({ hospital: hospitalId })
+    const files = await PatientFile.find({ hospital: hospitalId })
       .populate("patient", "name email phone")
       .sort({ uploadedAt: -1 })
       .skip(skip)
@@ -105,7 +105,9 @@ export const getAllFiles = async (req, res) => {
       .select("-__v")
       .lean();
 
-    const totalFiles = await File.countDocuments({ hospital: hospitalId });
+    const totalFiles = await PatientFile.countDocuments({
+      hospital: hospitalId,
+    });
     const totalPages = Math.ceil(totalFiles / limit);
 
     res.status(200).json({
@@ -143,7 +145,7 @@ export const getFilesByPatient = async (req, res) => {
       return res.status(400).json({ message: "Invalid patient ID" });
     }
 
-    const files = await File.find({
+    const files = await PatientFile.find({
       hospital: hospitalId,
       patient: patientId,
     })
@@ -181,7 +183,7 @@ export const getFileById = async (req, res) => {
       return res.status(400).json({ message: "Invalid file ID" });
     }
 
-    const file = await File.findOne({
+    const file = await PatientFile.findOne({
       _id: id,
       hospital: hospitalId,
     })
@@ -224,10 +226,7 @@ export const deleteFile = async (req, res) => {
       return res.status(400).json({ message: "Invalid file ID" });
     }
 
-    const file = await File.findOneAndDelete({
-      _id: id,
-      hospital: hospitalId,
-    });
+    const file = await PatientFile.findOne({ _id: id, hospital: hospitalId });
 
     if (!file) {
       return res.status(404).json({
@@ -236,9 +235,32 @@ export const deleteFile = async (req, res) => {
       });
     }
 
+    let cloudinaryResult;
+    try {
+      cloudinaryResult = await cloudinary.uploader.destroy(file.publicId, {
+        resource_type: file.resourceType || "image",
+        invalidate: true,
+      });
+
+      console.log("Cloudinary delete result:", cloudinaryResult);
+    } catch (cloudErr) {
+      console.error("Cloudinary delete error:", cloudErr);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to delete from Cloudinary",
+        error: cloudErr.message,
+      });
+    }
+
+    await PatientFile.deleteOne({ _id: id, hospital: hospitalId });
+
     res.status(200).json({
       success: true,
-      message: "File deleted successfully",
+      message:
+        cloudinaryResult?.result === "ok"
+          ? "File deleted successfully from both DB and Cloudinary"
+          : "File deleted from DB (not found in Cloudinary, maybe already removed)",
+      cloudinary: cloudinaryResult,
     });
   } catch (error) {
     console.error("Delete file error:", error);
