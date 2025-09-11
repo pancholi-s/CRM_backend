@@ -421,6 +421,17 @@ export const getInpatients = async (req, res) => {
       });
     }
 
+    if (req.query.search) {
+      const search = req.query.search.toLowerCase();
+      allInpatients = allInpatients.filter((patient) => {
+        return (
+          (patient.name && patient.name.toLowerCase().includes(search)) ||
+          (patient.email && patient.email.toLowerCase().includes(search)) ||
+          (patient.phone && patient.phone.toLowerCase().includes(search)) 
+        );
+      });
+    }
+
     // Sort by registration date
     allInpatients.sort((a, b) => {
       const dateA = new Date(a.registrationDate || 0);
@@ -437,7 +448,7 @@ export const getInpatients = async (req, res) => {
       assignedPatient: { $in: patientIds },
       status: "Occupied"
     })
-      .populate("room", "roomID name roomType")
+      .populate("room", "roomID name roomType floor wing")
       .lean();
 
     // Create a bed map
@@ -463,6 +474,8 @@ export const getInpatients = async (req, res) => {
         roomID: assignedBed?.room?.roomID || null,
         roomName: assignedBed?.room?.name || null,
         roomType: assignedBed?.room?.roomType || null,
+        floor: assignedBed?.room?.floor || null,
+        wing: assignedBed?.room?.wing || null,
         condition:
           consultation?.primaryDiagnosis ||
           patient.healthStatus ||

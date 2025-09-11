@@ -104,7 +104,7 @@ export const createBill = async (req, res) => {
 
 export const getAllBills = async (req, res) => {
   const { hospitalId } = req.session;
-  const { page = 1, limit = 10 } = req.query;
+  const { page = 1, limit = 10 , search = ""} = req.query;
   const skip = (page - 1) * limit;
 
   if (!hospitalId) {
@@ -112,8 +112,26 @@ export const getAllBills = async (req, res) => {
   }
 
   try {
-    const total = await Bill.countDocuments({ hospital: hospitalId });
-    const bills = await Bill.find({ hospital: hospitalId })
+    let filter = { hospital: hospitalId };
+
+    if (search) {
+      const matchingPatients = await Patient.find({
+        name: { $regex: search, $options: "i" }
+      }).select("_id");
+
+      const patientIds = matchingPatients.map(p => p._id);
+
+      filter.$or = [
+        { caseId: { $regex: search, $options: "i" } },
+        { invoiceNumber: { $regex: search, $options: "i" } },
+        { status: { $regex: search, $options: "i" } },
+        { patient: { $in: patientIds } }  
+      ];
+    }
+
+    const total = await Bill.countDocuments(filter);
+
+    const bills = await Bill.find(filter)
       .populate("patient", "name phone")
       .populate("doctor", "name specialization")
       .populate("services.service", "name")
