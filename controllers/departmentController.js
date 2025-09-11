@@ -260,6 +260,7 @@ export const getAllDepartments = async (req, res) => {
         phone: doc.phone,
       })),
       totalNurses: department.nurses.length,
+      nurses: department.nurses,
       activeServices: department.services.map((service) => service.name),
       facilities: department.facilities || [],
       criticalEquipment: department.criticalEquipment || [],
