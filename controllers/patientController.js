@@ -879,3 +879,29 @@ export const getMostCommonDiagnosis = async (req, res) => {
     });
   }
 };
+
+
+export const getAdmissionDetails = async (req, res) => {
+  try {
+    const { admissionId } = req.params;
+
+    const admission = await AdmissionRequest.findById(admissionId)
+      .populate("patient", "name age gender contact") 
+      .populate("doctor", "name specialization")
+      .populate("hospital", "name")
+      .populate("admissionDetails.room", "roomNumber floor")
+      .populate("admissionDetails.bed", "bedNumber");
+
+    if (!admission) {
+      return res.status(404).json({ message: "Admission request not found" });
+    }
+
+    res.status(200).json({
+      message: "Admission details fetched successfully",
+      admissionDetails: admission.admissionDetails
+    });
+  } catch (error) {
+    console.error("Error fetching admission details:", error);
+    res.status(500).json({ message: "Error fetching admission details" });
+  }
+};

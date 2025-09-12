@@ -106,6 +106,8 @@ export const getAIPrescription = async (inputData) => {
   const prompt = `
 You are a clinical assistant AI. Based on the following patient details, generate a short but complete structured prescription note.
 
+⚠️ Important: Keep consistency across regenerations. Do not drastically change the number of items (like medications or injections). Only refine or adjust details where necessary.
+
 Use exactly the following SECTIONS as HEADERS (no explanation, no extras):
 
 1. Problem Statement
@@ -133,7 +135,8 @@ Only generate the structured draft. No explanation, no extra text.
   const response = await openai.chat.completions.create({
     messages: [{ role: "user", content: prompt }],
     model: "gpt-4",
-    temperature: 0.3,
+    temperature: 0,
+    top_p: 1,
     max_tokens: 1200,
   });
 
