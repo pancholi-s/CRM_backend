@@ -1,14 +1,18 @@
 import bcrypt from "bcryptjs";
 
-import Hospital from '../models/hospitalModel.js';
-import Department from '../models/departmentModel.js';
-import Doctor from '../models/doctorModel.js';
+import Hospital from "../models/hospitalModel.js";
+import Department from "../models/departmentModel.js";
+import Doctor from "../models/doctorModel.js";
 
 export const addDepartment = async (req, res) => {
   const { name, head, nurses, services, doctors = [] } = req.body;
 
   if (!name || !head?.name || !head?.email) {
-    return res.status(400).json({ message: "Department name and head doctor details are required." });
+    return res
+      .status(400)
+      .json({
+        message: "Department name and head doctor details are required.",
+      });
   }
 
   try {
@@ -23,7 +27,10 @@ export const addDepartment = async (req, res) => {
     }
 
     // Find or create head doctor
-    let headDoctor = await Doctor.findOne({ email: head.email, hospital: hospitalId });
+    let headDoctor = await Doctor.findOne({
+      email: head.email,
+      hospital: hospitalId,
+    });
     if (!headDoctor) {
       const password = head.password || "changeme";
       const hashedPassword = await bcrypt.hash(password, 10);
@@ -31,8 +38,8 @@ export const addDepartment = async (req, res) => {
       headDoctor = new Doctor({
         name: head.name,
         email: head.email,
-        phone: head.phone || '',
-        specialization: head.specialization || '',
+        phone: head.phone || "",
+        specialization: head.specialization || "",
         hospital: hospitalId,
         password: hashedPassword,
         departments: [],
@@ -67,7 +74,7 @@ export const addDepartment = async (req, res) => {
       appointments: [],
       specialistDoctors: [],
       rooms: [],
-      staffs: []
+      staffs: [],
     });
 
     await newDepartment.save();
@@ -82,10 +89,12 @@ export const addDepartment = async (req, res) => {
         },
       },
       { new: true }
-    ).populate('departments');
+    ).populate("departments");
 
     if (!updatedHospital) {
-      return res.status(404).json({ message: "Hospital not found or failed to update." });
+      return res
+        .status(404)
+        .json({ message: "Hospital not found or failed to update." });
     }
 
     // Update head doctor to reference the department and set as head
@@ -113,13 +122,11 @@ export const addDepartment = async (req, res) => {
       message: "Department created and linked with doctors.",
       department: newDepartment,
     });
-
   } catch (error) {
     console.error("Error creating department:", error);
     res.status(500).json({ message: "Error creating department." });
   }
 };
-
 
 export const getDepartments = async (req, res) => {
   const { departmentId } = req.params;
@@ -128,7 +135,9 @@ export const getDepartments = async (req, res) => {
     const hospitalId = req.session.hospitalId;
 
     if (!hospitalId) {
-      return res.status(403).json({ message: "Hospital context not found in session." });
+      return res
+        .status(403)
+        .json({ message: "Hospital context not found in session." });
     }
 
     // Find the department for the specific hospital
@@ -140,19 +149,21 @@ export const getDepartments = async (req, res) => {
       .populate("head.id", "name phone email")
       .populate("services", "name")
       .populate("specialistDoctors", "name phone email")
-      .populate("staffs", "name");
-
+      .populate("staffs", "name")
     if (!department) {
-      return res.status(404).json({ message: "Department not found for this hospital." });
+      return res
+        .status(404)
+        .json({ message: "Department not found for this hospital." });
     }
 
     // Extracting doctor details
-    const totalDoctors = department.doctors?.map((doc) => ({
-      id: doc._id,
-      name: doc.name,
-      email: doc.email,
-      phone: doc.phone,
-    })) || [];
+    const totalDoctors =
+      department.doctors?.map((doc) => ({
+        id: doc._id,
+        name: doc.name,
+        email: doc.email,
+        phone: doc.phone,
+      })) || [];
 
     // Extracting department head details
     const departmentHead = department.head?.id
@@ -165,30 +176,44 @@ export const getDepartments = async (req, res) => {
       : { id: null, name: "Not assigned", email: null, phone: null };
 
     // Ensure department head is included in total doctors if not already present
-    if (department.head?.id && !totalDoctors.some((doc) => doc.id.equals(department.head.id._id))) {
+    if (
+      department.head?.id &&
+      !totalDoctors.some((doc) => doc.id.equals(department.head.id._id))
+    ) {
       totalDoctors.push(departmentHead);
     }
 
-    const specialistDoctors = department.specialistDoctors?.map((doc) => ({
-      id: doc._id,
-      name: doc.name,
-      email: doc.email,
-      phone: doc.phone,
-    })) || [];
+    const specialistDoctors =
+      department.specialistDoctors?.map((doc) => ({
+        id: doc._id,
+        name: doc.name,
+        email: doc.email,
+        phone: doc.phone,
+      })) || [];
 
-    const totalStaffs = department.staffs?.map((staff) => ({
-      id: staff._id,
-      name: staff.name,
-    })) || [];
+    // const nurses = department.nurses?.map((nurseName, index) => ({
+    //   id: index,
+    //   name: nurseName
+    // })) || [];
+
+    const nurses = department.nurses || [];
+
+    const totalStaffs =
+      department.staffs?.map((staff) => ({
+        id: staff._id,
+        name: staff.name,
+      })) || [];
 
     // Extracting other department data
-    const availableServices = department.services?.map((service) => service.name) || [];
+    const availableServices =
+      department.services?.map((service) => service.name) || [];
 
     res.status(200).json({
       departmentName: department.name,
       departmentHead,
       totalDoctors,
-      totalNurses: department.nurses ? department.nurses.length : 0,
+      nurses,
+      totalNurses: nurses.length,
       specialistDoctors,
       availableServices,
       facilities: department.facilities || [],
@@ -197,7 +222,6 @@ export const getDepartments = async (req, res) => {
       equipmentMaintenance: department.equipmentMaintenance || [],
       totalStaffs,
     });
-
   } catch (error) {
     console.error("Error fetching department:", error);
     res.status(500).json({ message: "Error fetching department details." });
@@ -210,21 +234,22 @@ export const getAllDepartments = async (req, res) => {
     const hospitalId = req.session.hospitalId;
 
     if (!hospitalId) {
-      return res.status(403).json({ message: "Hospital context not found in session." });
+      return res
+        .status(403)
+        .json({ message: "Hospital context not found in session." });
     }
 
     // Fetch the hospital and populate the departments array along with services
-    const hospital = await Hospital.findById(hospitalId)
-      .populate({
-        path: "departments",
-        populate: [
-          { path: "head.id", select: "name email phone" },
-          { path: "specialistDoctors", select: "name email phone" },
-          { path: "doctors", select: "name email phone" },
-          { path: "patients" },
-          { path: "services", select: "name" },
-        ],
-      });
+    const hospital = await Hospital.findById(hospitalId).populate({
+      path: "departments",
+      populate: [
+        { path: "head.id", select: "name email phone" },
+        { path: "specialistDoctors", select: "name email phone" },
+        { path: "doctors", select: "name email phone" },
+        { path: "patients" },
+        { path: "services", select: "name" },
+      ],
+    });
 
     if (!hospital) {
       return res.status(404).json({ message: "Hospital not found." });
@@ -232,7 +257,9 @@ export const getAllDepartments = async (req, res) => {
 
     // Check if the hospital has departments
     if (!hospital.departments || hospital.departments.length === 0) {
-      return res.status(404).json({ message: "No departments found for the given hospital." });
+      return res
+        .status(404)
+        .json({ message: "No departments found for the given hospital." });
     }
 
     // Map departments to extract required details
