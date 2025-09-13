@@ -33,6 +33,7 @@ import admissionRouters from './routes/admissionRoutes.js';
 import nursingRoutes from './routes/nursingRoutes.js';
 import departmentStatRoutes from './routes/departmentStatRoutes.js';
 import insuranceCompanyController from './routes/insuranceCompanyRoutes.js';
+import fileRoutes from './routes/patientFileRoutes.js';
 
 import "./middleware/billingCron.js"; // Start the billing cron job
 
@@ -92,6 +93,7 @@ app.use('/', admissionRouters);
 app.use('/', nursingRoutes);
 app.use('/', departmentStatRoutes);
 app.use('/', insuranceCompanyController);
+app.use('/', fileRoutes);
 
 // Base route
 app.get('/', (req, res) => {

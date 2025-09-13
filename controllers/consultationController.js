@@ -9,14 +9,15 @@ import Service from '../models/serviceModel.js';
 import Doctor from '../models/doctorModel.js';
 
 import { updateBillAfterAction } from '../middleware/billingMiddleware.js'; // Import the billing middleware function
+import {uploadToCloudinary} from '../utils/cloudinary.js';
 
 export const submitConsultation = async (req, res) => {
-  const session = await Consultation.startSession();  // Start a session for the current request
-  session.startTransaction();  // Start the transaction
+  const session = await Consultation.startSession();
+  session.startTransaction();
 
   try {
     const hospitalId = req.session.hospitalId;
-    const {
+    let {
       doctor,
       patient,
       appointment,
@@ -41,21 +42,90 @@ export const submitConsultation = async (req, res) => {
       followUpRequired
     } = req.body;
 
-    // Validate required fields
+    // ✅ Handle file uploads
+    let uploadedFiles = [];
+    if (req.files && req.files.length > 0) {
+      console.log("Files received for consultation:", req.files.length);
+
+      try {
+        const uploadPromises = req.files.map(async (file) => {
+          const result = await uploadToCloudinary(
+            file.buffer,
+            file.originalname,
+            file.mimetype
+          );
+
+          return {
+            filename: file.originalname,
+            url: result.secure_url,
+            publicId: result.public_id,
+            fileType: file.mimetype,
+            fileSize: file.size,
+            resourceType: result.resource_type,
+            uploadedAt: new Date()
+          };
+        });
+
+        uploadedFiles = await Promise.all(uploadPromises);
+        console.log("Files uploaded successfully:", uploadedFiles.length);
+      } catch (uploadError) {
+        console.error("File upload error:", uploadError);
+        await session.abortTransaction();
+        return res.status(500).json({
+          message: "File upload failed",
+          error: uploadError.message
+        });
+      }
+    }
+
+    // ✅ Parse consultationData if string
+    if (typeof consultationData === "string") {
+      try {
+        consultationData = JSON.parse(consultationData);
+      } catch (parseError) {
+        await session.abortTransaction();
+        return res.status(400).json({
+          message: "Invalid consultationData format",
+          error: parseError.message
+        });
+      }
+    }
+
+    // ✅ Ensure consultationData is always an object
+    if (!consultationData) consultationData = {};
+
+    // ✅ Merge uploaded files inside consultationData.files
+    if (!consultationData.files) {
+      consultationData.files = { images: [], videos: [], attachments: [] };
+    }
+
+    uploadedFiles.forEach((file) => {
+      if (file.resourceType === "image") {
+        consultationData.files.images.push(file);
+      } else if (file.resourceType === "video") {
+        consultationData.files.videos.push(file);
+      } else {
+        consultationData.files.attachments.push(file);
+      }
+    });
+
+    // ✅ Validate hospital context
     if (!hospitalId) {
-      return res.status(403).json({ message: "Access denied. No hospital context found." });
+      return res
+        .status(403)
+        .json({ message: "Access denied. No hospital context found." });
     }
 
-    if (!doctor || !patient || !appointment || !department || !consultationData || !action) {
-      return res.status(400).json({ message: "All required fields including action must be provided." });
+    if (!doctor || !patient || !appointment || !department || !action) {
+      return res.status(400).json({
+        message: "All required fields including action must be provided."
+      });
     }
 
-    const doctorDoc = await Doctor.findById(doctor).select('name').session(session);
-    if (!doctorDoc) {
-      throw new Error("Doctor not found");
-    }
-
-    // Now the doctor name can be accessed as doctorDoc.name
+    const doctorDoc = await Doctor.findById(doctor)
+      .select("name")
+      .session(session);
+    if (!doctorDoc) throw new Error("Doctor not found");
     const doctorName = doctorDoc.name;
 
     const validActions = ["complete", "refer", "schedule"];
@@ -63,48 +133,42 @@ export const submitConsultation = async (req, res) => {
       return res.status(400).json({ message: "Invalid action type." });
     }
 
-    // Fetch hospital and department
+    // Fetch hospital, department, appointment, patient
     const hospital = await Hospital.findById(hospitalId).session(session);
-    if (!hospital) {
-      throw new Error("Hospital not found.");
-    }
+    if (!hospital) throw new Error("Hospital not found.");
 
     const departmentExists = await Department.findOne({
       _id: department,
-      hospital: hospitalId,
+      hospital: hospitalId
     }).session(session);
-
-    if (!departmentExists) {
+    if (!departmentExists)
       throw new Error("Department not found in this hospital.");
-    }
 
-    // Fetch appointment and patient
     const appointmentDoc = await Appointment.findById(appointment).session(session);
-    if (!appointmentDoc) {
-      throw new Error("Appointment not found.");
-    }
+    if (!appointmentDoc) throw new Error("Appointment not found.");
 
-    const patientDoc = await Patient.findOne({ _id: patient, hospital: hospitalId }).session(session);
-    if (!patientDoc) {
-      throw new Error("Patient not found.");
-    }
+    const patientDoc = await Patient.findOne({
+      _id: patient,
+      hospital: hospitalId
+    }).session(session);
+    if (!patientDoc) throw new Error("Patient not found.");
 
     const caseId = appointmentDoc.caseId;
 
-    // Prepare consultation payload
+    // ✅ Prepare consultation payload
     const consultationPayload = {
       doctor,
-      doctorName, // Pass doctorName here
+      doctorName,
       patient,
       appointment,
       department,
-      consultationData,
+      consultationData, 
       status: "completed",
       followUpRequired: false,
       caseId
     };
 
-    // Handle action types (complete, refer, schedule)
+    // ✅ Handle action types
     if (action === "complete") {
       consultationPayload.status = "completed";
       consultationPayload.followUpRequired = followUpRequired === true;
@@ -130,9 +194,7 @@ export const submitConsultation = async (req, res) => {
         consultationPayload.status = "completed";
         consultationPayload.followUpRequired = false;
         consultationPayload.externalFacility = externalFacility;
-        if (newFacilityName) {
-          consultationPayload.newFacilityName = newFacilityName;
-        }
+        if (newFacilityName) consultationPayload.newFacilityName = newFacilityName;
         consultationPayload.referredSpecialist = referredSpecialist;
         consultationPayload.specialtyArea = specialtyArea;
         consultationPayload.supportingDocument = supportingDocument;
@@ -144,66 +206,69 @@ export const submitConsultation = async (req, res) => {
       consultationPayload.followUpRequired = true;
       consultationPayload.treatment = treatment;
 
-      const admissionRec = treatment?.admissionRecommendation === true ? "Yes" : "No";
-      await Patient.findByIdAndUpdate(patient, { admissionRecommendation: admissionRec }, { session });
-    }
-
-    // Create the new consultation
-    const newConsultation = await Consultation.create([consultationPayload], { session });
-
-    // Update the appointment status
-    await Appointment.findByIdAndUpdate(appointment, { status: "completed" }, { session });
-
-    // Step 1: Fetch Consultation Service from Service collection
-    const consultationService = await Service.findOne({ name: "Consultation", hospital: hospitalId }).session(session);
-    console.log("Fetched Consultation Service:", consultationService);  // Log the fetched consultation service
-
-    // Step 2: Find the rate for the Consultation service from the categories array
-    let consultationRate = 0;  // Default to 0
-    if (consultationService) {
-      // Find the category with subCategoryName "Doctor Consultation"
-      const consultationCategory = consultationService.categories.find(
-        category => category.subCategoryName === "Doctor Consultation"
+      const admissionRec =
+        treatment?.admissionRecommendation === true ? "Yes" : "No";
+      await Patient.findByIdAndUpdate(
+        patient,
+        { admissionRecommendation: admissionRec },
+        { session }
       );
-      if (consultationCategory) {
-        consultationRate = consultationCategory.rate; // Use the rate from the category
-      }
     }
 
-    console.log("Fetched Consultation Rate:", consultationRate);  // Log the fetched rate
+    // ✅ Create consultation
+    const newConsultation = await Consultation.create(
+      [consultationPayload],
+      { session }
+    );
 
-    // Step 3: Prepare Consultation Charges with details
+    // ✅ Update appointment status
+    await Appointment.findByIdAndUpdate(
+      appointment,
+      { status: "completed" },
+      { session }
+    );
+
+    // ✅ Billing logic
+    const consultationService = await Service.findOne({
+      name: "Consultation",
+      hospital: hospitalId
+    }).session(session);
+    let consultationRate = 0;
+    if (consultationService) {
+      const consultationCategory = consultationService.categories.find(
+        (c) => c.subCategoryName === "Doctor Consultation"
+      );
+      if (consultationCategory) consultationRate = consultationCategory.rate;
+    }
+
     const consultationCharge = {
-      service: consultationService ? consultationService._id : null, // Set service ID or null if missing
+      service: consultationService ? consultationService._id : null,
       category: "Doctor Consultation",
       quantity: 1,
-      rate: consultationRate,  // Use the fetched rate
+      rate: consultationRate,
       details: {
-        consultationData: consultationData,
-        doctorName: doctorName, // Add doctor's name here in details
-        consultationDate: new Date(),  // Add the current date or the consultation date here
-      },  // Pass the consultationData details here
+        consultationData,
+        doctorName,
+        consultationDate: new Date()
+      }
     };
 
-    console.log("Consultation Charge:", consultationCharge);  // Log the consultation charge before passing to `updateBillAfterAction`
+    await updateBillAfterAction(caseId, session, consultationCharge);
 
-    // Step 4: Call centralized updateBillAfterAction with the session
-    await updateBillAfterAction(caseId, session, consultationCharge);  // Pass the `consultationCharge` to be included in services
-
-    // Send Response
     res.status(200).json({
-      message: `Consultation successfully ${action === "complete" ? "completed" : action}.`,
+      message: `Consultation successfully ${
+        action === "complete" ? "completed" : action
+      }.`,
       data: newConsultation
     });
-
   } catch (error) {
+    await session.abortTransaction();
     console.error("Error updating consultation action:", error);
-    res.status(500).json({ message: "Internal server error", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
   } finally {
-    // Always ensure the session is closed
-    if (session) {
-      session.endSession();
-    }
+    if (session) session.endSession();
   }
 };
 

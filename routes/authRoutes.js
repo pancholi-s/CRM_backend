@@ -1,12 +1,10 @@
 import express from "express";
-import multer from "multer";
 import { requireHospitalContext } from '../middleware/hospitalContext.js';
-
+import upload from "../middleware/fileUpload.js";
 import { loginUser, registerUser, forgotPassword, resetPassword } from '../controllers/authController.js';
 import { registerHospital, addHospitalImage } from '../controllers/hospitalController.js';
 
 const router = express.Router();
-const upload = multer({ dest: "uploads/" });
 
 router.post('/register', registerUser);
 router.post('/login', loginUser);

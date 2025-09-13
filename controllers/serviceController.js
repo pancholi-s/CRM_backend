@@ -355,3 +355,66 @@ export const getPackages = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
+export const getServicesByDep = async (req, res) => {
+  try {
+    const { id: departmentId } = req.params;
+    const hospitalId = req.session.hospitalId;
+
+    if (!hospitalId) {
+      return res
+        .status(403)
+        .json({ message: "Unauthorized access. No hospital context." });
+    }
+
+    const department = await Department.findOne({
+      _id: departmentId,
+      hospital: hospitalId,
+    })
+
+    if (!department) {
+      return res.status(404).json({ message: "Department not found." });
+    }
+
+    const totalServices = await Service.countDocuments({
+      department: departmentId,
+      hospital: hospitalId,
+    })
+
+    const services = await Service.find({
+      department: departmentId,
+      hospital: hospitalId,
+    })
+      .select("name description categories lastUpdated revenueType")
+      .sort({ createdAt: -1})
+      .lean();
+
+    const response = {
+      departmentId: department._id,
+      departmentName: department.name,
+      totalServices,
+      services: services.map((s) => ({
+        id: s._id,
+        name: s.name,
+        description: s.description,
+        categories: s.categories.map((cat) => ({
+          subCategoryName: cat.subCategoryName,
+          rateType: cat.rateType,
+          rate: cat.rate,
+          effectiveDate: cat.effectiveDate,
+          amenities: cat.amenities,
+          additionaldetails: cat.additionaldetails,
+        })),
+        lastUpdated: s.lastUpdated,
+        revenueType: s.revenueType,
+      })),
+    };
+
+    res.status(200).json(response);
+  } catch (error) {
+    console.error("Error fetching department details:", error);
+    res
+      .status(500)
+      .json({ message: "Error fetching department details.", error: error.message });
+  }
+};

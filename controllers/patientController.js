@@ -421,6 +421,17 @@ export const getInpatients = async (req, res) => {
       });
     }
 
+    if (req.query.search) {
+      const search = req.query.search.toLowerCase();
+      allInpatients = allInpatients.filter((patient) => {
+        return (
+          (patient.name && patient.name.toLowerCase().includes(search)) ||
+          (patient.email && patient.email.toLowerCase().includes(search)) ||
+          (patient.phone && patient.phone.toLowerCase().includes(search)) 
+        );
+      });
+    }
+
     // Sort by registration date
     allInpatients.sort((a, b) => {
       const dateA = new Date(a.registrationDate || 0);
@@ -437,7 +448,7 @@ export const getInpatients = async (req, res) => {
       assignedPatient: { $in: patientIds },
       status: "Occupied"
     })
-      .populate("room", "roomID name roomType")
+      .populate("room", "roomID name roomType floor wing")
       .lean();
 
     // Create a bed map
@@ -463,6 +474,8 @@ export const getInpatients = async (req, res) => {
         roomID: assignedBed?.room?.roomID || null,
         roomName: assignedBed?.room?.name || null,
         roomType: assignedBed?.room?.roomType || null,
+        floor: assignedBed?.room?.floor || null,
+        wing: assignedBed?.room?.wing || null,
         condition:
           consultation?.primaryDiagnosis ||
           patient.healthStatus ||
@@ -864,5 +877,31 @@ export const getMostCommonDiagnosis = async (req, res) => {
       message: "Failed to fetch most common diagnosis",
       error: error.message
     });
+  }
+};
+
+
+export const getAdmissionDetails = async (req, res) => {
+  try {
+    const { admissionId } = req.params;
+
+    const admission = await AdmissionRequest.findById(admissionId)
+      .populate("patient", "name age gender contact") 
+      .populate("doctor", "name specialization")
+      .populate("hospital", "name")
+      .populate("admissionDetails.room", "roomNumber floor")
+      .populate("admissionDetails.bed", "bedNumber");
+
+    if (!admission) {
+      return res.status(404).json({ message: "Admission request not found" });
+    }
+
+    res.status(200).json({
+      message: "Admission details fetched successfully",
+      admissionDetails: admission.admissionDetails
+    });
+  } catch (error) {
+    console.error("Error fetching admission details:", error);
+    res.status(500).json({ message: "Error fetching admission details" });
   }
 };

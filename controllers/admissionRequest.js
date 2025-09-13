@@ -549,6 +549,7 @@ export const getAdmissionRequestsWithInsurance = async (req, res) => {
       .populate("admissionDetails.room", "roomID")
       .populate("admissionDetails.bed", "bedNumber")
       .populate("doctor", "name specialization")
+      .sort({ createdAt: -1 })
       .lean(); // Convert to plain objects
 
     if (!requests || requests.length === 0) {
