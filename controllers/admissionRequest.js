@@ -13,8 +13,9 @@ import Appointment from '../models/appointmentModel.js';
 import Service from '../models/serviceModel.js';
 import InsuranceCompany from '../models/insuranceCompanyModel.js';
 import Hospital from '../models/hospitalModel.js';
+import Bill from '../models/billModel.js';
 
-
+// Create admission request and create a new bill upon admission
 export const createAdmissionRequest = async (req, res) => {
   try {
     const hospitalId = req.session.hospitalId;
@@ -34,7 +35,6 @@ export const createAdmissionRequest = async (req, res) => {
     // Step 2: Validate room
     const room = await Room.findOne({ roomID: admissionDetails.room, hospital: hospitalId });
     if (!room) return res.status(404).json({ message: "Room not found with given roomID." });
-
 
     // Step 3: Validate bed
     const bed = await Bed.findOne({
@@ -129,7 +129,6 @@ export const createAdmissionRequest = async (req, res) => {
     };
     delete admissionData.admissionDate;
 
-    // Step 7: Create admission request
     const request = await AdmissionRequest.create({
       patient: patient._id,
       hospital: hospitalId,
@@ -140,9 +139,29 @@ export const createAdmissionRequest = async (req, res) => {
       admissionDetails: admissionData
     });
 
+    // Generate a unique invoice number (e.g., based on the caseId and timestamp)
+    const invoiceNumber = `INV-${generatedCaseId}-${Date.now()}`; // Create a unique invoice number based on caseId and timestamp
+
+    // Create the bill at the time of admission
+    const bill = new Bill({
+      patient: patient._id,
+      caseId: generatedCaseId,
+      services: [], // Initially no services, can be updated later
+      totalAmount: 0,
+      paidAmount: 0,
+      outstanding: 0,
+      status: "Pending",
+      invoiceNumber: invoiceNumber, // Assign the generated unique invoice number
+      hospital: hospitalId,
+      mode: "Cash",
+    });
+
+    await bill.save();
+
     res.status(201).json({
-      message: "Admission request created successfully",
+      message: "Admission request and bill created successfully",
       request,
+      bill,
       patient: {
         name: patient.name,
         patId: patient.patId
@@ -150,7 +169,7 @@ export const createAdmissionRequest = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("❌ Create Admission Request Error:", error);
+    console.error("Error creating admission request:", error);
     res.status(500).json({ message: "Internal Server Error", error: error.message });
   }
 };
@@ -289,6 +308,14 @@ export const admitPatient = async (req, res) => {
     admissionRequest.status = 'Admitted';
     await admissionRequest.save({ session });
 
+    // ✅ START LIVE BILLING
+    const bill = await Bill.findOne({ caseId: admissionRequest.caseId }).session(session);
+    if (bill) {
+      bill.isLive = true;
+      bill.lastBilledAt = new Date();
+      await bill.save({ session });
+    }
+
     await session.commitTransaction();
 
     res.status(200).json({
@@ -416,7 +443,7 @@ export const getAdmittedPatients = async (req, res) => {
         medicalNote: req.admissionDetails?.medicalNote || null,
         date: req.admissionDetails?.date || null,
         gender: req.admissionDetails?.gender || null,
-        age: req.admissionDetails?.age || null 
+        age: req.admissionDetails?.age || null
       };
     });
 
@@ -600,11 +627,7 @@ export const updateInsuranceStatus = async (req, res) => {
 };
 
 
-
 // export const dischargePatient = async (req, res) => {
-//   const session = await mongoose.startSession();  // Start a session for the current request
-//   session.startTransaction();  // Start the transaction
-
 //   try {
 //     const {
 //       patientId,
@@ -618,10 +641,11 @@ export const updateInsuranceStatus = async (req, res) => {
 //       followUpTime
 //     } = req.body;
 
+//     // 1️⃣ Find patient
 //     const patient = await Patient.findById(patientId);
 //     if (!patient) return res.status(404).json({ message: 'Patient not found' });
 
-//     // Save discharge summary
+//     // 2️⃣ Save discharge summary
 //     const discharge = new Discharge({
 //       patient: patientId,
 //       caseId,
@@ -635,140 +659,112 @@ export const updateInsuranceStatus = async (req, res) => {
 //     });
 //     await discharge.save();
 
-//     // Check the caseId in both Appointment and AdmissionRequest models
-//     let appointmentDoc = await Appointment.findOne({ caseId }).session(session);
+//     // 3️⃣ Update admission request / appointment
+//     let appointmentDoc = await Appointment.findOne({ caseId });
 //     let admissionRequestDoc = null;
 
 //     if (!appointmentDoc) {
-//       admissionRequestDoc = await AdmissionRequest.findOne({ caseId }).session(session);
+//       admissionRequestDoc = await AdmissionRequest.findOne({ caseId });
 //       if (!admissionRequestDoc) {
 //         return res.status(404).json({ message: "Case ID not found in either Appointment or Admission Request." });
 //       }
 //     }
 
-//     // Update admission request status if found
 //     if (admissionRequestDoc) {
 //       admissionRequestDoc.status = 'discharged';
-//       await admissionRequestDoc.save({ session });
+//       await admissionRequestDoc.save();
 //     }
 
-//     // Dereference bed
-//     const bed = await Bed.findOne({ assignedPatient: patientId }).session(session);
+//     // 4️⃣ Free the bed
+//     const bed = await Bed.findOne({ assignedPatient: patientId });
 //     if (bed) {
 //       bed.status = 'Available';
 //       bed.assignedPatient = null;
 //       bed.dischargeDate = dischargeDate;
-//       await bed.save({ session });
+//       await bed.save();
 //     }
 
-//     // Update patient status
+//     // 5️⃣ Update patient status
 //     patient.admissionStatus = 'Not Admitted';
-//     await patient.save({ session });
+//     await patient.save();
 
-//     // ---- Add Bed Charges Logic Here ----
-//     const bedChargeRate = bed?.charges?.dailyRate || 0;  // If bed has a daily rate, use it
-//     const assignedDate = bed?.assignedDate ? new Date(bed?.assignedDate) : null;
-//     const dischargeDateObj = dischargeDate ? new Date(dischargeDate) : new Date();
+//     // 6️⃣ Calculate room charges and final adjustments
+//     const bill = await Bill.findOne({ caseId });
 
-//     // Ensure both dates are valid Date objects
-//     if (assignedDate && dischargeDateObj) {
-//       const timeDiff = dischargeDateObj - assignedDate;
-//       const daysOccupied = Math.floor(timeDiff / (1000 * 3600 * 24));  // Convert milliseconds to days
+//     if (bill && bill.isLive) {
+//       const lastBilledAt = new Date(bill.lastBilledAt); // Last billed date
+//       const dischargeDateObj = new Date(dischargeDate); // Discharge date
 
-//       // Avoid negative days (in case of erroneous data)
-//       if (daysOccupied < 0) {
-//         throw new Error("Discharge date cannot be earlier than assigned date.");
-//       }
+//       // Normalize dates to YYYY-MM-DD (ignore time)
+//       const startDate = new Date(lastBilledAt);
+//       startDate.setHours(0, 0, 0, 0);
 
-//       // Calculate total bed charges for the occupied days
-//       const bedCharges = daysOccupied * bedChargeRate;
+//       const endDate = new Date(dischargeDateObj);
+//       endDate.setHours(0, 0, 0, 0);
 
-//       // Fetch the room from the bed
-//       const room = await Room.findById(bed.room).session(session);
-//       if (!room) throw new Error("Room not found for this bed.");
+//       // Start from the next day after last billed
+//       startDate.setDate(startDate.getDate() + 1);
 
-//       // Use bedType if roomType is missing
-//       const roomType = room?.roomType || bed?.bedType; // <-- Ensure we use roomType from Room model
-//       console.log("Room Type from Room model:", roomType);  // **Debug Log**
+//       // Loop until the day before discharge
+//       for (
+//         let d = new Date(startDate);
+//         d <= endDate;
+//         d.setDate(d.getDate() + 1)
+//       ) {
+//         const billedDateStr = d.toISOString().split("T")[0];
 
-//       if (!roomType) {
-//         throw new Error("Room type or bed type is not defined for the assigned bed.");
-//       }
+//         // Skip if already billed
+//         const existingEntry = bill.services.find(
+//           (s) => s.details?.billedDate === billedDateStr
+//         );
+//         if (existingEntry) continue;
 
-//       // ---- Fetch Insurance Company Services if Insurance is Approved ----
-//       const insuranceApproved = admissionRequestDoc?.admissionDetails?.insurance?.insuranceApproved;  // **Insurance approval status**
-//       let roomService;
-//       let roomCategory;
-
-//       // If insurance is approved, use insurance company rates
-//       if (patient.hasInsurance && insuranceApproved === "approved") {
-//         // Fetch the insurance company using the insurance company name from the patient's insurance details
-//         const insuranceCompany = await InsuranceCompany.findOne({ name: patient.insuranceDetails?.insuranceCompany }).session(session);
-
-//         // Log to verify correct insurance company is being fetched
-//         console.log("Insurance Company: ", insuranceCompany);  // **Debug Log**
-
-//         // If insurance company is found, fetch its services
-//         if (insuranceCompany) {
-//           roomService = insuranceCompany.services.find(service => service.serviceName === "Room Type Service");
-
-//           if (!roomService) {
-//             throw new Error(`Room service for room type ${roomType} not found in insurance company services.`);
+//         // Insurance check
+//         let rateToApply = bed.charges.dailyRate;
+//         if (
+//           patient.hasInsurance &&
+//           admissionRequestDoc?.admissionDetails?.insurance?.insuranceApproved ===
+//           "approved"
+//         ) {
+//           const insuranceCompany = await InsuranceCompany.findOne({
+//             name: patient.insuranceDetails?.insuranceCompany,
+//           });
+//           if (insuranceCompany) {
+//             const roomService = insuranceCompany.services.find(
+//               (srv) => srv.serviceName === "Room Type Service"
+//             );
+//             const roomCategory = roomService?.categories.find(
+//               (cat) => cat.subCategoryName === bed.roomType
+//             );
+//             if (roomCategory) {
+//               rateToApply = roomCategory.rate;
+//             }
 //           }
-
-//           // Log the categories to debug the match
-//           console.log("Categories in Room Type Service:", roomService.categories);  // **Debug Log**
-
-//           // Fetch the correct room category based on roomType
-//           roomCategory = roomService.categories.find(cat => cat.subCategoryName === roomType);
-
-//           if (!roomCategory) {
-//             throw new Error(`No category found for room type ${roomType} in insurance company services.`);
-//           }
-
-//           // Use insurance company rate
-//           const insuranceRate = roomCategory.rate || 0; // Get the rate from the insurance company service
-//           console.log("Insurance Rate for Room Type:", insuranceRate);  // **Debug Log**
-
-//         } else {
-//           throw new Error(`Insurance company "${patient.insuranceDetails?.insuranceCompany}" not found.`);
 //         }
-//       } else {
-//         // fallback to hospital service
-//         roomService = await Service.findOne({
-//           hospital: bed.hospital,
-//           "categories.subCategoryName": roomType  // <-- Compare roomType with subCategoryName
-//         }).session(session);
 
-//         roomCategory = roomService.categories.find(cat => cat.subCategoryName === roomType);
-//         if (!roomCategory) {
-//           throw new Error(`No category found for room type ${roomType} in the service model.`);
-//         }
+//         bill.services.push({
+//           service: null,
+//           category: "Room Charges (Final Adjustment)",
+//           quantity: 1,
+//           rate: rateToApply,
+//           details: {
+//             bedNumber: bed.bedNumber,
+//             daysOccupied: 1,
+//             totalCharge: rateToApply,
+//             billedDate: billedDateStr,
+//           },
+//         });
+
+//         // Increment total amount only for newly added entries
+//         bill.totalAmount += rateToApply;
 //       }
 
-//       // Fetch additional room details (stayCharges, admissionFee, etc.)
-//       const roomDetails = roomCategory?.additionaldetails || {};
+//       // Update outstanding after final adjustments
+//       bill.outstanding = bill.totalAmount - bill.paidAmount;
 
-//       // Prepare the bed charge details (with service reference)
-//       const bedChargeDetails = {
-//         service: roomService._id,  // Reference to the room service ID
-//         category: "Room",  // Category is "Room" for room-related services
-//         quantity: daysOccupied,  // Quantity = number of days occupied
-//         rate: roomCategory.rate || bedChargeRate,  // **Use insurance company rate or hospital rate**
-//         details: {
-//           bedType: roomCategory.subCategoryName || "Not Specified",  // Use subCategoryName as bedType
-//           features: bed?.features || {},
-//           bedNumber: bed?.bedNumber || "Not Specified",
-//           daysOccupied,
-//           totalCharge: (roomCategory.rate || bedChargeRate) * daysOccupied,  // **Total charge based on correct rate**
-//           roomDetails,  // Include room details like stayCharges, admissionFee, etc.
-//         }
-//       };
-
-//       // Call the centralized function to update or create the bill (only bed charges)
-//       await updateBillAfterAction(caseId, session, bedChargeDetails);
-//     } else {
-//       throw new Error("Assigned date or discharge date is missing.");
+//       // Stop live billing once discharge is finalized
+//       bill.isLive = false;
+//       await bill.save();
 //     }
 
 //     res.status(200).json({ message: 'Patient discharged successfully', discharge });
@@ -776,18 +772,10 @@ export const updateInsuranceStatus = async (req, res) => {
 //   } catch (error) {
 //     console.error('Error discharging patient:', error);
 //     res.status(500).json({ message: 'Internal server error', error: error.message });
-//   } finally {
-//     // Always ensure the session is closed
-//     if (session) {
-//       session.endSession();
-//     }
 //   }
 // };
 
 export const dischargePatient = async (req, res) => {
-  const session = await mongoose.startSession();  // Start a session for the current request
-  session.startTransaction();  // Start the transaction
-
   try {
     const {
       patientId,
@@ -801,10 +789,11 @@ export const dischargePatient = async (req, res) => {
       followUpTime
     } = req.body;
 
+    // 1️⃣ Find patient
     const patient = await Patient.findById(patientId);
-    if (!patient) return res.status(404).json({ message: 'Patient not found' });
+    if (!patient) return res.status(404).json({ message: "Patient not found" });
 
-    // Save discharge summary
+    // 2️⃣ Save discharge summary
     const discharge = new Discharge({
       patient: patientId,
       caseId,
@@ -814,157 +803,138 @@ export const dischargePatient = async (req, res) => {
       onDischargeNotes,
       diagnosis,
       followUpDay,
-      followUpTime
+      followUpTime,
     });
     await discharge.save();
 
-    // Check the caseId in both Appointment and AdmissionRequest models
-    let appointmentDoc = await Appointment.findOne({ caseId }).session(session);
+    // 3️⃣ Update admission request / appointment
+    let appointmentDoc = await Appointment.findOne({ caseId });
     let admissionRequestDoc = null;
 
     if (!appointmentDoc) {
-      admissionRequestDoc = await AdmissionRequest.findOne({ caseId }).session(session);
+      admissionRequestDoc = await AdmissionRequest.findOne({ caseId });
       if (!admissionRequestDoc) {
-        return res.status(404).json({ message: "Case ID not found in either Appointment or Admission Request." });
+        return res
+          .status(404)
+          .json({ message: "Case ID not found in either Appointment or Admission Request." });
       }
     }
 
-    // Update admission request status if found
     if (admissionRequestDoc) {
-      admissionRequestDoc.status = 'discharged';
-      await admissionRequestDoc.save({ session });
+      admissionRequestDoc.status = "discharged";
+      await admissionRequestDoc.save();
     }
 
-    // Dereference bed
-    const bed = await Bed.findOne({ assignedPatient: patientId }).session(session);
+    // 4️⃣ Free the bed & fetch room
+    const bed = await Bed.findOne({ assignedPatient: patientId });
+    let room = null;
     if (bed) {
-      bed.status = 'Available';
+      room = await Room.findById(bed.room);
+      bed.status = "Available";
       bed.assignedPatient = null;
       bed.dischargeDate = dischargeDate;
-      await bed.save({ session });
+      await bed.save();
     }
 
-    // Update patient status
-    patient.admissionStatus = 'Not Admitted';
-    await patient.save({ session });
+    // 5️⃣ Update patient status
+    patient.admissionStatus = "Not Admitted";
+    await patient.save();
 
-    // ---- Add Bed Charges Logic Here ----
-    const bedChargeRate = bed?.charges?.dailyRate || 0;  // If bed has a daily rate, use it
-    const assignedDate = bed?.assignedDate ? new Date(bed?.assignedDate) : null;
-    const dischargeDateObj = dischargeDate ? new Date(dischargeDate) : new Date();
+    // 6️⃣ Calculate room charges and final adjustments
+    const bill = await Bill.findOne({ caseId });
 
-    // Ensure both dates are valid Date objects
-    if (assignedDate && dischargeDateObj) {
-      const timeDiff = dischargeDateObj - assignedDate;
-      const daysOccupied = Math.floor(timeDiff / (1000 * 3600 * 24));  // Convert milliseconds to days
+    if (bill && bill.isLive && bed && room) {
+      const lastBilledAt = new Date(bill.lastBilledAt);
+      const dischargeDateObj = new Date(dischargeDate);
 
-      // Avoid negative days (in case of erroneous data)
-      if (daysOccupied < 0) {
-        throw new Error("Discharge date cannot be earlier than assigned date.");
-      }
+      // Normalize dates
+      const startDate = new Date(lastBilledAt);
+      startDate.setHours(0, 0, 0, 0);
+      startDate.setDate(startDate.getDate() + 1);
 
-      // Calculate total bed charges for the occupied days
-      const bedCharges = daysOccupied * bedChargeRate;
+      const endDate = new Date(dischargeDateObj);
+      endDate.setHours(0, 0, 0, 0);
 
-      // Fetch the room from the bed (roomType)
-      const room = await Room.findById(bed.room).session(session);
-      if (!room) throw new Error("Room not found for this bed.");
+      const roomType = room.roomType;
 
-      // Ensure roomType exists and fetch corresponding service
-      const roomType = room?.roomType; // Use room.roomType instead of bedType
-      console.log("Room Type from Room model:", roomType);  // **Debug Log**
+      for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+        const billedDateStr = d.toISOString().split("T")[0];
 
-      if (!roomType) {
-        throw new Error("Room type is not defined for the assigned bed.");
-      }
+        // Skip duplicates
+        const existingEntry = bill.services.find((s) => s.details?.billedDate === billedDateStr);
+        if (existingEntry) continue;
 
-      // ---- Fetch Insurance Company Services if Insurance is Approved ----
-      const insuranceApproved = admissionRequestDoc?.admissionDetails?.insurance?.insuranceApproved;  // **Insurance approval status**
-      let roomService;
-      let roomCategory;
-      let hospitalService;
+        let rateToApply = bed.charges.dailyRate;
+        let roomDetails = {};
 
-      // If insurance is approved, use insurance company rates
-      if (patient.hasInsurance && insuranceApproved === "approved") {
-        // Fetch the insurance company using the insurance company name from the patient's insurance details
-        const insuranceCompany = await InsuranceCompany.findOne({ name: patient.insuranceDetails?.insuranceCompany }).session(session);
-
-        // Log to verify correct insurance company is being fetched
-        console.log("Insurance Company: ", insuranceCompany);  // **Debug Log**
-
-        // If insurance company is found, fetch its services
-        if (insuranceCompany) {
-          roomService = insuranceCompany.services.find(service => service.serviceName === "Room Type Service");
-
-          if (!roomService) {
-            throw new Error(`Room service for room type ${roomType} not found in insurance company services.`);
+        // ✅ Insurance check
+        if (
+          patient.hasInsurance &&
+          admissionRequestDoc?.admissionDetails?.insurance?.insuranceApproved === "approved"
+        ) {
+          const insuranceCompany = await InsuranceCompany.findOne({
+            name: patient.insuranceDetails?.insuranceCompany,
+          });
+          if (insuranceCompany) {
+            const roomService = insuranceCompany.services.find(
+              (srv) => srv.serviceName === "Room Type Service"
+            );
+            const roomCategory = roomService?.categories.find(
+              (cat) => cat.subCategoryName === roomType
+            );
+            if (roomCategory) {
+              rateToApply = roomCategory.rate;
+              roomDetails = roomCategory.additionaldetails || {};
+            }
           }
+        }
 
-          // Log the categories to debug the match
-          console.log("Categories in Room Type Service:", roomService.categories);  // **Debug Log**
-
-          // Fetch the correct room category based on roomType
-          roomCategory = roomService.categories.find(cat => cat.subCategoryName === roomType);
-
-          if (!roomCategory) {
-            throw new Error(`No category found for room type ${roomType} in insurance company services.`);
+        // ✅ Fallback to hospital service if insurance not applied
+        if (rateToApply === bed.charges.dailyRate && roomType) {
+          const hospitalService = await Service.findOne({
+            hospital: bed.hospital,
+            "categories.subCategoryName": roomType,
+          });
+          const roomCategory = hospitalService?.categories.find(
+            (c) => c.subCategoryName === roomType
+          );
+          if (roomCategory) {
+            rateToApply = roomCategory.rate;
+            roomDetails = roomCategory.additionaldetails || {};
           }
-
-          // Use insurance company rate
-          const insuranceRate = roomCategory.rate || 0; // Get the rate from the insurance company service
-          console.log("Insurance Rate for Room Type:", insuranceRate);  // **Debug Log**
-
-        } else {
-          throw new Error(`Insurance company "${patient.insuranceDetails?.insuranceCompany}" not found.`);
         }
-      } else {
-        // fallback to hospital service
-        hospitalService = await Service.findOne({
-          hospital: bed.hospital,
-          "categories.subCategoryName": roomType  // <-- Compare roomType with subCategoryName
-        }).session(session);
 
-        roomCategory = hospitalService.categories.find(cat => cat.subCategoryName === roomType);
-        if (!roomCategory) {
-          throw new Error(`No category found for room type ${roomType} in the service model.`);
-        }
+        // ✅ Push final room charge
+        bill.services.push({
+          service: null,
+          category: "Room Charges discharge",
+          quantity: 1,
+          rate: rateToApply,
+          details: {
+            bedNumber: bed.bedNumber,
+            daysOccupied: 1,
+            totalCharge: rateToApply,
+            billedDate: billedDateStr,
+            bedType: room?.roomType || bed?.bedType || "Not Specified",
+            features: bed?.features || {},
+            roomDetails,
+          },
+        });
+
+        bill.totalAmount += rateToApply;
       }
 
-      // Fetch additional room details (stayCharges, admissionFee, etc.)
-      const roomDetails = roomCategory?.additionaldetails || {};
-
-      // Prepare the bed charge details (with service reference)
-      const bedChargeDetails = {
-        service: roomService?._id || hospitalService._id,  // Reference to the room service ID
-        category: "Room",  // Category is "Room" for room-related services
-        quantity: daysOccupied,  // Quantity = number of days occupied
-        rate: roomCategory?.rate || bedChargeRate,  // **Use insurance company rate or hospital rate**
-        details: {
-          bedType: roomCategory?.subCategoryName || "Not Specified",  // Use subCategoryName as bedType
-          features: bed?.features || {},
-          bedNumber: bed?.bedNumber || "Not Specified",
-          daysOccupied,
-          totalCharge: (roomCategory?.rate || bedChargeRate) * daysOccupied,  // **Total charge based on correct rate**
-          roomDetails,  // Include room details like stayCharges, admissionFee, etc.
-        }
-      };
-
-      // Call the centralized function to update or create the bill (only bed charges)
-      await updateBillAfterAction(caseId, session, bedChargeDetails);
-    } else {
-      throw new Error("Assigned date or discharge date is missing.");
+      bill.outstanding = bill.totalAmount - bill.paidAmount;
+      bill.isLive = false; // stop live billing
+      await bill.save();
     }
 
-    res.status(200).json({ message: 'Patient discharged successfully', discharge });
-
+    res.status(200).json({ message: "Patient discharged successfully", discharge });
   } catch (error) {
-    console.error('Error discharging patient:', error);
-    res.status(500).json({ message: 'Internal server error', error: error.message });
-  } finally {
-    // Always ensure the session is closed
-    if (session) {
-      session.endSession();
-    }
+    console.error("Error discharging patient:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
   }
 };
 
@@ -982,18 +952,18 @@ export const downloadDischargePDF = async (req, res) => {
       return res.status(404).json({ message: 'Discharge record not found' });
     }
 
-    const doc = new PDFDocument({ 
+    const doc = new PDFDocument({
       margin: 60,
       size: 'A4'
     });
-    
+
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="discharge-summary-${discharge.patient.name.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf"`);
-    
+
     doc.pipe(res);
 
     generateDischargePDF(doc, discharge);
-    
+
     doc.end();
 
   } catch (error) {
@@ -1011,103 +981,103 @@ const generateDischargePDF = (doc, discharge) => {
   const pageWidth = doc.page.width - (margin * 2);
   const labelWidth = 140;
   const valueX = margin + labelWidth + 20;
-  
+
   let currentY = margin + 40;
 
   doc.fontSize(26)
-     .font('Helvetica-Bold')
-     .fillColor('#2c3e50')
-     .text('DISCHARGE SUMMARY', margin, currentY, { 
-       align: 'center',
-       width: pageWidth 
-     });
-  
+    .font('Helvetica-Bold')
+    .fillColor('#2c3e50')
+    .text('DISCHARGE SUMMARY', margin, currentY, {
+      align: 'center',
+      width: pageWidth
+    });
+
   currentY += 40;
-  
+
   doc.strokeColor('#3498db')
-     .lineWidth(3)
-     .moveTo(margin, currentY)
-     .lineTo(margin + pageWidth, currentY)
-     .stroke();
-  
+    .lineWidth(3)
+    .moveTo(margin, currentY)
+    .lineTo(margin + pageWidth, currentY)
+    .stroke();
+
   currentY += 30;
 
 
   currentY = addSection(doc, 'PATIENT INFORMATION', currentY, margin, pageWidth);
-  
+
   currentY = addKeyValueRow(doc, 'Patient Name', patient.name || 'N/A', currentY, margin, labelWidth, valueX);
   currentY = addKeyValueRow(doc, 'Age', patient.age ? `${patient.age} years` : 'N/A', currentY, margin, labelWidth, valueX);
   currentY = addKeyValueRow(doc, 'Gender', patient.gender || 'N/A', currentY, margin, labelWidth, valueX);
   currentY = addKeyValueRow(doc, 'Phone', patient.phone || 'N/A', currentY, margin, labelWidth, valueX);
   currentY = addKeyValueRow(doc, 'Email', patient.email || 'N/A', currentY, margin, labelWidth, valueX);
   currentY = addKeyValueRow(doc, 'Address', patient.address || 'N/A', currentY, margin, labelWidth, valueX, true);
-  
+
   currentY += 25;
 
   currentY = addSection(doc, 'ADMISSION DETAILS', currentY, margin, pageWidth);
-  
+
   currentY = addKeyValueRow(doc, 'Admission Date', formatDate(discharge.admissionDate), currentY, margin, labelWidth, valueX);
-  
+
   if (discharge.onAdmissionNotes) {
     currentY = addKeyValueRow(doc, 'Clinical Notes', discharge.onAdmissionNotes, currentY, margin, labelWidth, valueX, true);
   }
-  
+
   currentY += 25;
 
   currentY = addSection(doc, 'DISCHARGE DETAILS', currentY, margin, pageWidth);
-  
+
   currentY = addKeyValueRow(doc, 'Discharge Date', formatDate(discharge.dischargeDate), currentY, margin, labelWidth, valueX);
-  
+
   if (discharge.onDischargeNotes) {
     currentY = addKeyValueRow(doc, 'Clinical Notes', discharge.onDischargeNotes, currentY, margin, labelWidth, valueX, true);
   }
-  
+
   currentY += 25;
 
   if (discharge.diagnosis) {
     currentY = addSection(doc, 'DIAGNOSIS', currentY, margin, pageWidth);
-    
+
     doc.fontSize(11)
-       .font('Helvetica')
-       .fillColor('#2c3e50')
-       .text(discharge.diagnosis, margin, currentY, { 
-         width: pageWidth,
-         lineGap: 3
-       });
-    
+      .font('Helvetica')
+      .fillColor('#2c3e50')
+      .text(discharge.diagnosis, margin, currentY, {
+        width: pageWidth,
+        lineGap: 3
+      });
+
     currentY = doc.y + 25;
   }
 
   if (discharge.followUpDay || discharge.followUpTime) {
     currentY = addSection(doc, 'FOLLOW-UP APPOINTMENT', currentY, margin, pageWidth);
-    
+
     currentY = addKeyValueRow(doc, 'Day', discharge.followUpDay || 'N/A', currentY, margin, labelWidth, valueX);
     currentY = addKeyValueRow(doc, 'Time', discharge.followUpTime || 'N/A', currentY, margin, labelWidth, valueX);
-    
+
     currentY += 25;
   }
 
   const footerY = doc.page.height - 80;
-  
+
   doc.strokeColor('#bdc3c7')
-     .lineWidth(1)
-     .moveTo(margin, footerY - 20)
-     .lineTo(margin + pageWidth, footerY - 20)
-     .stroke();
+    .lineWidth(1)
+    .moveTo(margin, footerY - 20)
+    .lineTo(margin + pageWidth, footerY - 20)
+    .stroke();
 
   doc.fontSize(9)
-     .font('Helvetica')
-     .fillColor('#7f8c8d')
-     .text(`Generated on: ${new Date().toLocaleString('en-US', {
-       year: 'numeric',
-       month: 'long', 
-       day: 'numeric',
-       hour: '2-digit',
-       minute: '2-digit'
-     })}`, margin, footerY, { 
-       align: 'center',
-       width: pageWidth 
-     });
+    .font('Helvetica')
+    .fillColor('#7f8c8d')
+    .text(`Generated on: ${new Date().toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })}`, margin, footerY, {
+      align: 'center',
+      width: pageWidth
+    });
 };
 
 const addSection = (doc, title, currentY, margin, pageWidth) => {
@@ -1117,18 +1087,18 @@ const addSection = (doc, title, currentY, margin, pageWidth) => {
   }
 
   doc.fontSize(14)
-     .font('Helvetica-Bold')
-     .fillColor('#34495e')
-     .text(title, margin, currentY);
-  
+    .font('Helvetica-Bold')
+    .fillColor('#34495e')
+    .text(title, margin, currentY);
+
   currentY += 20;
-  
+
   doc.strokeColor('#ecf0f1')
-     .lineWidth(1)
-     .moveTo(margin, currentY)
-     .lineTo(margin + pageWidth, currentY)
-     .stroke();
-  
+    .lineWidth(1)
+    .moveTo(margin, currentY)
+    .lineTo(margin + pageWidth, currentY)
+    .stroke();
+
   return currentY + 15;
 };
 
@@ -1139,28 +1109,28 @@ const addKeyValueRow = (doc, key, value, currentY, margin, labelWidth, valueX, i
   }
 
   doc.fontSize(10)
-     .font('Helvetica-Bold')
-     .fillColor('#34495e')
-     .text(`${key}:`, margin, currentY, { 
-       width: labelWidth,
-       align: 'left'
-     });
+    .font('Helvetica-Bold')
+    .fillColor('#34495e')
+    .text(`${key}:`, margin, currentY, {
+      width: labelWidth,
+      align: 'left'
+    });
 
   doc.fontSize(10)
-     .font('Helvetica')
-     .fillColor('#2c3e50');
+    .font('Helvetica')
+    .fillColor('#2c3e50');
 
   if (isMultiline) {
-    const valueHeight = doc.heightOfString(value, { 
+    const valueHeight = doc.heightOfString(value, {
       width: doc.page.width - valueX - margin,
       lineGap: 2
     });
-    
-    doc.text(value, valueX, currentY, { 
+
+    doc.text(value, valueX, currentY, {
       width: doc.page.width - valueX - margin,
       lineGap: 2
     });
-    
+
     return currentY + Math.max(valueHeight, 12) + 8;
   } else {
     doc.text(value, valueX, currentY);
@@ -1170,10 +1140,10 @@ const addKeyValueRow = (doc, key, value, currentY, margin, labelWidth, valueX, i
 
 const formatDate = (date) => {
   if (!date) return 'N/A';
-  
+
   return new Date(date).toLocaleDateString('en-US', {
-    year: 'numeric', 
-    month: 'long', 
+    year: 'numeric',
+    month: 'long',
     day: 'numeric'
   });
 };

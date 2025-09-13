@@ -34,6 +34,8 @@ import nursingRoutes from './routes/nursingRoutes.js';
 import departmentStatRoutes from './routes/departmentStatRoutes.js';
 import insuranceCompanyController from './routes/insuranceCompanyRoutes.js';
 
+import "./middleware/billingCron.js"; // Start the billing cron job
+
 dotenv.config();
 
 const app = express();

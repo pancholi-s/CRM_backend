@@ -22,9 +22,9 @@ const billSchema = new mongoose.Schema(
         category: { type: String, required: true },
         quantity: { type: Number, default: 1 },
         rate: { type: Number }, // Admin will update this rate
-        details: { 
-          type:mongoose.Schema.Types.Mixed, // To store additional details about the service 
-        }, 
+        details: {
+          type: mongoose.Schema.Types.Mixed, // To store additional details about the service 
+        },
       },
     ],
     totalAmount: {
@@ -63,6 +63,10 @@ const billSchema = new mongoose.Schema(
       enum: ["Online", "Cash"],
       required: true,
     },
+    isLive: { type: Boolean, default: false },
+    lastBilledAt: { type: Date, default: null },
+
+
   },
 
   { timestamps: true }
