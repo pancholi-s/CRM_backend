@@ -851,7 +851,15 @@ export const dischargePatient = async (req, res) => {
       // Normalize dates
       const startDate = new Date(lastBilledAt);
       startDate.setHours(0, 0, 0, 0);
-      startDate.setDate(startDate.getDate() + 1);
+
+      // check if lastBilledAt day already exists in bill.services
+      const lastBilledDateStr = startDate.toISOString().split("T")[0];
+      const alreadyBilled = bill.services.some(s => s.details?.billedDate === lastBilledDateStr);
+
+      // if already billed, move to next day; else include lastBilledAt day
+      if (alreadyBilled) {
+        startDate.setDate(startDate.getDate() + 1);
+      }
 
       const endDate = new Date(dischargeDateObj);
       endDate.setHours(0, 0, 0, 0);

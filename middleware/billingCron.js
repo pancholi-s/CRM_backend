@@ -6,8 +6,8 @@ import InsuranceCompany from "../models/insuranceCompanyModel.js";
 import Service from "../models/serviceModel.js";
 import AdmissionRequest from "../models/admissionReqModel.js";
 
-// Run daily at 01:59 AM
-cron.schedule("36 00 * * *", async () => {
+// Run daily at midnight
+cron.schedule("00 00 * * *", async () => {
   console.log("⏱️ Live Billing Cron (Daily): Running...");
 
   try {
