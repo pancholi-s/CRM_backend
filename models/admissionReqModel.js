@@ -14,7 +14,7 @@ const admissionRequestSchema = new mongoose.Schema({
   },
   sendTo: {
     type: String,
-    enum: ['Doctor', 'Admin', 'Both'],
+    enum: ['Doctor', 'Admin', 'Both','None'],
     required: true
   },
   approval: {
@@ -39,6 +39,7 @@ const admissionRequestSchema = new mongoose.Schema({
     emergencyName: { type: String },
     medicalNote: { type: String },
     date: { type: Date, required: true },
+    time: {type : String},
     room: { type: mongoose.Schema.Types.ObjectId, ref: 'Room', required: true },
     bed: { type: mongoose.Schema.Types.ObjectId, ref: 'Bed', required: true },
     deposit: { type: Number },

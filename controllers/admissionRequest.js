@@ -1,24 +1,24 @@
-import PDFDocument from 'pdfkit';
-import bcrypt from 'bcryptjs';
-import mongoose from 'mongoose';
-import { updateBillAfterAction } from '../middleware/billingMiddleware.js'; // Import the billing middleware function
+import PDFDocument from "pdfkit";
+import bcrypt from "bcryptjs";
+import mongoose from "mongoose";
+import { updateBillAfterAction } from "../middleware/billingMiddleware.js"; // Import the billing middleware function
 
-import AdmissionRequest from '../models/admissionReqModel.js';
-import Bed from '../models/bedModel.js';
-import Room from '../models/roomModel.js';
-import Patient from '../models/patientModel.js';
-import Consultation from '../models/consultationModel.js';
-import Discharge from '../models/DischargeModel.js';
-import Appointment from '../models/appointmentModel.js';
-import Service from '../models/serviceModel.js';
-import InsuranceCompany from '../models/insuranceCompanyModel.js';
-import Hospital from '../models/hospitalModel.js';
-
+import AdmissionRequest from "../models/admissionReqModel.js";
+import Bed from "../models/bedModel.js";
+import Room from "../models/roomModel.js";
+import Patient from "../models/patientModel.js";
+import Consultation from "../models/consultationModel.js";
+import Discharge from "../models/DischargeModel.js";
+import Appointment from "../models/appointmentModel.js";
+import Service from "../models/serviceModel.js";
+import InsuranceCompany from "../models/insuranceCompanyModel.js";
+import Hospital from "../models/hospitalModel.js";
 
 export const createAdmissionRequest = async (req, res) => {
   try {
     const hospitalId = req.session.hospitalId;
-    if (!hospitalId) return res.status(403).json({ message: "No hospital context found." });
+    if (!hospitalId)
+      return res.status(403).json({ message: "No hospital context found." });
 
     const { patId, doctor, sendTo, admissionDetails, hasInsurance } = req.body;
     const createdBy = req.user._id;
@@ -32,33 +32,50 @@ export const createAdmissionRequest = async (req, res) => {
     }
 
     // Step 2: Validate room
-    const room = await Room.findOne({ roomID: admissionDetails.room, hospital: hospitalId });
-    if (!room) return res.status(404).json({ message: "Room not found with given roomID." });
-
+    const room = await Room.findOne({
+      roomID: admissionDetails.room,
+      hospital: hospitalId,
+    });
+    if (!room)
+      return res
+        .status(404)
+        .json({ message: "Room not found with given roomID." });
 
     // Step 3: Validate bed
     const bed = await Bed.findOne({
       bedNumber: admissionDetails.bed,
       hospital: hospitalId,
       room: room._id,
-      status: 'Available'
+      status: "Available",
     });
-    if (!bed) return res.status(409).json({ message: "Bed not available. Already reserved or occupied." });
+    if (!bed)
+      return res
+        .status(409)
+        .json({ message: "Bed not available. Already reserved or occupied." });
 
     // Step 4: If patient doesn't exist, register
     if (!patient) {
       const { name, mobileNumber, email } = req.body;
       if (!name || !mobileNumber || !email)
-        return res.status(400).json({ message: "Missing patient registration details." });
+        return res
+          .status(400)
+          .json({ message: "Missing patient registration details." });
 
       // Validate insurance fields if enabled
-      if (hasInsurance === true || hasInsurance === 'true') {
+      if (hasInsurance === true || hasInsurance === "true") {
         const requiredFields = [
-          "insuranceIdNumber", "policyNumber",
-          "insuranceCompany", "employeeCode", "insuranceStartDate", "insuranceExpiryDate"
+          "insuranceIdNumber",
+          "policyNumber",
+          "insuranceCompany",
+          "employeeCode",
+          "insuranceStartDate",
+          "insuranceExpiryDate",
         ];
         for (const field of requiredFields) {
-          if (!req.body[field]) return res.status(400).json({ message: `Missing required insurance field: ${field}` });
+          if (!req.body[field])
+            return res
+              .status(400)
+              .json({ message: `Missing required insurance field: ${field}` });
         }
       }
 
@@ -66,8 +83,11 @@ export const createAdmissionRequest = async (req, res) => {
       const hashedPassword = await bcrypt.hash(defaultPassword, 10);
 
       // Generate unique caseId
-      const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-      const randomPart = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      const randomPart = Math.random()
+        .toString(36)
+        .substring(2, 8)
+        .toUpperCase();
       generatedCaseId = `CASE-${datePart}-${randomPart}`;
 
       patient = new Patient({
@@ -77,17 +97,20 @@ export const createAdmissionRequest = async (req, res) => {
         hospital: hospitalId,
         password: hashedPassword,
         status: "active",
-        hasInsurance: hasInsurance === true || hasInsurance === 'true',
-        insuranceDetails: hasInsurance === true || hasInsurance === 'true' ? {
-          employerName: req.body.employerName,
-          insuranceIdNumber: req.body.insuranceIdNumber,
-          policyNumber: req.body.policyNumber,
-          insuranceCompany: req.body.insuranceCompany,
-          employeeCode: req.body.employeeCode,
-          insuranceStartDate: req.body.insuranceStartDate,
-          insuranceExpiryDate: req.body.insuranceExpiryDate,
-          insuranceApproved: "pending", // ✅ default for new patient
-        } : undefined
+        hasInsurance: hasInsurance === true || hasInsurance === "true",
+        insuranceDetails:
+          hasInsurance === true || hasInsurance === "true"
+            ? {
+                employerName: req.body.employerName,
+                insuranceIdNumber: req.body.insuranceIdNumber,
+                policyNumber: req.body.policyNumber,
+                insuranceCompany: req.body.insuranceCompany,
+                employeeCode: req.body.employeeCode,
+                insuranceStartDate: req.body.insuranceStartDate,
+                insuranceExpiryDate: req.body.insuranceExpiryDate,
+                insuranceApproved: "pending", // ✅ default for new patient
+              }
+            : undefined,
       });
 
       await patient.save();
@@ -95,21 +118,21 @@ export const createAdmissionRequest = async (req, res) => {
     }
 
     // Step 4b: Ensure existing patients have insuranceApproved if missing
-    if (patient.hasInsurance && (!patient.insuranceDetails?.insuranceApproved)) {
+    if (patient.hasInsurance && !patient.insuranceDetails?.insuranceApproved) {
       patient.insuranceDetails = {
         ...patient.insuranceDetails,
-        insuranceApproved: "pending"
+        insuranceApproved: "pending",
       };
       await patient.save();
     }
 
     // Step 5: Reserve bed
-    bed.status = 'Reserved';
+    bed.status = "Reserved";
     await bed.save();
 
     // Step 6: Construct admission details
     const insurancePayload = {
-      hasInsurance: hasInsurance === true || hasInsurance === 'true',
+      hasInsurance: hasInsurance === true || hasInsurance === "true",
       employerName: req.body.employerName || "",
       insuranceIdNumber: req.body.insuranceIdNumber || "",
       policyNumber: req.body.policyNumber || "",
@@ -117,7 +140,8 @@ export const createAdmissionRequest = async (req, res) => {
       employeeCode: req.body.employeeCode || "",
       insuranceStartDate: req.body.insuranceStartDate || null,
       insuranceExpiryDate: req.body.insuranceExpiryDate || null,
-      insuranceApproved: hasInsurance === true || hasInsurance === 'true' ? 'pending' : null // ✅ guaranteed
+      insuranceApproved:
+        hasInsurance === true || hasInsurance === "true" ? "pending" : null, // ✅ guaranteed
     };
 
     const admissionData = {
@@ -125,11 +149,24 @@ export const createAdmissionRequest = async (req, res) => {
       room: room._id,
       bed: bed._id,
       date: admissionDetails.date || admissionDetails.admissionDate,
-      insurance: insurancePayload
+      time: admissionDetails.time || admissionDetails.admissionTime,
+      insurance: insurancePayload,
     };
     delete admissionData.admissionDate;
 
     // Step 7: Create admission request
+    // const request = await AdmissionRequest.create({
+    //   patient: patient._id,
+    //   hospital: hospitalId,
+    //   doctor,
+    //   createdBy,
+    //   sendTo,
+    //   caseId: generatedCaseId,
+    //   admissionDetails: admissionData
+    // });
+
+    const autoApprove = sendTo === "None";
+
     const request = await AdmissionRequest.create({
       patient: patient._id,
       hospital: hospitalId,
@@ -137,7 +174,24 @@ export const createAdmissionRequest = async (req, res) => {
       createdBy,
       sendTo,
       caseId: generatedCaseId,
-      admissionDetails: admissionData
+      admissionDetails: admissionData,
+      ...(autoApprove ? { status: "Approved" } : {}),
+      ...(autoApprove
+        ? {
+            approval: {
+              doctor: {
+                approved: true,
+                signature: "AUTO",
+                approvedAt: new Date(),
+              },
+              admin: {
+                approved: true,
+                signature: "AUTO",
+                approvedAt: new Date(),
+              },
+            },
+          }
+        : {}),
     });
 
     res.status(201).json({
@@ -145,18 +199,16 @@ export const createAdmissionRequest = async (req, res) => {
       request,
       patient: {
         name: patient.name,
-        patId: patient.patId
-      }
+        patId: patient.patId,
+      },
     });
-
   } catch (error) {
     console.error("❌ Create Admission Request Error:", error);
-    res.status(500).json({ message: "Internal Server Error", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Internal Server Error", error: error.message });
   }
 };
-
-
-
 
 export const approveAdmissionRequest = async (req, res) => {
   try {
@@ -166,40 +218,44 @@ export const approveAdmissionRequest = async (req, res) => {
 
     const admissionRequest = await AdmissionRequest.findById(requestId);
     if (!admissionRequest) {
-      return res.status(404).json({ message: 'Admission request not found.' });
+      return res.status(404).json({ message: "Admission request not found." });
     }
 
     if (
-      (role === 'doctor' && ['Doctor', 'Both'].includes(admissionRequest.sendTo)) ||
-      (role === 'hospitalAdmin' && ['Admin', 'Both'].includes(admissionRequest.sendTo)) // NOTE: sendTo uses "Admin"
+      (role === "doctor" &&
+        ["Doctor", "Both"].includes(admissionRequest.sendTo)) ||
+      (role === "hospitalAdmin" &&
+        ["Admin", "Both"].includes(admissionRequest.sendTo)) // NOTE: sendTo uses "Admin"
     ) {
       // Update approval object correctly
-      if (role === 'doctor') {
+      if (role === "doctor") {
         admissionRequest.approval.doctor = {
           approved: true,
           signature,
-          approvedAt: new Date()
+          approvedAt: new Date(),
         };
       }
 
-      if (role === 'hospitalAdmin') {
+      if (role === "hospitalAdmin") {
         admissionRequest.approval.admin = {
           approved: true,
           signature,
-          approvedAt: new Date()
+          approvedAt: new Date(),
         };
       }
 
       // Check if status should be marked as Approved
       const isApproved =
-        (admissionRequest.sendTo === 'Both' &&
+        (admissionRequest.sendTo === "Both" &&
           admissionRequest.approval.doctor?.approved &&
           admissionRequest.approval.admin?.approved) ||
-        (admissionRequest.sendTo === 'Doctor' && admissionRequest.approval.doctor?.approved) ||
-        (admissionRequest.sendTo === 'Admin' && admissionRequest.approval.admin?.approved);
+        (admissionRequest.sendTo === "Doctor" &&
+          admissionRequest.approval.doctor?.approved) ||
+        (admissionRequest.sendTo === "Admin" &&
+          admissionRequest.approval.admin?.approved);
 
       if (isApproved) {
-        admissionRequest.status = 'Approved';
+        admissionRequest.status = "Approved";
       }
 
       await admissionRequest.save();
@@ -210,15 +266,17 @@ export const approveAdmissionRequest = async (req, res) => {
         approval: admissionRequest.approval,
       });
     } else {
-      return res.status(403).json({ message: 'Not authorized to approve this request.' });
+      return res
+        .status(403)
+        .json({ message: "Not authorized to approve this request." });
     }
   } catch (error) {
-    console.error('Error approving admission request:', error);
-    res.status(500).json({ message: 'Internal server error', error: error.message });
+    console.error("Error approving admission request:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
   }
 };
-
-
 
 export const admitPatient = async (req, res) => {
   const session = await AdmissionRequest.startSession();
@@ -228,27 +286,37 @@ export const admitPatient = async (req, res) => {
     const { requestId } = req.params;
 
     const admissionRequest = await AdmissionRequest.findById(requestId)
-      .populate('patient')
-      .populate('admissionDetails.bed')
-      .populate('admissionDetails.room')
+      .populate("patient")
+      .populate("admissionDetails.bed")
+      .populate("admissionDetails.room")
       .session(session);
 
     if (!admissionRequest) {
       await session.abortTransaction();
-      return res.status(404).json({ message: 'Admission request not found.' });
+      return res.status(404).json({ message: "Admission request not found." });
     }
 
-    if (admissionRequest.status !== 'Approved') {
+    if (admissionRequest.status !== "Approved") {
       await session.abortTransaction();
-      return res.status(400).json({ message: 'Admission request is not yet approved.' });
+      return res
+        .status(400)
+        .json({ message: "Admission request is not yet approved." });
     }
 
-    const roomId = admissionRequest.admissionDetails.room?._id || admissionRequest.admissionDetails.room;
-    const bedId = admissionRequest.admissionDetails.bed?._id || admissionRequest.admissionDetails.bed;
+    const roomId =
+      admissionRequest.admissionDetails.room?._id ||
+      admissionRequest.admissionDetails.room;
+    const bedId =
+      admissionRequest.admissionDetails.bed?._id ||
+      admissionRequest.admissionDetails.bed;
 
     if (!roomId || !bedId) {
       await session.abortTransaction();
-      return res.status(400).json({ message: 'Room or bed reference missing in admission details.' });
+      return res
+        .status(400)
+        .json({
+          message: "Room or bed reference missing in admission details.",
+        });
     }
 
     const room = await Room.findById(roomId).session(session);
@@ -256,28 +324,32 @@ export const admitPatient = async (req, res) => {
 
     if (!room) {
       await session.abortTransaction();
-      return res.status(404).json({ message: 'Room not found.' });
+      return res.status(404).json({ message: "Room not found." });
     }
 
-    if (!bed || !['Available', 'Reserved'].includes(bed.status)) {
+    if (!bed || !["Available", "Reserved"].includes(bed.status)) {
       await session.abortTransaction();
-      return res.status(400).json({ message: 'Bed is not available or reserved.' });
+      return res
+        .status(400)
+        .json({ message: "Bed is not available or reserved." });
     }
 
     // ✅ Update patient admission status
     const updatedPatient = await Patient.findOneAndUpdate(
       { _id: admissionRequest.patient._id },
-      { admissionStatus: 'Admitted' },
+      { admissionStatus: "Admitted" },
       { session, new: true }
     );
 
     if (!updatedPatient) {
       await session.abortTransaction();
-      return res.status(500).json({ message: 'Failed to update patient admission status.' });
+      return res
+        .status(500)
+        .json({ message: "Failed to update patient admission status." });
     }
 
     // ✅ Assign bed to patient
-    bed.status = 'Occupied';
+    bed.status = "Occupied";
     bed.assignedPatient = admissionRequest.patient._id;
     bed.assignedDate = new Date();
     await bed.save({ session });
@@ -286,30 +358,30 @@ export const admitPatient = async (req, res) => {
     await room.updateAvailableBeds();
 
     // ✅ Finalize admission request
-    admissionRequest.status = 'Admitted';
+    admissionRequest.status = "Admitted";
     await admissionRequest.save({ session });
 
     await session.commitTransaction();
 
     res.status(200).json({
-      message: 'Patient successfully admitted.',
+      message: "Patient successfully admitted.",
       admissionRequestId: admissionRequest._id,
       updatedPatient: {
         id: updatedPatient._id,
         name: updatedPatient.name,
         admissionStatus: updatedPatient.admissionStatus,
-      }
+      },
     });
-
   } catch (error) {
     await session.abortTransaction();
-    console.error('Error admitting patient:', error);
-    res.status(500).json({ message: 'Internal server error', error: error.message });
+    console.error("Error admitting patient:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
   } finally {
     session.endSession();
   }
 };
-
 
 export const getAdmissionRequests = async (req, res) => {
   try {
@@ -339,11 +411,9 @@ export const getAdmissionRequests = async (req, res) => {
       .populate("admissionDetails.bed", "bedNumber bedType status");
 
     // Filter out null patients (those who were excluded by match)
-    const filteredRequests = requests.filter(r => r.patient !== null);
+    const filteredRequests = requests.filter((r) => r.patient !== null);
 
-    const mappedRequests = filteredRequests.map(r => r.toObject());
-
-
+    const mappedRequests = filteredRequests.map((r) => r.toObject());
 
     res.status(200).json({
       message: "Admission requests fetched successfully.",
@@ -352,18 +422,21 @@ export const getAdmissionRequests = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching admission requests:", error);
-    res.status(500).json({ message: "Internal server error", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
   }
 };
 
 export const getApprovedAdmissions = async (req, res) => {
   try {
     const hospitalId = req.session.hospitalId;
-    if (!hospitalId) return res.status(403).json({ message: "No hospital context found." });
+    if (!hospitalId)
+      return res.status(403).json({ message: "No hospital context found." });
 
     const approvedRequests = await AdmissionRequest.find({
       hospital: hospitalId,
-      status: 'Approved',
+      status: "Approved",
     })
       .populate("patient", "name age contact admissionStatus")
       .populate("doctor", "name email")
@@ -377,7 +450,9 @@ export const getApprovedAdmissions = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching approved admissions:", error);
-    res.status(500).json({ message: "Internal server error", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
   }
 };
 
@@ -393,59 +468,61 @@ export const getAdmittedPatients = async (req, res) => {
     // Step 1: Get all admitted patients, including healthStatus
     const admitted = await Patient.find({
       hospital: hospitalId,
-      admissionStatus: "Admitted"
+      admissionStatus: "Admitted",
     }).select("name contact phone admissionStatus healthStatus");
 
     // Step 2: Get their IDs
-    const admittedPatientIds = admitted.map(p => p._id);
+    const admittedPatientIds = admitted.map((p) => p._id);
 
     // Step 3: Fetch related admission requests
     const admissionRequests = await AdmissionRequest.find({
       patient: { $in: admittedPatientIds },
-      status: "Admitted"
+      status: "Admitted",
     })
       .sort({ createdAt: -1 }) // get the latest
-      .select("patient caseId admissionDetails.medicalNote admissionDetails.date admissionDetails.gender admissionDetails.age createdAt")
+      .select(
+        "patient caseId admissionDetails.medicalNote admissionDetails.date admissionDetails.gender admissionDetails.age createdAt"
+      )
       .lean();
 
     // Step 4: Create map for admissionDetails
     const admissionDataMap = {};
-    admissionRequests.forEach(req => {
+    admissionRequests.forEach((req) => {
       admissionDataMap[req.patient.toString()] = {
         caseId: req.caseId,
         medicalNote: req.admissionDetails?.medicalNote || null,
         date: req.admissionDetails?.date || null,
         gender: req.admissionDetails?.gender || null,
-        age: req.admissionDetails?.age || null 
+        age: req.admissionDetails?.age || null,
       };
     });
 
     // Step 5: Construct admitted map with healthStatus and admission data
-    admitted.forEach(p => {
+    admitted.forEach((p) => {
       const id = p._id.toString();
 
       patientMap[id] = {
         ...p.toObject(),
-        ...admissionDataMap[id],  // adds medicalNote and date
-        type: "admitted"
+        ...admissionDataMap[id], // adds medicalNote and date
+        type: "admitted",
       };
     });
 
     // Step 6: Follow-up consultations
     const followUpConsultations = await Consultation.find({
-      followUpRequired: true
+      followUpRequired: true,
     }).select("patient caseId");
 
-    const followUpPatientIds = [...new Set(
-      followUpConsultations.map(c => c.patient.toString())
-    )];
+    const followUpPatientIds = [
+      ...new Set(followUpConsultations.map((c) => c.patient.toString())),
+    ];
 
     const followUpPatients = await Patient.find({
       hospital: hospitalId,
-      _id: { $in: followUpPatientIds }
+      _id: { $in: followUpPatientIds },
     }).select("name contact phone admissionStatus healthStatus");
 
-    followUpPatients.forEach(p => {
+    followUpPatients.forEach((p) => {
       const id = p._id.toString();
       if (patientMap[id]) {
         patientMap[id].type += "+followup";
@@ -463,12 +540,16 @@ export const getAdmittedPatients = async (req, res) => {
       // Fetch the latest consultation for the patient
       const latestConsultation = await Consultation.findOne({
         patient: patientId,
-      }).sort({ date: -1 }).select('caseId'); // Get the latest consultation's caseId
+      })
+        .sort({ date: -1 })
+        .select("caseId"); // Get the latest consultation's caseId
 
       // Fetch the latest admission request for the patient
       const latestAdmissionRequest = await AdmissionRequest.findOne({
         patient: patientId,
-      }).sort({ createdAt: -1 }).select('caseId'); // Get the latest admission's caseId
+      })
+        .sort({ createdAt: -1 })
+        .select("caseId"); // Get the latest admission's caseId
 
       let latestCaseId = "";
 
@@ -476,7 +557,9 @@ export const getAdmittedPatients = async (req, res) => {
       if (latestConsultation && latestAdmissionRequest) {
         // Compare both caseIds based on the most recent entry (using createdAt for admission)
         const latestConsultationDate = new Date(latestConsultation.createdAt);
-        const latestAdmissionRequestDate = new Date(latestAdmissionRequest.createdAt);
+        const latestAdmissionRequestDate = new Date(
+          latestAdmissionRequest.createdAt
+        );
 
         // If admission request was created later
         if (latestAdmissionRequestDate > latestConsultationDate) {
@@ -495,30 +578,37 @@ export const getAdmittedPatients = async (req, res) => {
     }
 
     res.status(200).json({
-      message: "Admitted, follow-up, and critical patients fetched successfully.",
+      message:
+        "Admitted, follow-up, and critical patients fetched successfully.",
       count: finalPatients.length,
-      patients: finalPatients
+      patients: finalPatients,
     });
   } catch (error) {
     console.error("Error fetching tracked patients:", error);
-    res.status(500).json({ message: "Internal server error", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
   }
 };
-
 
 export const getAdmissionRequestsWithInsurance = async (req, res) => {
   try {
     const hospitalId = req.session.hospitalId;
     if (!hospitalId) {
-      return res.status(403).json({ message: "Unauthorized: No hospital context." });
+      return res
+        .status(403)
+        .json({ message: "Unauthorized: No hospital context." });
     }
 
     // Fetch all admission requests for the hospital with insurance
     const requests = await AdmissionRequest.find({
       hospital: hospitalId,
-      "admissionDetails.insurance.hasInsurance": true
+      "admissionDetails.insurance.hasInsurance": true,
     })
-      .populate("patient", "name patId email phone hasInsurance insuranceDetails")
+      .populate(
+        "patient",
+        "name patId email phone hasInsurance insuranceDetails"
+      )
       .populate("admissionDetails.room", "roomID")
       .populate("admissionDetails.bed", "bedNumber")
       .populate("doctor", "name specialization")
@@ -530,22 +620,25 @@ export const getAdmissionRequestsWithInsurance = async (req, res) => {
     }
 
     // Ensure insuranceApproved is always present and include the AdmissionRequest _id
-    const dataWithInsuranceApproved = requests.map(admission => {
-      if (admission.admissionDetails.insurance && !admission.admissionDetails.insurance.insuranceApproved) {
+    const dataWithInsuranceApproved = requests.map((admission) => {
+      if (
+        admission.admissionDetails.insurance &&
+        !admission.admissionDetails.insurance.insuranceApproved
+      ) {
         admission.admissionDetails.insurance.insuranceApproved = "pending";
       }
 
       // Make sure _id of AdmissionRequest is returned explicitly
       return {
         _id: admission._id,
-        ...admission
+        ...admission,
       };
     });
 
     res.status(200).json({
       message: "Insured admission requests retrieved successfully.",
       count: dataWithInsuranceApproved.length,
-      data: dataWithInsuranceApproved
+      data: dataWithInsuranceApproved,
     });
   } catch (error) {
     console.error("❌ Error fetching insured admissions:", error);
@@ -553,16 +646,16 @@ export const getAdmissionRequestsWithInsurance = async (req, res) => {
   }
 };
 
-
 export const updateInsuranceStatus = async (req, res) => {
   try {
     const { admissionId } = req.params;
     const { insuranceApproved, amountApproved } = req.body;
 
-    const validStatuses = ['pending', 'approved', 'rejected'];
+    const validStatuses = ["pending", "approved", "rejected"];
     if (insuranceApproved && !validStatuses.includes(insuranceApproved)) {
       return res.status(400).json({
-        message: "Invalid insuranceApproved value. Must be 'pending', 'approved', or 'rejected'."
+        message:
+          "Invalid insuranceApproved value. Must be 'pending', 'approved', or 'rejected'.",
       });
     }
 
@@ -572,35 +665,39 @@ export const updateInsuranceStatus = async (req, res) => {
     }
 
     if (!admissionRequest.admissionDetails.insurance?.hasInsurance) {
-      return res.status(400).json({ message: "Patient does not have insurance." });
+      return res
+        .status(400)
+        .json({ message: "Patient does not have insurance." });
     }
 
     // ✅ Update insuranceApproved if passed
     if (insuranceApproved) {
-      admissionRequest.admissionDetails.insurance.insuranceApproved = insuranceApproved;
+      admissionRequest.admissionDetails.insurance.insuranceApproved =
+        insuranceApproved;
     }
 
     // ✅ Update amountApproved if passed
     if (amountApproved !== undefined) {
       if (amountApproved < 0) {
-        return res.status(400).json({ message: "amountApproved cannot be negative." });
+        return res
+          .status(400)
+          .json({ message: "amountApproved cannot be negative." });
       }
-      admissionRequest.admissionDetails.insurance.amountApproved = amountApproved;
+      admissionRequest.admissionDetails.insurance.amountApproved =
+        amountApproved;
     }
 
     await admissionRequest.save();
 
     res.status(200).json({
       message: `Insurance details updated successfully.`,
-      insurance: admissionRequest.admissionDetails.insurance
+      insurance: admissionRequest.admissionDetails.insurance,
     });
   } catch (error) {
     console.error("Error updating insurance status:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
-
 
 // export const dischargePatient = async (req, res) => {
 //   const session = await mongoose.startSession();  // Start a session for the current request
@@ -786,8 +883,8 @@ export const updateInsuranceStatus = async (req, res) => {
 // };
 
 export const dischargePatient = async (req, res) => {
-  const session = await mongoose.startSession();  // Start a session for the current request
-  session.startTransaction();  // Start the transaction
+  const session = await mongoose.startSession(); // Start a session for the current request
+  session.startTransaction(); // Start the transaction
 
   try {
     const {
@@ -799,11 +896,11 @@ export const dischargePatient = async (req, res) => {
       onDischargeNotes,
       diagnosis,
       followUpDay,
-      followUpTime
+      followUpTime,
     } = req.body;
 
     const patient = await Patient.findById(patientId);
-    if (!patient) return res.status(404).json({ message: 'Patient not found' });
+    if (!patient) return res.status(404).json({ message: "Patient not found" });
 
     // Save discharge summary
     const discharge = new Discharge({
@@ -815,7 +912,7 @@ export const dischargePatient = async (req, res) => {
       onDischargeNotes,
       diagnosis,
       followUpDay,
-      followUpTime
+      followUpTime,
     });
     await discharge.save();
 
@@ -824,40 +921,51 @@ export const dischargePatient = async (req, res) => {
     let admissionRequestDoc = null;
 
     if (!appointmentDoc) {
-      admissionRequestDoc = await AdmissionRequest.findOne({ caseId }).session(session);
+      admissionRequestDoc = await AdmissionRequest.findOne({ caseId }).session(
+        session
+      );
       if (!admissionRequestDoc) {
-        return res.status(404).json({ message: "Case ID not found in either Appointment or Admission Request." });
+        return res
+          .status(404)
+          .json({
+            message:
+              "Case ID not found in either Appointment or Admission Request.",
+          });
       }
     }
 
     // Update admission request status if found
     if (admissionRequestDoc) {
-      admissionRequestDoc.status = 'discharged';
+      admissionRequestDoc.status = "discharged";
       await admissionRequestDoc.save({ session });
     }
 
     // Dereference bed
-    const bed = await Bed.findOne({ assignedPatient: patientId }).session(session);
+    const bed = await Bed.findOne({ assignedPatient: patientId }).session(
+      session
+    );
     if (bed) {
-      bed.status = 'Available';
+      bed.status = "Available";
       bed.assignedPatient = null;
       bed.dischargeDate = dischargeDate;
       await bed.save({ session });
     }
 
     // Update patient status
-    patient.admissionStatus = 'Not Admitted';
+    patient.admissionStatus = "Not Admitted";
     await patient.save({ session });
 
     // ---- Add Bed Charges Logic Here ----
-    const bedChargeRate = bed?.charges?.dailyRate || 0;  // If bed has a daily rate, use it
+    const bedChargeRate = bed?.charges?.dailyRate || 0; // If bed has a daily rate, use it
     const assignedDate = bed?.assignedDate ? new Date(bed?.assignedDate) : null;
-    const dischargeDateObj = dischargeDate ? new Date(dischargeDate) : new Date();
+    const dischargeDateObj = dischargeDate
+      ? new Date(dischargeDate)
+      : new Date();
 
     // Ensure both dates are valid Date objects
     if (assignedDate && dischargeDateObj) {
       const timeDiff = dischargeDateObj - assignedDate;
-      const daysOccupied = Math.floor(timeDiff / (1000 * 3600 * 24));  // Convert milliseconds to days
+      const daysOccupied = Math.floor(timeDiff / (1000 * 3600 * 24)); // Convert milliseconds to days
 
       // Avoid negative days (in case of erroneous data)
       if (daysOccupied < 0) {
@@ -873,14 +981,15 @@ export const dischargePatient = async (req, res) => {
 
       // Ensure roomType exists and fetch corresponding service
       const roomType = room?.roomType; // Use room.roomType instead of bedType
-      console.log("Room Type from Room model:", roomType);  // **Debug Log**
+      console.log("Room Type from Room model:", roomType); // **Debug Log**
 
       if (!roomType) {
         throw new Error("Room type is not defined for the assigned bed.");
       }
 
       // ---- Fetch Insurance Company Services if Insurance is Approved ----
-      const insuranceApproved = admissionRequestDoc?.admissionDetails?.insurance?.insuranceApproved;  // **Insurance approval status**
+      const insuranceApproved =
+        admissionRequestDoc?.admissionDetails?.insurance?.insuranceApproved; // **Insurance approval status**
       let roomService;
       let roomCategory;
       let hospitalService;
@@ -888,46 +997,64 @@ export const dischargePatient = async (req, res) => {
       // If insurance is approved, use insurance company rates
       if (patient.hasInsurance && insuranceApproved === "approved") {
         // Fetch the insurance company using the insurance company name from the patient's insurance details
-        const insuranceCompany = await InsuranceCompany.findOne({ name: patient.insuranceDetails?.insuranceCompany }).session(session);
+        const insuranceCompany = await InsuranceCompany.findOne({
+          name: patient.insuranceDetails?.insuranceCompany,
+        }).session(session);
 
         // Log to verify correct insurance company is being fetched
-        console.log("Insurance Company: ", insuranceCompany);  // **Debug Log**
+        console.log("Insurance Company: ", insuranceCompany); // **Debug Log**
 
         // If insurance company is found, fetch its services
         if (insuranceCompany) {
-          roomService = insuranceCompany.services.find(service => service.serviceName === "Room Type Service");
+          roomService = insuranceCompany.services.find(
+            (service) => service.serviceName === "Room Type Service"
+          );
 
           if (!roomService) {
-            throw new Error(`Room service for room type ${roomType} not found in insurance company services.`);
+            throw new Error(
+              `Room service for room type ${roomType} not found in insurance company services.`
+            );
           }
 
           // Log the categories to debug the match
-          console.log("Categories in Room Type Service:", roomService.categories);  // **Debug Log**
+          console.log(
+            "Categories in Room Type Service:",
+            roomService.categories
+          ); // **Debug Log**
 
           // Fetch the correct room category based on roomType
-          roomCategory = roomService.categories.find(cat => cat.subCategoryName === roomType);
+          roomCategory = roomService.categories.find(
+            (cat) => cat.subCategoryName === roomType
+          );
 
           if (!roomCategory) {
-            throw new Error(`No category found for room type ${roomType} in insurance company services.`);
+            throw new Error(
+              `No category found for room type ${roomType} in insurance company services.`
+            );
           }
 
           // Use insurance company rate
           const insuranceRate = roomCategory.rate || 0; // Get the rate from the insurance company service
-          console.log("Insurance Rate for Room Type:", insuranceRate);  // **Debug Log**
-
+          console.log("Insurance Rate for Room Type:", insuranceRate); // **Debug Log**
         } else {
-          throw new Error(`Insurance company "${patient.insuranceDetails?.insuranceCompany}" not found.`);
+          throw new Error(
+            `Insurance company "${patient.insuranceDetails?.insuranceCompany}" not found.`
+          );
         }
       } else {
         // fallback to hospital service
         hospitalService = await Service.findOne({
           hospital: bed.hospital,
-          "categories.subCategoryName": roomType  // <-- Compare roomType with subCategoryName
+          "categories.subCategoryName": roomType, // <-- Compare roomType with subCategoryName
         }).session(session);
 
-        roomCategory = hospitalService.categories.find(cat => cat.subCategoryName === roomType);
+        roomCategory = hospitalService.categories.find(
+          (cat) => cat.subCategoryName === roomType
+        );
         if (!roomCategory) {
-          throw new Error(`No category found for room type ${roomType} in the service model.`);
+          throw new Error(
+            `No category found for room type ${roomType} in the service model.`
+          );
         }
       }
 
@@ -936,18 +1063,18 @@ export const dischargePatient = async (req, res) => {
 
       // Prepare the bed charge details (with service reference)
       const bedChargeDetails = {
-        service: roomService?._id || hospitalService._id,  // Reference to the room service ID
-        category: "Room",  // Category is "Room" for room-related services
-        quantity: daysOccupied,  // Quantity = number of days occupied
-        rate: roomCategory?.rate || bedChargeRate,  // **Use insurance company rate or hospital rate**
+        service: roomService?._id || hospitalService._id, // Reference to the room service ID
+        category: "Room", // Category is "Room" for room-related services
+        quantity: daysOccupied, // Quantity = number of days occupied
+        rate: roomCategory?.rate || bedChargeRate, // **Use insurance company rate or hospital rate**
         details: {
-          bedType: roomCategory?.subCategoryName || "Not Specified",  // Use subCategoryName as bedType
+          bedType: roomCategory?.subCategoryName || "Not Specified", // Use subCategoryName as bedType
           features: bed?.features || {},
           bedNumber: bed?.bedNumber || "Not Specified",
           daysOccupied,
-          totalCharge: (roomCategory?.rate || bedChargeRate) * daysOccupied,  // **Total charge based on correct rate**
-          roomDetails,  // Include room details like stayCharges, admissionFee, etc.
-        }
+          totalCharge: (roomCategory?.rate || bedChargeRate) * daysOccupied, // **Total charge based on correct rate**
+          roomDetails, // Include room details like stayCharges, admissionFee, etc.
+        },
       };
 
       // Call the centralized function to update or create the bill (only bed charges)
@@ -956,11 +1083,14 @@ export const dischargePatient = async (req, res) => {
       throw new Error("Assigned date or discharge date is missing.");
     }
 
-    res.status(200).json({ message: 'Patient discharged successfully', discharge });
-
+    res
+      .status(200)
+      .json({ message: "Patient discharged successfully", discharge });
   } catch (error) {
-    console.error('Error discharging patient:', error);
-    res.status(500).json({ message: 'Internal server error', error: error.message });
+    console.error("Error discharging patient:", error);
+    res
+      .status(500)
+      .json({ message: "Internal server error", error: error.message });
   } finally {
     // Always ensure the session is closed
     if (session) {
@@ -969,38 +1099,43 @@ export const dischargePatient = async (req, res) => {
   }
 };
 
-
-
 export const downloadDischargePDF = async (req, res) => {
   try {
     const { dischargeId } = req.params;
 
     const discharge = await Discharge.findById(dischargeId)
-      .populate('patient', 'name age gender phone email address')
+      .populate("patient", "name age gender phone email address")
       .lean();
 
     if (!discharge) {
-      return res.status(404).json({ message: 'Discharge record not found' });
+      return res.status(404).json({ message: "Discharge record not found" });
     }
 
-    const doc = new PDFDocument({ 
+    const doc = new PDFDocument({
       margin: 60,
-      size: 'A4'
+      size: "A4",
     });
-    
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="discharge-summary-${discharge.patient.name.replace(/\s+/g, '-')}-${new Date().toISOString().split('T')[0]}.pdf"`);
-    
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="discharge-summary-${discharge.patient.name.replace(
+        /\s+/g,
+        "-"
+      )}-${new Date().toISOString().split("T")[0]}.pdf"`
+    );
+
     doc.pipe(res);
 
     generateDischargePDF(doc, discharge);
-    
-    doc.end();
 
+    doc.end();
   } catch (error) {
-    console.error('Error generating discharge PDF:', error);
+    console.error("Error generating discharge PDF:", error);
     if (!res.headersSent) {
-      res.status(500).json({ message: 'Error generating PDF', error: error.message });
+      res
+        .status(500)
+        .json({ message: "Error generating PDF", error: error.message });
     }
   }
 };
@@ -1009,106 +1144,226 @@ export const downloadDischargePDF = async (req, res) => {
 const generateDischargePDF = (doc, discharge) => {
   const patient = discharge.patient;
   const margin = 60;
-  const pageWidth = doc.page.width - (margin * 2);
+  const pageWidth = doc.page.width - margin * 2;
   const labelWidth = 140;
   const valueX = margin + labelWidth + 20;
-  
+
   let currentY = margin + 40;
 
-  doc.fontSize(26)
-     .font('Helvetica-Bold')
-     .fillColor('#2c3e50')
-     .text('DISCHARGE SUMMARY', margin, currentY, { 
-       align: 'center',
-       width: pageWidth 
-     });
-  
+  doc
+    .fontSize(26)
+    .font("Helvetica-Bold")
+    .fillColor("#2c3e50")
+    .text("DISCHARGE SUMMARY", margin, currentY, {
+      align: "center",
+      width: pageWidth,
+    });
+
   currentY += 40;
-  
-  doc.strokeColor('#3498db')
-     .lineWidth(3)
-     .moveTo(margin, currentY)
-     .lineTo(margin + pageWidth, currentY)
-     .stroke();
-  
+
+  doc
+    .strokeColor("#3498db")
+    .lineWidth(3)
+    .moveTo(margin, currentY)
+    .lineTo(margin + pageWidth, currentY)
+    .stroke();
+
   currentY += 30;
 
+  currentY = addSection(
+    doc,
+    "PATIENT INFORMATION",
+    currentY,
+    margin,
+    pageWidth
+  );
 
-  currentY = addSection(doc, 'PATIENT INFORMATION', currentY, margin, pageWidth);
-  
-  currentY = addKeyValueRow(doc, 'Patient Name', patient.name || 'N/A', currentY, margin, labelWidth, valueX);
-  currentY = addKeyValueRow(doc, 'Age', patient.age ? `${patient.age} years` : 'N/A', currentY, margin, labelWidth, valueX);
-  currentY = addKeyValueRow(doc, 'Gender', patient.gender || 'N/A', currentY, margin, labelWidth, valueX);
-  currentY = addKeyValueRow(doc, 'Phone', patient.phone || 'N/A', currentY, margin, labelWidth, valueX);
-  currentY = addKeyValueRow(doc, 'Email', patient.email || 'N/A', currentY, margin, labelWidth, valueX);
-  currentY = addKeyValueRow(doc, 'Address', patient.address || 'N/A', currentY, margin, labelWidth, valueX, true);
-  
+  currentY = addKeyValueRow(
+    doc,
+    "Patient Name",
+    patient.name || "N/A",
+    currentY,
+    margin,
+    labelWidth,
+    valueX
+  );
+  currentY = addKeyValueRow(
+    doc,
+    "Age",
+    patient.age ? `${patient.age} years` : "N/A",
+    currentY,
+    margin,
+    labelWidth,
+    valueX
+  );
+  currentY = addKeyValueRow(
+    doc,
+    "Gender",
+    patient.gender || "N/A",
+    currentY,
+    margin,
+    labelWidth,
+    valueX
+  );
+  currentY = addKeyValueRow(
+    doc,
+    "Phone",
+    patient.phone || "N/A",
+    currentY,
+    margin,
+    labelWidth,
+    valueX
+  );
+  currentY = addKeyValueRow(
+    doc,
+    "Email",
+    patient.email || "N/A",
+    currentY,
+    margin,
+    labelWidth,
+    valueX
+  );
+  currentY = addKeyValueRow(
+    doc,
+    "Address",
+    patient.address || "N/A",
+    currentY,
+    margin,
+    labelWidth,
+    valueX,
+    true
+  );
+
   currentY += 25;
 
-  currentY = addSection(doc, 'ADMISSION DETAILS', currentY, margin, pageWidth);
-  
-  currentY = addKeyValueRow(doc, 'Admission Date', formatDate(discharge.admissionDate), currentY, margin, labelWidth, valueX);
-  
+  currentY = addSection(doc, "ADMISSION DETAILS", currentY, margin, pageWidth);
+
+  currentY = addKeyValueRow(
+    doc,
+    "Admission Date",
+    formatDate(discharge.admissionDate),
+    currentY,
+    margin,
+    labelWidth,
+    valueX
+  );
+
   if (discharge.onAdmissionNotes) {
-    currentY = addKeyValueRow(doc, 'Clinical Notes', discharge.onAdmissionNotes, currentY, margin, labelWidth, valueX, true);
+    currentY = addKeyValueRow(
+      doc,
+      "Clinical Notes",
+      discharge.onAdmissionNotes,
+      currentY,
+      margin,
+      labelWidth,
+      valueX,
+      true
+    );
   }
-  
+
   currentY += 25;
 
-  currentY = addSection(doc, 'DISCHARGE DETAILS', currentY, margin, pageWidth);
-  
-  currentY = addKeyValueRow(doc, 'Discharge Date', formatDate(discharge.dischargeDate), currentY, margin, labelWidth, valueX);
-  
+  currentY = addSection(doc, "DISCHARGE DETAILS", currentY, margin, pageWidth);
+
+  currentY = addKeyValueRow(
+    doc,
+    "Discharge Date",
+    formatDate(discharge.dischargeDate),
+    currentY,
+    margin,
+    labelWidth,
+    valueX
+  );
+
   if (discharge.onDischargeNotes) {
-    currentY = addKeyValueRow(doc, 'Clinical Notes', discharge.onDischargeNotes, currentY, margin, labelWidth, valueX, true);
+    currentY = addKeyValueRow(
+      doc,
+      "Clinical Notes",
+      discharge.onDischargeNotes,
+      currentY,
+      margin,
+      labelWidth,
+      valueX,
+      true
+    );
   }
-  
+
   currentY += 25;
 
   if (discharge.diagnosis) {
-    currentY = addSection(doc, 'DIAGNOSIS', currentY, margin, pageWidth);
-    
-    doc.fontSize(11)
-       .font('Helvetica')
-       .fillColor('#2c3e50')
-       .text(discharge.diagnosis, margin, currentY, { 
-         width: pageWidth,
-         lineGap: 3
-       });
-    
+    currentY = addSection(doc, "DIAGNOSIS", currentY, margin, pageWidth);
+
+    doc
+      .fontSize(11)
+      .font("Helvetica")
+      .fillColor("#2c3e50")
+      .text(discharge.diagnosis, margin, currentY, {
+        width: pageWidth,
+        lineGap: 3,
+      });
+
     currentY = doc.y + 25;
   }
 
   if (discharge.followUpDay || discharge.followUpTime) {
-    currentY = addSection(doc, 'FOLLOW-UP APPOINTMENT', currentY, margin, pageWidth);
-    
-    currentY = addKeyValueRow(doc, 'Day', discharge.followUpDay || 'N/A', currentY, margin, labelWidth, valueX);
-    currentY = addKeyValueRow(doc, 'Time', discharge.followUpTime || 'N/A', currentY, margin, labelWidth, valueX);
-    
+    currentY = addSection(
+      doc,
+      "FOLLOW-UP APPOINTMENT",
+      currentY,
+      margin,
+      pageWidth
+    );
+
+    currentY = addKeyValueRow(
+      doc,
+      "Day",
+      discharge.followUpDay || "N/A",
+      currentY,
+      margin,
+      labelWidth,
+      valueX
+    );
+    currentY = addKeyValueRow(
+      doc,
+      "Time",
+      discharge.followUpTime || "N/A",
+      currentY,
+      margin,
+      labelWidth,
+      valueX
+    );
+
     currentY += 25;
   }
 
   const footerY = doc.page.height - 80;
-  
-  doc.strokeColor('#bdc3c7')
-     .lineWidth(1)
-     .moveTo(margin, footerY - 20)
-     .lineTo(margin + pageWidth, footerY - 20)
-     .stroke();
 
-  doc.fontSize(9)
-     .font('Helvetica')
-     .fillColor('#7f8c8d')
-     .text(`Generated on: ${new Date().toLocaleString('en-US', {
-       year: 'numeric',
-       month: 'long', 
-       day: 'numeric',
-       hour: '2-digit',
-       minute: '2-digit'
-     })}`, margin, footerY, { 
-       align: 'center',
-       width: pageWidth 
-     });
+  doc
+    .strokeColor("#bdc3c7")
+    .lineWidth(1)
+    .moveTo(margin, footerY - 20)
+    .lineTo(margin + pageWidth, footerY - 20)
+    .stroke();
+
+  doc
+    .fontSize(9)
+    .font("Helvetica")
+    .fillColor("#7f8c8d")
+    .text(
+      `Generated on: ${new Date().toLocaleString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })}`,
+      margin,
+      footerY,
+      {
+        align: "center",
+        width: pageWidth,
+      }
+    );
 };
 
 const addSection = (doc, title, currentY, margin, pageWidth) => {
@@ -1117,51 +1372,61 @@ const addSection = (doc, title, currentY, margin, pageWidth) => {
     currentY = 60;
   }
 
-  doc.fontSize(14)
-     .font('Helvetica-Bold')
-     .fillColor('#34495e')
-     .text(title, margin, currentY);
-  
+  doc
+    .fontSize(14)
+    .font("Helvetica-Bold")
+    .fillColor("#34495e")
+    .text(title, margin, currentY);
+
   currentY += 20;
-  
-  doc.strokeColor('#ecf0f1')
-     .lineWidth(1)
-     .moveTo(margin, currentY)
-     .lineTo(margin + pageWidth, currentY)
-     .stroke();
-  
+
+  doc
+    .strokeColor("#ecf0f1")
+    .lineWidth(1)
+    .moveTo(margin, currentY)
+    .lineTo(margin + pageWidth, currentY)
+    .stroke();
+
   return currentY + 15;
 };
 
-const addKeyValueRow = (doc, key, value, currentY, margin, labelWidth, valueX, isMultiline = false) => {
+const addKeyValueRow = (
+  doc,
+  key,
+  value,
+  currentY,
+  margin,
+  labelWidth,
+  valueX,
+  isMultiline = false
+) => {
   if (currentY > doc.page.height - 100) {
     doc.addPage();
     currentY = 60;
   }
 
-  doc.fontSize(10)
-     .font('Helvetica-Bold')
-     .fillColor('#34495e')
-     .text(`${key}:`, margin, currentY, { 
-       width: labelWidth,
-       align: 'left'
-     });
+  doc
+    .fontSize(10)
+    .font("Helvetica-Bold")
+    .fillColor("#34495e")
+    .text(`${key}:`, margin, currentY, {
+      width: labelWidth,
+      align: "left",
+    });
 
-  doc.fontSize(10)
-     .font('Helvetica')
-     .fillColor('#2c3e50');
+  doc.fontSize(10).font("Helvetica").fillColor("#2c3e50");
 
   if (isMultiline) {
-    const valueHeight = doc.heightOfString(value, { 
+    const valueHeight = doc.heightOfString(value, {
       width: doc.page.width - valueX - margin,
-      lineGap: 2
+      lineGap: 2,
     });
-    
-    doc.text(value, valueX, currentY, { 
+
+    doc.text(value, valueX, currentY, {
       width: doc.page.width - valueX - margin,
-      lineGap: 2
+      lineGap: 2,
     });
-    
+
     return currentY + Math.max(valueHeight, 12) + 8;
   } else {
     doc.text(value, valueX, currentY);
@@ -1170,11 +1435,11 @@ const addKeyValueRow = (doc, key, value, currentY, margin, labelWidth, valueX, i
 };
 
 const formatDate = (date) => {
-  if (!date) return 'N/A';
-  
-  return new Date(date).toLocaleDateString('en-US', {
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric'
+  if (!date) return "N/A";
+
+  return new Date(date).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
   });
 };
