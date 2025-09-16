@@ -33,7 +33,7 @@ export const bookAppointment = async (req, res) => {
     return res.status(403).json({ message: "Access denied. No hospital context found." });
   }
 
-  if (!patientName || !appointmentType || !typeVisit || !departmentName || !doctorEmail || !mobileNumber || !email || !date) {
+  if (!patientName  || !appointmentType || !typeVisit || !departmentName || !doctorEmail || !mobileNumber ||  !date) {
     return res.status(400).json({ message: "All required fields must be provided." });
   }
 
@@ -49,11 +49,19 @@ export const bookAppointment = async (req, res) => {
     return res.status(400).json({ message: "Cannot book appointments for past dates." });
   }
 
+  const normalizePhone = (p) => (p || '').replace(/\D/g, '');
+  const normalizedPhone = normalizePhone(mobileNumber);
+
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    let patient = await Patient.findOne({ email, hospital: hospitalId });
+    // let patient = await Patient.findOne({ email, hospital: hospitalId });
+    let patient = await Patient.findOne({           
+      name: patientName.trim(),
+      phone: normalizedPhone,
+      hospital: hospitalId,
+    });
 
     if (!patient) {
       const defaultPassword = "changeme123";
@@ -67,7 +75,7 @@ export const bookAppointment = async (req, res) => {
         address: address || "Not specified",
         email,
         password: hashedPassword,
-        phone: mobileNumber,
+        phone: normalizedPhone,
         hospital: hospitalId,
         status: "active",
         typeVisit: "Walk in",
@@ -118,23 +126,55 @@ export const bookAppointment = async (req, res) => {
       procedureCategory: procedureCategory || null
     });
 
-    if (typeVisit === "Walk in") {
-      const startOfDay = new Date(date);
-      startOfDay.setHours(0, 0, 0, 0);
+    // if (typeVisit === "Walk in") {
+    //   const startOfDay = new Date(date);
+    //   startOfDay.setHours(0, 0, 0, 0);
 
-      const endOfDay = new Date(date);
-      endOfDay.setHours(23, 59, 59, 999);
+    //   const endOfDay = new Date(date);
+    //   endOfDay.setHours(23, 59, 59, 999);
 
-      const lastAppointment = await Appointment.findOne({
-        doctor: doctor._id,
-        department: department._id,
-        tokenDate: { $gte: startOfDay, $lte: endOfDay },
-        tokenNumber: { $ne: null },
-      }).sort({ tokenNumber: -1 });
+    //   const lastAppointment = await Appointment.findOne({
+    //     doctor: doctor._id,
+    //     department: department._id,
+    //     tokenDate: { $gte: startOfDay, $lte: endOfDay },
+    //     tokenNumber: { $ne: null },
+    //   }).sort({ tokenNumber: -1 });
 
-      newAppointment.tokenNumber = lastAppointment ? lastAppointment.tokenNumber + 1 : 1;
+    //   newAppointment.tokenNumber = lastAppointment ? lastAppointment.tokenNumber + 1 : 1;
 
-    }
+    // }
+
+        if (typeVisit === "Walk in") {
+        const startOfDay = new Date(date);
+        startOfDay.setHours(0, 0, 0, 0);
+
+        const endOfDay = new Date(date);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        // Get all existing appointments for this doctor+department that day
+        const existingAppointments = await Appointment.find({
+          doctor: doctor._id,
+          department: department._id,
+          tokenDate: { $gte: startOfDay, $lte: endOfDay },
+        }).sort({ tokenDate: 1 }); // sort by time
+
+        // Add the new one temporarily into the list
+        existingAppointments.push(newAppointment);
+
+        // Sort everything again by time
+        existingAppointments.sort((a, b) => new Date(a.tokenDate) - new Date(b.tokenDate));
+
+        // Reassign token numbers sequentially
+        for (let i = 0; i < existingAppointments.length; i++) {
+          existingAppointments[i].tokenNumber = i + 1;
+        }
+
+        // Save all appointments with updated tokens (including the new one)
+        await Promise.all(existingAppointments.map(app => app.save({ session })));
+      }
+
+
+
 
     await newAppointment.save({ session });
 
