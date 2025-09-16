@@ -33,7 +33,7 @@ export const bookAppointment = async (req, res) => {
     return res.status(403).json({ message: "Access denied. No hospital context found." });
   }
 
-  if (!patientName || !appointmentType || !typeVisit || !departmentName || !doctorEmail || !mobileNumber || !email || !date) {
+  if (!patientName  || !appointmentType || !typeVisit || !departmentName || !doctorEmail || !mobileNumber ||  !date) {
     return res.status(400).json({ message: "All required fields must be provided." });
   }
 
@@ -49,11 +49,19 @@ export const bookAppointment = async (req, res) => {
     return res.status(400).json({ message: "Cannot book appointments for past dates." });
   }
 
+  const normalizePhone = (p) => (p || '').replace(/\D/g, '');
+  const normalizedPhone = normalizePhone(mobileNumber);
+
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    let patient = await Patient.findOne({ email, hospital: hospitalId });
+    // let patient = await Patient.findOne({ email, hospital: hospitalId });
+    let patient = await Patient.findOne({           
+      name: patientName.trim(),
+      phone: normalizedPhone,
+      hospital: hospitalId,
+    });
 
     if (!patient) {
       const defaultPassword = "changeme123";
@@ -67,7 +75,7 @@ export const bookAppointment = async (req, res) => {
         address: address || "Not specified",
         email,
         password: hashedPassword,
-        phone: mobileNumber,
+        phone: normalizedPhone,
         hospital: hospitalId,
         status: "active",
         typeVisit: "Walk in",
