@@ -126,23 +126,52 @@ export const bookAppointment = async (req, res) => {
       procedureCategory: procedureCategory || null
     });
 
-    if (typeVisit === "Walk in") {
-      const startOfDay = new Date(date);
-      startOfDay.setHours(0, 0, 0, 0);
+    // if (typeVisit === "Walk in") {
+    //   const startOfDay = new Date(date);
+    //   startOfDay.setHours(0, 0, 0, 0);
 
-      const endOfDay = new Date(date);
-      endOfDay.setHours(23, 59, 59, 999);
+    //   const endOfDay = new Date(date);
+    //   endOfDay.setHours(23, 59, 59, 999);
 
-      const lastAppointment = await Appointment.findOne({
-        doctor: doctor._id,
-        department: department._id,
-        tokenDate: { $gte: startOfDay, $lte: endOfDay },
-        tokenNumber: { $ne: null },
-      }).sort({ tokenNumber: -1 });
+    //   const lastAppointment = await Appointment.findOne({
+    //     doctor: doctor._id,
+    //     department: department._id,
+    //     tokenDate: { $gte: startOfDay, $lte: endOfDay },
+    //     tokenNumber: { $ne: null },
+    //   }).sort({ tokenNumber: -1 });
 
-      newAppointment.tokenNumber = lastAppointment ? lastAppointment.tokenNumber + 1 : 1;
+    //   newAppointment.tokenNumber = lastAppointment ? lastAppointment.tokenNumber + 1 : 1;
 
-    }
+    // }
+
+      if (typeVisit === "Walk in") {
+        const startOfDay = new Date(date);
+        startOfDay.setHours(0, 0, 0, 0);
+
+        const endOfDay = new Date(date);
+        endOfDay.setHours(23, 59, 59, 999);
+
+        // Get all existing appointments for this doctor+department that day
+        const existingAppointments = await Appointment.find({
+          doctor: doctor._id,
+          department: department._id,
+          tokenDate: { $gte: startOfDay, $lte: endOfDay },
+        }).sort({ tokenDate: 1 }); // sort by time
+
+        // Add the new one temporarily into the list
+        existingAppointments.push(newAppointment);
+
+        // Sort everything again by time
+        existingAppointments.sort((a, b) => new Date(a.tokenDate) - new Date(b.tokenDate));
+
+        // Reassign token numbers sequentially
+        for (let i = 0; i < existingAppointments.length; i++) {
+          existingAppointments[i].tokenNumber = i + 1;
+        }
+
+        // Save all appointments with updated tokens (including the new one)
+        await Promise.all(existingAppointments.map(app => app.save({ session })));
+      }
 
     await newAppointment.save({ session });
 
