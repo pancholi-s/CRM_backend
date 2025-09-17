@@ -300,6 +300,7 @@ export const getPatientDetailsById = async (req, res) => {
       address: admissionDetails?.address ?? null,
       Age: admissionDetails?.age ?? null,
       gender: admissionDetails?.gender ?? null,
+      time: admissionDetails?.time ?? null,
       emergencyContact: admissionDetails?.emergencyContact ?? null,
       emergencyName: admissionDetails?.emergencyName ?? null,
       createdByName,
