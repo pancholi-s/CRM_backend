@@ -5,7 +5,7 @@ import { requireHospitalContext } from "../middleware/hospitalContext.js";
 import { paginationMiddleware } from "../middleware/paginationMiddleware.js";
 
 import { getPatientsByHospital, getPatientsByStatus,getAppointmentsByPatientId, getPatientDetailsById,getInpatients, getPatientsInSurgery,updateHealthStatus , getActivePatientCount, getPatientDetailsbyPatId,getMostCommonDiagnosis, getTop4Procedures, getCriticalPatients  } from "../controllers/patientController.js"
-import { getAdmissionDetails } from "../controllers/patientController.js";
+import { getAdmissionDetails, searchPatientByPatId } from "../controllers/patientController.js";
 
 const router = express.Router();
 router.use(requireHospitalContext);
@@ -83,6 +83,12 @@ router.get(
   "/admission/:admissionId",
   authorizeRoles("doctor", "receptionist", "hospitalAdmin"),
   getAdmissionDetails
+);
+
+router.get(
+  "/search/patid",
+  authorizeRoles("doctor", "receptionist", "hospitalAdmin"),
+  searchPatientByPatId
 );
 
 export default router;

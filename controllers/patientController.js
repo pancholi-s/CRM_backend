@@ -906,3 +906,31 @@ export const getAdmissionDetails = async (req, res) => {
     res.status(500).json({ message: "Error fetching admission details" });
   }
 };
+
+export const searchPatientByPatId = async (req, res) => {
+  try {
+    const { patId } = req.query;
+
+    const patient = await Patient.findOne({ patId });
+
+    if (!patient) {
+      return res.status(404).json({ message: "Patient not found" });
+    }
+
+    const patientDetails = {
+      patientId: patient._id,
+      name: patient.name,
+      gender: patient.gender,
+      birthday: patient.birthday,
+      age: patient.age,
+      address: patient.address,
+      email: patient.email,
+      phone: patient.phone
+    };
+
+    return res.status(200).json(patientDetails);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
