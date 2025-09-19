@@ -5,7 +5,7 @@ import { requireHospitalContext } from '../middleware/hospitalContext.js';
 import { updateStatusesMiddleware } from '../middleware/statusMiddleware.js';
 import { paginationMiddleware } from '../middleware/paginationMiddleware.js';
 
-import { bookAppointment, completeAppointment, getAppointmentsByStatus, getFilteredAppointments, getAppointmentCounts, getRejectedAppointments, getCancelledAppointments, getAppointmentsByVisitType, getAppointments,getAppointmentHistory, startAppointment, sendPatientToLast, getTodayQueue } from '../controllers/bookAppointmentController.js';
+import { bookAppointment, completeAppointment, getAppointmentsByStatus, getFilteredAppointments, getAppointmentCounts, getRejectedAppointments, getCancelledAppointments, getAppointmentsByVisitType, getAppointments,getAppointmentHistory, startAppointment, sendPatientToLast, getTodayQueue, rescheduleAppointment } from '../controllers/bookAppointmentController.js';
 import { requestAppointment, getRequestedAppointments, approveAppointment, rejectAppointment, cancelAppointment } from '../controllers/requestedAppointmentController.js';
 
 const router = express.Router();
@@ -31,5 +31,6 @@ router.get('/getAppointmentsHistory', authorizeRoles("receptionist", "hospitalAd
 router.post('/setOngoing', authorizeRoles("receptionist", "hospitalAdmin","doctor"), startAppointment);
 router.post("/send-to-last", authorizeRoles("receptionist", "hospitalAdmin","doctor"), sendPatientToLast );
 router.get("/today-queue", authorizeRoles("receptionist", "hospitalAdmin","doctor"), getTodayQueue );
+router.post("/reshedule-appointment", authorizeRoles("receptionist", "hospitalAdmin","doctor"), rescheduleAppointment );
 
 export default router;

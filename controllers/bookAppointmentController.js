@@ -1232,3 +1232,155 @@ export const getTodayQueue = async (req, res) => {
     });
   }
 };
+
+export const rescheduleAppointment = async (req, res) => {
+  const { appointmentId, newTime, reason } = req.body;  // newTime added here
+  const { hospitalId } = req.session;
+
+  if (!hospitalId) {
+    return res.status(403).json({ message: "Access denied. No hospital context found." });
+  }
+
+  if (!appointmentId || !newTime) {
+    return res.status(400).json({ message: "Appointment ID and new time are required." });
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(appointmentId)) {
+    return res.status(400).json({ message: "Invalid appointment ID." });
+  }
+
+  try {
+    // Find the appointment that needs to be rescheduled
+    const appointment = await Appointment.findOne({
+      _id: appointmentId,
+      hospital: hospitalId,
+      status: { $nin: ["Completed", "Cancelled", "RescheduledOld"] }  // Ensure it's not completed or old rescheduled
+    }).populate("patient", "name email phone")
+      .populate("doctor", "_id name")
+      .populate("department", "_id name");
+
+    if (!appointment) {
+      return res.status(404).json({ message: "Appointment not found." });
+    }
+
+    const oldTokenNumber = appointment.tokenNumber;
+    const oldDate = new Date(appointment.tokenDate);
+
+    // Update the appointment time
+    const newDate = new Date(newTime);
+    appointment.tokenDate = newDate;  // Set the new time
+
+    // Add reason to the note
+    const defaultReason = "Rescheduled";
+    const actualReason = reason && reason.trim() ? reason.trim() : defaultReason;
+    appointment.note = appointment.note ? `${appointment.note}\n[RESCHEDULED] Reason: ${actualReason}` : `[RESCHEDULED] Reason: ${actualReason}`;
+
+    // Save the updated appointment
+    await appointment.save();
+
+    // Now, recalculate token numbers for all appointments on the NEW day
+    const startOfNewDay = new Date(newDate);
+    startOfNewDay.setHours(0, 0, 0, 0);
+    const endOfNewDay = new Date(newDate);
+    endOfNewDay.setHours(23, 59, 59, 999);
+
+    // Get all appointments for the new day
+    const appointmentsOnNewDay = await Appointment.find({
+      doctor: appointment.doctor._id,
+      department: appointment.department._id,
+      hospital: hospitalId,
+      tokenDate: { $gte: startOfNewDay, $lte: endOfNewDay },
+      status: { $nin: ["Cancelled", "Completed", "RescheduledOld"] }  // Filter out cancelled, completed, and rescheduled appointments
+    }).sort({ tokenDate: 1 });
+
+    // Reassign token numbers based on sorted order for the new day
+    appointmentsOnNewDay.forEach((appt, index) => {
+      appt.tokenNumber = index + 1;  // Reassign sequential tokens starting from 1
+    });
+
+    // Save all updated appointments with new token numbers
+    await Promise.all(appointmentsOnNewDay.map(app => app.save()));
+
+    // If the appointment was moved to a different day, we also need to recalculate tokens for the old day
+    const isSameDay = startOfNewDay.getTime() === new Date(oldDate.getFullYear(), oldDate.getMonth(), oldDate.getDate()).getTime();
+    
+    if (!isSameDay) {
+      const startOfOldDay = new Date(oldDate);
+      startOfOldDay.setHours(0, 0, 0, 0);
+      const endOfOldDay = new Date(oldDate);
+      endOfOldDay.setHours(23, 59, 59, 999);
+
+      // Get all appointments for the old day (excluding the rescheduled one)
+      const appointmentsOnOldDay = await Appointment.find({
+        doctor: appointment.doctor._id,
+        department: appointment.department._id,
+        hospital: hospitalId,
+        tokenDate: { $gte: startOfOldDay, $lte: endOfOldDay },
+        status: { $nin: ["Cancelled", "Completed", "RescheduledOld"] },
+        _id: { $ne: appointmentId }  // Exclude the rescheduled appointment
+      }).sort({ tokenDate: 1 });
+
+      // Reassign token numbers for the old day
+      appointmentsOnOldDay.forEach((appt, index) => {
+        appt.tokenNumber = index + 1;
+      });
+
+      // Save all updated appointments for the old day
+      await Promise.all(appointmentsOnOldDay.map(app => app.save()));
+    }
+
+    // Find the updated appointment to get the new token number
+    const updatedAppointment = appointmentsOnNewDay.find(apt => 
+      apt._id.toString() === appointmentId.toString()
+    );
+
+    const newTokenNumber = updatedAppointment ? updatedAppointment.tokenNumber : appointment.tokenNumber;
+
+    // Fetch the current queue for response (appointments on the new day)
+    const currentQueue = await Appointment.find({
+      doctor: appointment.doctor._id,
+      department: appointment.department._id,
+      hospital: hospitalId,
+      tokenDate: { $gte: startOfNewDay, $lte: endOfNewDay },
+      status: { $nin: ["Cancelled", "Completed", "RescheduledOld"] }
+    }).populate("patient", "name")
+      .sort({ tokenNumber: 1 });
+
+    // Return the response with updated appointment and token numbers
+    res.status(200).json({
+      message: "Appointment rescheduled successfully.",
+      updatedAppointment: {
+        _id: appointment._id,
+        caseId: appointment.caseId,
+        patient: appointment.patient,
+        oldTokenNumber,
+        newTokenNumber,
+        status: appointment.status,
+        reasonProvided: reason ? true : false,
+        actualReason: actualReason,
+        oldDate: oldDate,
+        newDate: newDate
+      },
+      currentQueue: currentQueue.map(apt => ({
+        tokenNumber: apt.tokenNumber,
+        patientName: apt.patient ? apt.patient.name : 'Unknown',
+        status: apt.status,
+        caseId: apt.caseId
+      })),
+      queueSummary: {
+        totalWaiting: currentQueue.filter(apt => apt.status === "Waiting").length,
+        totalOngoing: currentQueue.filter(apt => apt.status === "Ongoing").length,
+        nextPatient: currentQueue.find(apt => apt.status === "Waiting")?.patient?.name || "None"
+      }
+    });
+
+  } catch (error) {
+    console.error("Error rescheduling appointment:", error);
+    res.status(500).json({
+      message: "Error rescheduling appointment.",
+      error: error.message
+    });
+  }
+};
+
+
