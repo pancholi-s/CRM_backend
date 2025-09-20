@@ -1,7 +1,7 @@
 import PDFDocument from "pdfkit";
 import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
-import { updateBillAfterAction } from "../middleware/billingMiddleware.js"; // Import the billing middleware function
+import { updateBillAfterAction, recalculateBillForInsuranceChange } from "../middleware/billingMiddleware.js"; // Import the billing middleware function
 
 import AdmissionRequest from '../models/admissionReqModel.js';
 import Bed from '../models/bedModel.js';
@@ -666,16 +666,16 @@ export const getAdmissionRequestsWithInsurance = async (req, res) => {
   }
 };
 
+
 export const updateInsuranceStatus = async (req, res) => {
   try {
     const { admissionId } = req.params;
     const { insuranceApproved, amountApproved } = req.body;
 
-    const validStatuses = ["pending", "approved", "rejected"];
+    const validStatuses = ['pending', 'approved', 'rejected'];
     if (insuranceApproved && !validStatuses.includes(insuranceApproved)) {
       return res.status(400).json({
-        message:
-          "Invalid insuranceApproved value. Must be 'pending', 'approved', or 'rejected'.",
+        message: "Invalid insuranceApproved value. Must be 'pending', 'approved', or 'rejected'."
       });
     }
 
@@ -685,39 +685,49 @@ export const updateInsuranceStatus = async (req, res) => {
     }
 
     if (!admissionRequest.admissionDetails.insurance?.hasInsurance) {
-      return res
-        .status(400)
-        .json({ message: "Patient does not have insurance." });
+      return res.status(400).json({ message: "Patient does not have insurance." });
     }
+
+    const oldStatus = admissionRequest.admissionDetails.insurance.insuranceApproved;
 
     // ✅ Update insuranceApproved if passed
     if (insuranceApproved) {
-      admissionRequest.admissionDetails.insurance.insuranceApproved =
-        insuranceApproved;
+      admissionRequest.admissionDetails.insurance.insuranceApproved = insuranceApproved;
     }
 
     // ✅ Update amountApproved if passed
     if (amountApproved !== undefined) {
       if (amountApproved < 0) {
-        return res
-          .status(400)
-          .json({ message: "amountApproved cannot be negative." });
+        return res.status(400).json({ message: "amountApproved cannot be negative." });
       }
-      admissionRequest.admissionDetails.insurance.amountApproved =
-        amountApproved;
+      admissionRequest.admissionDetails.insurance.amountApproved = amountApproved;
     }
 
     await admissionRequest.save();
 
+    console.log(
+      `📌 Insurance status changed for caseId=${admissionRequest.caseId}: ${oldStatus} → ${admissionRequest.admissionDetails.insurance.insuranceApproved}`
+    );
+
+    // 🔄 Trigger bill recalculation (retroactive overwrite)
+    let billChanges = null;
+    try {
+      billChanges = await recalculateBillForInsuranceChange(admissionRequest.caseId);
+    } catch (err) {
+      console.error("❌ Error recalculating bill after insurance change:", err);
+    }
+
     res.status(200).json({
-      message: `Insurance details updated successfully.`,
+      message: `Insurance details updated and bill recalculated.`,
       insurance: admissionRequest.admissionDetails.insurance,
+      billChanges
     });
   } catch (error) {
-    console.error("Error updating insurance status:", error);
+    console.error("❌ Error updating insurance status:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 
 
 // export const dischargePatient = async (req, res) => {

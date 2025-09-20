@@ -2,6 +2,7 @@ import InsuranceCompany from "../models/insuranceCompanyModel.js";
 import mongoose from "mongoose";
 import AdmissionRequest from "../models/admissionReqModel.js";
 
+
 // Add a new insurance company
 export const addInsuranceCompany = async (req, res) => {
   try {
