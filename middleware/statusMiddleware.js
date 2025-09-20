@@ -148,9 +148,9 @@ cron.schedule("* * * * *", async () => {
     if (token1) {
       token1.status = "Ongoing";
       await token1.save();
-      console.log(`✅ Token 1 set to Ongoing.`);
+      // console.log(`✅ Token 1 set to Ongoing.`);
     } else {
-      console.log(`⏳ Token 1 is already Ongoing or no token to promote.`);
+      // console.log(`⏳ Token 1 is already Ongoing or no token to promote.`);
     }
   } catch (err) {
     console.error("❌ Cron job error:", err.message);
