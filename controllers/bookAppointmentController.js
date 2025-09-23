@@ -41,6 +41,16 @@ export const bookAppointment = async (req, res) => {
     return res.status(400).json({ message: "Invalid typeVisit. Use 'Walk in', 'Referral', or 'Online'." });
   }
 
+  const processEmail = (emailInput) => {
+  if (!emailInput || emailInput.trim() === "" || emailInput.trim() === "null" || emailInput.trim() === "undefined") {
+    return null; 
+  }
+  return emailInput.trim().toLowerCase(); 
+  };
+
+  const processedEmail = processEmail(email);
+  const isEmailProvided = processedEmail !== null;
+
   // ✅ Prevent booking past appointments
   const appointmentDate = new Date(date);
   const today = new Date();
@@ -63,6 +73,31 @@ export const bookAppointment = async (req, res) => {
       hospital: hospitalId,
     });
 
+    if (isEmailProvided) {
+      // Check if email exists for OTHER patients
+      const emailExistsForOther = await Patient.findOne({
+        email: processedEmail,
+        hospital: hospitalId,
+        ...(patient && { _id: { $ne: patient._id } }) 
+      });
+
+      if (emailExistsForOther) {
+        return res.status(400).json({ message: "Email already exists for another patient." });
+      }
+
+      if (patient && patient.email && patient.email !== processedEmail) {
+        console.log("Patient exists with different email");
+        return res.status(400).json({ 
+          message: "Email already registered for this patient. Please use the same email or contact support." 
+        });
+      }
+    } else {
+
+      if (patient && patient.email) {
+        console.log("Patient exists with email, empty email provided - proceeding with appointment booking");
+      }
+    }
+
     if (!patient) {
       const defaultPassword = "changeme123";
       const hashedPassword = await bcrypt.hash(defaultPassword, 10);
@@ -73,7 +108,7 @@ export const bookAppointment = async (req, res) => {
         birthday: birthday || "Not specified",
         age: age || 0,
         address: address || "Not specified",
-        email,
+        email: processedEmail,
         password: hashedPassword,
         phone: normalizedPhone,
         hospital: hospitalId,
@@ -83,7 +118,14 @@ export const bookAppointment = async (req, res) => {
       });
 
       await patient.save({ session });
+    } else {
+        if (isEmailProvided && !patient.email) {
+            patient.email = processedEmail;
+            await patient.save({ session });
+            console.log("Updated existing patient with email:", patient.email);
+        }
     }
+
 
     const doctor = await Doctor.findOne({ email: doctorEmail, hospital: hospitalId }).populate("departments");
     if (!doctor) {

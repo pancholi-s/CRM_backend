@@ -30,6 +30,15 @@ export const getPatientsByHospital = async (req, res) => {
       filter.doctors = req.query.doctorId; // match patients assigned to this doctor
     }
 
+    if (req.query.search) {
+      const search = req.query.search.toLowerCase().trim();
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },        
+        { email: { $regex: search, $options: 'i' } },      
+        { phone: { $regex: search, $options: 'i' } }       
+      ];
+    }
+
     // Fetch total count
     const totalPatients = await Patient.countDocuments(filter);
 
@@ -145,6 +154,15 @@ export const getPatientsByStatus = async (req, res) => {
 
     if (doctorId) {
       filter.doctors = doctorId; // filter patients by doctor
+    }
+
+    if (req.query.search) {
+      const search = req.query.search.toLowerCase().trim();
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { phone: { $regex: search, $options: 'i' } },
+      ];
     }
 
     const page = parseInt(req.query.page) || 1;
