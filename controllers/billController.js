@@ -470,38 +470,51 @@ export const addToBill = async (req, res) => {
   const { billId } = req.params;
   const { category, quantity, rate, details } = req.body;
 
-  // Validate ObjectId format
   if (!mongoose.Types.ObjectId.isValid(billId)) {
     return res.status(400).json({ message: "Invalid Bill ID format." });
   }
 
   try {
-    // Fetch the bill by ID
     const bill = await Bill.findById(billId);
     if (!bill) {
       return res.status(404).json({ message: "Bill not found." });
     }
 
-    // Create a new expense and add it to the bill's services array
+    // 🔑 billedDate is required now
+    const billedDateStr =
+      details?.billedDate || new Date().toISOString().split("T")[0];
+
+    // Prevent duplicates (same category + date)
+    const exists = bill.services.some(
+      (s) =>
+        s.category === category &&
+        s.details?.billedDate === billedDateStr
+    );
+    if (exists) {
+      return res
+        .status(400)
+        .json({ message: `Entry for ${category} already exists on ${billedDateStr}.` });
+    }
+
     const newExpense = {
-      service: null,  // No service ID for custom expenses
-      category,       // Admin-defined category
+      service: null,
+      category,
       quantity,
       rate,
-      details,
+      details: {
+        ...details,
+        daysOccupied: 1,
+        totalCharge: rate * quantity,
+        billedDate: billedDateStr, // ✅ ensure date is always there
+      },
     };
 
-    // Add the new expense to the services array
     bill.services.push(newExpense);
-
-    // Update the totalAmount and outstanding
     bill.totalAmount += rate * quantity;
     bill.outstanding = bill.totalAmount - bill.paidAmount;
 
-    // Save the updated bill
     await bill.save();
 
-    // Return the updated bill in the response
     res.status(200).json({
       message: "Expense added successfully.",
       bill: {
@@ -516,6 +529,8 @@ export const addToBill = async (req, res) => {
     res.status(500).json({ message: "Error adding expense.", error: error.message });
   }
 };
+
+
 
 
 export const getRevenueByYear = async (req, res) => {

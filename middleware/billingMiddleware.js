@@ -7,6 +7,7 @@ import Consultation from '../models/consultationModel.js';
 import Appointment from '../models/appointmentModel.js';
 import AdmissionRequest from '../models/admissionReqModel.js';
 import Hospital from '../models/hospitalModel.js';
+import mongoose from 'mongoose';
 
 export const updateBillAfterAction = async (caseId, session, medicationCharge) => {
   try {
@@ -195,3 +196,251 @@ export const updateBillAfterAction = async (caseId, session, medicationCharge) =
     throw new Error("Failed to update bill.");
   }
 };
+
+// export const recalculateBillForInsuranceChange = async (caseId) => {
+//   const session = await mongoose.startSession();
+//   session.startTransaction();
+
+//   try {
+//     if (!caseId) throw new Error("Case ID is required for recalculation.");
+
+//     // Find the bill
+//     let bill = await Bill.findOne({ caseId }).populate("patient").session(session);
+//     if (!bill) throw new Error(`No bill found for caseId: ${caseId}`);
+
+//     const oldTotal = bill.totalAmount;
+
+//     // Get admission details
+//     const admission = await AdmissionRequest.findOne({ caseId }).session(session);
+//     if (!admission) throw new Error("Admission request not found for bill recalculation.");
+
+//     const insurance = admission.admissionDetails.insurance || {};
+//     const insuranceStatus = insurance.insuranceApproved;
+//     const hasInsurance = insurance.hasInsurance && insuranceStatus === "approved";
+
+//     // Get rates from insurance company or hospital
+//     let serviceRates = {};
+//     if (hasInsurance) {
+//       console.log(`📌 Patient has insurance approved. Fetching rates from company: ${insurance.insuranceCompany}`);
+//       const insuranceCompany = await InsuranceCompany.findOne({
+//         name: insurance.insuranceCompany,
+//       }).session(session);
+
+//       if (!insuranceCompany) throw new Error("Insurance company not found for insured patient.");
+
+//       insuranceCompany.services.forEach(service => {
+//         service.categories.forEach(cat => {
+//           serviceRates[cat.subCategoryName] = cat.rate;
+//           console.log(`   • Insurance Service Loaded: ${cat.subCategoryName} = ${cat.rate}`);
+//         });
+//       });
+
+//     } else {
+//       console.log("📌 Using hospital service rates.");
+//       const services = await Service.find().session(session);
+//       services.forEach((srv) => {
+//         srv.categories.forEach((cat) => {
+//           serviceRates[cat.name] = cat.rate;
+//         });
+//       });
+//     }
+
+//     let newTotal = 0;
+//     let serviceLogs = [];
+
+//     bill.services.forEach((srv, index) => {
+//       const oldRate = srv.rate;
+
+//       let categoryKey = srv.category;
+//       if (srv.category.includes("Room Charges") && srv.details?.bedType) {
+//         categoryKey = srv.details.bedType;
+//       }
+
+//       const newRate = serviceRates[categoryKey] || oldRate;
+
+//       srv.rate = newRate;
+
+//       // ✅ Update totalCharge inside details
+//       if (srv.details) {
+//         srv.details.totalCharge = newRate * (srv.quantity || 1);
+
+//         // mark nested Mixed path as modified
+//         bill.markModified(`services.${index}.details`);
+
+//       }
+
+//       newTotal += srv.details?.totalCharge || (newRate * (srv.quantity || 1));
+
+//       if (oldRate !== newRate) {
+//         const billedDateStr = srv.details?.billedDate
+//           ? new Date(srv.details.billedDate).toISOString().split("T")[0]
+//           : "N/A";
+
+//         serviceLogs.push(
+//           `   • ${srv.category} (Date: ${billedDateStr}) : ${oldRate} → ${newRate}`
+//         );
+//       }
+//     });
+
+//     bill.totalAmount = newTotal;
+//     bill.outstanding = newTotal - bill.paidAmount;
+
+//     await bill.save({ session });
+
+//     await session.commitTransaction();
+//     session.endSession();
+
+//     console.log(`📌 Service-level changes for caseId=${caseId}:`);
+//     if (serviceLogs.length > 0) {
+//       serviceLogs.forEach((log) => console.log(log));
+//     } else {
+//       console.log("   • No rate changes detected.");
+//     }
+
+//     console.log(
+//       `🔄 Bill recalculated for caseId=${caseId}. Old Total: ${oldTotal}, New Total: ${newTotal}`
+//     );
+
+//     return { oldTotal, newTotal, serviceLogs };
+//   } catch (error) {
+//     console.error("❌ Error recalculating bill:", error);
+//     await session.abortTransaction();
+//     session.endSession();
+//     throw new Error("Failed to recalculate bill after insurance change.");
+//   }
+// };
+
+export const recalculateBillForInsuranceChange = async (caseId) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    if (!caseId) throw new Error("Case ID is required for recalculation.");
+
+    // Find the bill
+    let bill = await Bill.findOne({ caseId }).populate("patient").session(session);
+    if (!bill) throw new Error(`No bill found for caseId: ${caseId}`);
+
+    const oldTotal = bill.totalAmount;
+
+    // Get admission details
+    const admission = await AdmissionRequest.findOne({ caseId }).session(session);
+    if (!admission) throw new Error("Admission request not found for bill recalculation.");
+
+    const insurance = admission.admissionDetails.insurance || {};
+    const insuranceStatus = insurance.insuranceApproved;
+    const hasInsurance = insurance.hasInsurance && insuranceStatus === "approved";
+
+    // Determine if insurance rates should be used
+    let useInsuranceRates = false;
+
+    switch (insuranceStatus) {
+      case "approved":
+        useInsuranceRates = true;
+        break;
+      case "pending":
+      case "rejected":
+      default:
+        useInsuranceRates = false; // hospital rates
+    }
+
+    // Get service rates (either insurance or hospital)
+    let serviceRates = {};
+    if (useInsuranceRates) {
+      console.log(`📌 Patient has insurance approved. Fetching rates from company: ${insurance.insuranceCompany}`);
+      const insuranceCompany = await InsuranceCompany.findOne({
+        name: insurance.insuranceCompany,
+      }).session(session);
+
+      if (!insuranceCompany) throw new Error("Insurance company not found for insured patient.");
+
+      // Map the insurance rates based on categories and subCategoryName (bedType)
+      insuranceCompany.services.forEach(service => {
+        service.categories.forEach(cat => {
+          serviceRates[cat.subCategoryName] = cat.rate;
+          console.log(`   • Insurance Service Loaded: ${cat.subCategoryName} = ${cat.rate}`);
+        });
+      });
+
+    } else {
+      console.log("📌 Using hospital service rates.");
+      const services = await Service.find({ hospital: bill.hospital }).session(session);
+      services.forEach((srv) => {
+        srv.categories.forEach((cat) => {
+          serviceRates[cat.subCategoryName] = cat.rate;
+        });
+      });
+    }
+
+    let newTotal = 0;
+    let serviceLogs = [];
+
+    // Update service rates in bill services
+    bill.services.forEach((srv, index) => {
+      const oldRate = srv.rate;
+
+      let categoryKey = srv.category;
+
+      // Handle room charges based on bedType
+      if (srv.category.includes("Room Charges") && srv.details?.bedType) {
+        categoryKey = srv.details.bedType;
+      }
+
+      // Get the new rate from serviceRates map
+      const newRate = serviceRates[categoryKey] || oldRate;
+      srv.rate = newRate;
+
+      // Update totalCharge inside details
+      if (srv.details) {
+        srv.details.totalCharge = newRate * (srv.quantity || 1);
+
+        // Mark the modified path in the nested service details
+        bill.markModified(`services.${index}.details`);
+      }
+
+      newTotal += srv.details?.totalCharge || (newRate * (srv.quantity || 1));
+
+      // Log the changes if rate has been updated
+      if (oldRate !== newRate) {
+        const billedDateStr = srv.details?.billedDate
+          ? new Date(srv.details.billedDate).toISOString().split("T")[0]
+          : "N/A";
+
+        serviceLogs.push(
+          `   • ${srv.category} (Date: ${billedDateStr}) : ${oldRate} → ${newRate}`
+        );
+      }
+    });
+
+    // Update totalAmount and outstanding
+    bill.totalAmount = newTotal;
+    bill.outstanding = newTotal - bill.paidAmount;
+
+    // Save the updated bill
+    await bill.save({ session });
+
+    // Commit the transaction
+    await session.commitTransaction();
+    session.endSession();
+
+    console.log(`📌 Service-level changes for caseId=${caseId}:`);
+    if (serviceLogs.length > 0) {
+      serviceLogs.forEach((log) => console.log(log));
+    } else {
+      console.log("   • No rate changes detected.");
+    }
+
+    console.log(
+      `🔄 Bill recalculated for caseId=${caseId}. Old Total: ${oldTotal}, New Total: ${newTotal}`
+    );
+
+    return { oldTotal, newTotal, serviceLogs };
+  } catch (error) {
+    console.error("❌ Error recalculating bill:", error);
+    await session.abortTransaction();
+    session.endSession();
+    throw new Error("Failed to recalculate bill after insurance change.");
+  }
+};
+
+

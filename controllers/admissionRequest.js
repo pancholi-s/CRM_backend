@@ -1,7 +1,7 @@
 import PDFDocument from "pdfkit";
 import bcrypt from "bcryptjs";
 import mongoose from "mongoose";
-import { updateBillAfterAction } from "../middleware/billingMiddleware.js"; // Import the billing middleware function
+import { updateBillAfterAction, recalculateBillForInsuranceChange } from "../middleware/billingMiddleware.js"; // Import the billing middleware function
 
 import AdmissionRequest from '../models/admissionReqModel.js';
 import Bed from '../models/bedModel.js';
@@ -33,11 +33,36 @@ export const createAdmissionRequest = async (req, res) => {
       patient = await Patient.findOne({ patId, hospital: hospitalId });
     }
 
-    // Step 2: Validate room
+    // Step 2: Determine caseId for existing patient (from latest appointment only)
+    if (patient) {
+      const latestAppointment = await Appointment.findOne({
+        patient: patient._id,
+        status: { $in: ["Ongoing", "Scheduled"] }
+      })
+        .sort({ createdAt: -1 })
+        .select('caseId');
+
+
+      generatedCaseId = latestAppointment?.caseId;
+
+      // If no appointment exists, generate a new caseId
+      if (!generatedCaseId) {
+        const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+        const randomPart = Math.random().toString(36).substring(2, 8).toUpperCase();
+        generatedCaseId = `CASE-${datePart}-${randomPart}`;
+      }
+    } else {
+      // New patient → generate caseId
+      const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+      const randomPart = Math.random().toString(36).substring(2, 8).toUpperCase();
+      generatedCaseId = `CASE-${datePart}-${randomPart}`;
+    }
+
+    // Step 3: Validate room
     const room = await Room.findOne({ roomID: admissionDetails.room, hospital: hospitalId });
     if (!room) return res.status(404).json({ message: "Room not found with given roomID." });
 
-    // Step 3: Validate bed
+    // Step 4: Validate bed (must be available)
     const bed = await Bed.findOne({
       bedNumber: admissionDetails.bed,
       hospital: hospitalId,
@@ -49,7 +74,7 @@ export const createAdmissionRequest = async (req, res) => {
         .status(409)
         .json({ message: "Bed not available. Already reserved or occupied." });
 
-    // Step 4: If patient doesn't exist, register
+    // Step 5: If patient doesn't exist, register
     if (!patient) {
       const { name, mobileNumber, email } = req.body;
       if (!name || !mobileNumber || !email)
@@ -78,14 +103,6 @@ export const createAdmissionRequest = async (req, res) => {
       const defaultPassword = "changeme";
       const hashedPassword = await bcrypt.hash(defaultPassword, 10);
 
-      // Generate unique caseId
-      const datePart = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-      const randomPart = Math.random()
-        .toString(36)
-        .substring(2, 8)
-        .toUpperCase();
-      generatedCaseId = `CASE-${datePart}-${randomPart}`;
-
       patient = new Patient({
         name,
         email,
@@ -97,15 +114,15 @@ export const createAdmissionRequest = async (req, res) => {
         insuranceDetails:
           hasInsurance === true || hasInsurance === "true"
             ? {
-                employerName: req.body.employerName,
-                insuranceIdNumber: req.body.insuranceIdNumber,
-                policyNumber: req.body.policyNumber,
-                insuranceCompany: req.body.insuranceCompany,
-                employeeCode: req.body.employeeCode,
-                insuranceStartDate: req.body.insuranceStartDate,
-                insuranceExpiryDate: req.body.insuranceExpiryDate,
-                insuranceApproved: "pending", // ✅ default for new patient
-              }
+              employerName: req.body.employerName,
+              insuranceIdNumber: req.body.insuranceIdNumber,
+              policyNumber: req.body.policyNumber,
+              insuranceCompany: req.body.insuranceCompany,
+              employeeCode: req.body.employeeCode,
+              insuranceStartDate: req.body.insuranceStartDate,
+              insuranceExpiryDate: req.body.insuranceExpiryDate,
+              insuranceApproved: "pending", // ✅ default for new patient
+            }
             : undefined,
       });
 
@@ -113,7 +130,7 @@ export const createAdmissionRequest = async (req, res) => {
       console.log(`✅ New patient registered: ${patient.patId}`);
     }
 
-    // Step 4b: Ensure existing patients have insuranceApproved if missing
+    // Step 5b: Ensure existing patients have insuranceApproved if missing
     if (patient.hasInsurance && !patient.insuranceDetails?.insuranceApproved) {
       patient.insuranceDetails = {
         ...patient.insuranceDetails,
@@ -121,10 +138,6 @@ export const createAdmissionRequest = async (req, res) => {
       };
       await patient.save();
     }
-
-    // Step 5: Reserve bed
-    bed.status = "Reserved";
-    await bed.save();
 
     // Step 6: Construct admission details
     const insurancePayload = {
@@ -150,18 +163,9 @@ export const createAdmissionRequest = async (req, res) => {
     };
     delete admissionData.admissionDate;
 
-    // const request = await AdmissionRequest.create({
-    //   patient: patient._id,
-    //   hospital: hospitalId,
-    //   doctor,
-    //   createdBy,
-    //   sendTo,
-    //   caseId: generatedCaseId,
-    //   admissionDetails: admissionData
-    // });
-
     const autoApprove = sendTo === "None";
 
+    // Step 7: Create AdmissionRequest
     const request = await AdmissionRequest.create({
       patient: patient._id,
       hospital: hospitalId,
@@ -169,29 +173,34 @@ export const createAdmissionRequest = async (req, res) => {
       createdBy,
       sendTo,
       caseId: generatedCaseId,
-    admissionDetails: admissionData,
+      admissionDetails: admissionData,
       ...(autoApprove ? { status: "Approved" } : {}),
       ...(autoApprove
         ? {
-            approval: {
-              doctor: {
-                approved: true,
-                signature: "AUTO",
-                approvedAt: new Date(),
-              },
-              admin: {
-                approved: true,
-                signature: "AUTO",
-                approvedAt: new Date(),
-              },
+          approval: {
+            doctor: {
+              approved: true,
+              signature: "AUTO",
+              approvedAt: new Date(),
             },
-          }
-        : {}),    });
+            admin: {
+              approved: true,
+              signature: "AUTO",
+              approvedAt: new Date(),
+            },
+          },
+        }
+        : {}),
+    });
 
-    // Generate a unique invoice number (e.g., based on the caseId and timestamp)
-    const invoiceNumber = `INV-${generatedCaseId}-${Date.now()}`; // Create a unique invoice number based on caseId and timestamp
+    // ✅ Step 8: Reserve bed only after AdmissionRequest creation
+    bed.status = "Reserved";
+    await bed.save();
 
-    // Create the bill at the time of admission
+    // Step 9: Generate a unique invoice number
+    const invoiceNumber = `INV-${generatedCaseId}-${Date.now()}`;
+
+    // Step 10: Create the bill at the time of admission
     const bill = new Bill({
       patient: patient._id,
       caseId: generatedCaseId,
@@ -200,7 +209,7 @@ export const createAdmissionRequest = async (req, res) => {
       paidAmount: 0,
       outstanding: 0,
       status: "Pending",
-      invoiceNumber: invoiceNumber, // Assign the generated unique invoice number
+      invoiceNumber: invoiceNumber,
       hospital: hospitalId,
       mode: "Cash",
     });
@@ -666,16 +675,16 @@ export const getAdmissionRequestsWithInsurance = async (req, res) => {
   }
 };
 
+
 export const updateInsuranceStatus = async (req, res) => {
   try {
     const { admissionId } = req.params;
     const { insuranceApproved, amountApproved } = req.body;
 
-    const validStatuses = ["pending", "approved", "rejected"];
+    const validStatuses = ['pending', 'approved', 'rejected'];
     if (insuranceApproved && !validStatuses.includes(insuranceApproved)) {
       return res.status(400).json({
-        message:
-          "Invalid insuranceApproved value. Must be 'pending', 'approved', or 'rejected'.",
+        message: "Invalid insuranceApproved value. Must be 'pending', 'approved', or 'rejected'."
       });
     }
 
@@ -685,39 +694,49 @@ export const updateInsuranceStatus = async (req, res) => {
     }
 
     if (!admissionRequest.admissionDetails.insurance?.hasInsurance) {
-      return res
-        .status(400)
-        .json({ message: "Patient does not have insurance." });
+      return res.status(400).json({ message: "Patient does not have insurance." });
     }
+
+    const oldStatus = admissionRequest.admissionDetails.insurance.insuranceApproved;
 
     // ✅ Update insuranceApproved if passed
     if (insuranceApproved) {
-      admissionRequest.admissionDetails.insurance.insuranceApproved =
-        insuranceApproved;
+      admissionRequest.admissionDetails.insurance.insuranceApproved = insuranceApproved;
     }
 
     // ✅ Update amountApproved if passed
     if (amountApproved !== undefined) {
       if (amountApproved < 0) {
-        return res
-          .status(400)
-          .json({ message: "amountApproved cannot be negative." });
+        return res.status(400).json({ message: "amountApproved cannot be negative." });
       }
-      admissionRequest.admissionDetails.insurance.amountApproved =
-        amountApproved;
+      admissionRequest.admissionDetails.insurance.amountApproved = amountApproved;
     }
 
     await admissionRequest.save();
 
+    console.log(
+      `📌 Insurance status changed for caseId=${admissionRequest.caseId}: ${oldStatus} → ${admissionRequest.admissionDetails.insurance.insuranceApproved}`
+    );
+
+    // 🔄 Trigger bill recalculation (retroactive overwrite)
+    let billChanges = null;
+    try {
+      billChanges = await recalculateBillForInsuranceChange(admissionRequest.caseId);
+    } catch (err) {
+      console.error("❌ Error recalculating bill after insurance change:", err);
+    }
+
     res.status(200).json({
-      message: `Insurance details updated successfully.`,
+      message: `Insurance details updated and bill recalculated.`,
       insurance: admissionRequest.admissionDetails.insurance,
+      billChanges
     });
   } catch (error) {
-    console.error("Error updating insurance status:", error);
+    console.error("❌ Error updating insurance status:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 
 
 // export const dischargePatient = async (req, res) => {
@@ -901,21 +920,17 @@ export const dischargePatient = async (req, res) => {
     await discharge.save();
 
     // 3️⃣ Update admission request / appointment
-    let appointmentDoc = await Appointment.findOne({ caseId });
-    let admissionRequestDoc = null;
-
-    if (!appointmentDoc) {
-      admissionRequestDoc = await AdmissionRequest.findOne({ caseId });
-      if (!admissionRequestDoc) {
-        return res
-          .status(404)
-          .json({ message: "Case ID not found in either Appointment or Admission Request." });
+    let admissionRequest = await AdmissionRequest.findOne({ caseId });
+    if (admissionRequest) {
+      admissionRequest.status = 'discharged';
+      await admissionRequest.save();
+    } else {
+      // Try to mark the appointment as completed if it exists
+      const appointment = await Appointment.findOne({ caseId });
+      if (appointment) {
+        appointment.status = 'completed';
+        await appointment.save();
       }
-    }
-
-    if (admissionRequestDoc) {
-      admissionRequestDoc.status = "discharged";
-      await admissionRequestDoc.save();
     }
 
     // 4️⃣ Free the bed & fetch room
@@ -971,7 +986,7 @@ export const dischargePatient = async (req, res) => {
         // ✅ Insurance check
         if (
           patient.hasInsurance &&
-          admissionRequestDoc?.admissionDetails?.insurance?.insuranceApproved === "approved"
+          admissionRequest?.admissionDetails?.insurance?.insuranceApproved === "approved"
         ) {
           const insuranceCompany = await InsuranceCompany.findOne({
             name: patient.insuranceDetails?.insuranceCompany,
