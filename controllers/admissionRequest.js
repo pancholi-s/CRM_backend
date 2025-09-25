@@ -201,13 +201,19 @@ export const createAdmissionRequest = async (req, res) => {
     const invoiceNumber = `INV-${generatedCaseId}-${Date.now()}`;
 
     // Step 10: Create the bill at the time of admission
-    const bill = new Bill({
+    const depositAmount = admissionDetails?.deposit || 0;
+
+      const bill = new Bill({
       patient: patient._id,
       caseId: generatedCaseId,
-      services: [], // Initially no services, can be updated later
+      services: [],
       totalAmount: 0,
-      paidAmount: 0,
+      paidAmount: depositAmount,
       outstanding: 0,
+      deposit: depositAmount,
+      payments: depositAmount > 0
+        ? [{ amount: depositAmount, mode: "Cash", reference: "Admission Deposit" }]
+        : [],
       status: "Pending",
       invoiceNumber: invoiceNumber,
       hospital: hospitalId,
@@ -1423,4 +1429,103 @@ const formatDate = (date) => {
     month: "long",
     day: "numeric",
   });
+};
+
+
+export const addInsuranceAfterAdmission = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const { admissionId } = req.params; // AdmissionRequest ID
+    const {
+      // Admission fields
+      name,
+      contact,
+      address,
+      age,
+      gender,
+      emergencyContact,
+      emergencyName,
+      medicalNote,
+      date,
+      time,
+      deposit,
+      // Insurance fields
+      hasInsurance,
+      insuranceIdNumber,
+      policyNumber,
+      insuranceCompany,
+      employeeCode,
+      insuranceStartDate,
+      insuranceExpiryDate,
+      insuranceApproved,
+      amountApproved
+    } = req.body;  // employerName removed
+
+    if (!admissionId) {
+      return res.status(400).json({ message: "Admission ID is required." });
+    }
+
+    const admissionRequest = await AdmissionRequest.findById(admissionId)
+      .populate('patient')
+      .session(session);
+
+    if (!admissionRequest) {
+      await session.abortTransaction();
+      return res.status(404).json({ message: "Admission request not found." });
+    }
+
+    // 1️⃣ Update admissionDetails
+    admissionRequest.admissionDetails = {
+      ...admissionRequest.admissionDetails,
+      name: name || admissionRequest.admissionDetails.name,
+      contact: contact || admissionRequest.admissionDetails.contact,
+      address: address || admissionRequest.admissionDetails.address,
+      age: age !== undefined ? age : admissionRequest.admissionDetails.age,
+      gender: gender || admissionRequest.admissionDetails.gender,
+      emergencyContact: emergencyContact || admissionRequest.admissionDetails.emergencyContact,
+      emergencyName: emergencyName || admissionRequest.admissionDetails.emergencyName,
+      medicalNote: medicalNote || admissionRequest.admissionDetails.medicalNote,
+      date: date || admissionRequest.admissionDetails.date,
+      time: time || admissionRequest.admissionDetails.time,
+      deposit: deposit !== undefined ? deposit : admissionRequest.admissionDetails.deposit,
+      // Keep insurance nested (without employerName)
+      insurance: {
+        ...admissionRequest.admissionDetails.insurance,
+        hasInsurance: hasInsurance !== undefined ? !!hasInsurance : admissionRequest.admissionDetails.insurance?.hasInsurance || false,
+        employerName: req.body.employerName || admissionRequest.admissionDetails.insurance?.employerName || "",
+        insuranceIdNumber: insuranceIdNumber || admissionRequest.admissionDetails.insurance?.insuranceIdNumber || "",
+        policyNumber: policyNumber || admissionRequest.admissionDetails.insurance?.policyNumber || "",
+        insuranceCompany: insuranceCompany || admissionRequest.admissionDetails.insurance?.insuranceCompany || "",
+        employeeCode: employeeCode || admissionRequest.admissionDetails.insurance?.employeeCode || "",
+        insuranceStartDate: insuranceStartDate || admissionRequest.admissionDetails.insurance?.insuranceStartDate || null,
+        insuranceExpiryDate: insuranceExpiryDate || admissionRequest.admissionDetails.insurance?.insuranceExpiryDate || null,
+        insuranceApproved: insuranceApproved || admissionRequest.admissionDetails.insurance?.insuranceApproved || "pending",
+        amountApproved: amountApproved !== undefined ? amountApproved : admissionRequest.admissionDetails.insurance?.amountApproved || 0
+      }
+    };
+
+    await admissionRequest.save({ session });
+
+    // 2️⃣ Update patient insurance flag and details
+    const patient = admissionRequest.patient;
+    patient.hasInsurance = admissionRequest.admissionDetails.insurance.hasInsurance;
+    patient.insuranceDetails = admissionRequest.admissionDetails.insurance;
+    await patient.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    res.status(200).json({
+      message: "Admission and insurance details updated successfully.",
+      admissionRequest,
+    });
+
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error("Error updating admission after admission:", error);
+    res.status(500).json({ message: "Internal server error", error: error.message });
+  }
 };

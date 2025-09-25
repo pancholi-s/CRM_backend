@@ -187,6 +187,10 @@ export const getBillDetails = async (req, res) => {
       return res.status(404).json({ message: "Bill not found." });
     }
 
+    const admissionRequest = await AdmissionRequest.findOne({ caseId: bill.caseId });
+    const insuranceCompany = admissionRequest?.admissionDetails?.insurance?.insuranceCompany || "N/A";
+
+
     // Prepare the services and include all necessary details
     const services = bill.services.map((item) => {
       // If the service is available, return the details
@@ -229,6 +233,8 @@ export const getBillDetails = async (req, res) => {
       }
     });
 
+    const payments = bill.payments || [];
+
     res.status(200).json({
       invoiceNumber: bill.invoiceNumber,
       caseId: bill.caseId,
@@ -239,20 +245,21 @@ export const getBillDetails = async (req, res) => {
       doctor: bill.doctor
         ? { name: bill.doctor.name, specialization: bill.doctor.specialization }
         : { name: "Unknown", specialization: "N/A" },
-      services: services, // Now returning all services with correct details
+      insuranceCompany,
+      deposit: bill.deposit,
+      services,
       totalAmount: bill.totalAmount,
       paidAmount: bill.paidAmount,
       outstanding: bill.outstanding,
       status: bill.status,
       mode: bill.mode,
+      payments,
     });
   } catch (error) {
     console.error("Error fetching bill details:", error);
     res.status(500).json({ message: "Error fetching bill details.", error: error.message });
   }
 };
-
-
 
 export const getBillsByPatient = async (req, res) => {
   try {
@@ -686,5 +693,36 @@ export const editEstimatedBill = async (req, res) => {
   } catch (error) {
     console.error("Error updating estimated bill:", error);
     res.status(500).json({ message: "Error updating estimated bill", error: error.message });
+  }
+};
+
+export const addPayment = async (req, res) => {
+  try {
+    const { billId } = req.params;
+    const { amount, mode, reference } = req.body;
+
+    const bill = await Bill.findById(billId);
+    if (!bill) return res.status(404).json({ message: "Bill not found." });
+
+    // Record payment
+    bill.payments.push({
+      amount,
+      mode: mode || "Cash",
+      reference: reference || "Payment",
+      date: new Date(),
+    });
+
+    // Update totals
+    bill.paidAmount += amount;
+    bill.outstanding = Math.max(bill.totalAmount - bill.paidAmount, 0);
+
+    if (bill.paidAmount >= bill.totalAmount) bill.status = "Paid";
+
+    await bill.save();
+
+    res.status(200).json({ message: "Payment added successfully", bill });
+  } catch (error) {
+    console.error("Error adding payment:", error);
+    res.status(500).json({ message: "Internal Server Error", error: error.message });
   }
 };

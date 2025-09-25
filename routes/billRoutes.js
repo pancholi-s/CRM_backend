@@ -3,7 +3,7 @@ import express from "express";
 import { authorizeRoles } from "../middleware/roleMiddleware.js";
 import { requireHospitalContext } from "../middleware/hospitalContext.js";
 
-import { createBill, getAllBills, getBillDetails, getRevenueByYear, getBillsByPatient, editBillDetails, addToBill, createEstimatedBill,getEstimatedBills, editEstimatedBill } from "../controllers/billController.js";
+import { createBill, getAllBills, getBillDetails, getRevenueByYear, getBillsByPatient, editBillDetails, addToBill, createEstimatedBill,getEstimatedBills, editEstimatedBill, addPayment } from "../controllers/billController.js";
 
 const router = express.Router();
 router.use(requireHospitalContext);
@@ -22,5 +22,7 @@ router.patch("/editBillDetails/:billId", authorizeRoles("receptionist", "hospita
 router.post("/createEstimatedBill", authorizeRoles("receptionist", "hospitalAdmin"), createEstimatedBill);
 router.get("/getEstimatedBills/:admissionRequestId", authorizeRoles("receptionist", "hospitalAdmin","doctor"), getEstimatedBills);
 router.put("/editEstimatedBill/:estimateId", editEstimatedBill);
+
+router.post("/addPayment/:billId", authorizeRoles("receptionist", "hospitalAdmin"), addPayment);
 
 export default router;

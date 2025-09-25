@@ -872,7 +872,7 @@ export const getAppointments = async (req, res) => {
         .populate("doctor", "name specialization email")
         .populate("department", "name")
         .populate("hospital", "name address")
-        .sort({ tokenDate: -1 })
+        .sort({ tokenDate: 1 })
         .skip(skip)
         .limit(parseInt(limit));
 
@@ -908,7 +908,7 @@ export const getAppointments = async (req, res) => {
       .populate("doctor", "name specialization email")
       .populate("department", "name")
       .populate("hospital", "name address")
-      .sort({ tokenDate: -1 })
+      .sort({ tokenDate: 1 })
       .skip(skip)
       .limit(parseInt(limit));
 
