@@ -40,6 +40,15 @@ const billSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    deposit: { type: Number, default: 0 },
+    payments: [
+      {
+        amount: { type: Number, required: true },
+        date: { type: Date, default: Date.now },
+        mode: { type: String, enum: ["Online", "Cash"], default: "Cash" },
+        reference: { type: String },
+      },
+    ],
     status: {
       type: String,
       enum: ["Pending", "Paid"],

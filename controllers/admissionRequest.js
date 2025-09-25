@@ -201,13 +201,19 @@ export const createAdmissionRequest = async (req, res) => {
     const invoiceNumber = `INV-${generatedCaseId}-${Date.now()}`;
 
     // Step 10: Create the bill at the time of admission
-    const bill = new Bill({
+    const depositAmount = admissionDetails?.deposit || 0;
+
+      const bill = new Bill({
       patient: patient._id,
       caseId: generatedCaseId,
-      services: [], // Initially no services, can be updated later
+      services: [],
       totalAmount: 0,
-      paidAmount: 0,
+      paidAmount: depositAmount,
       outstanding: 0,
+      deposit: depositAmount,
+      payments: depositAmount > 0
+        ? [{ amount: depositAmount, mode: "Cash", reference: "Admission Deposit" }]
+        : [],
       status: "Pending",
       invoiceNumber: invoiceNumber,
       hospital: hospitalId,
