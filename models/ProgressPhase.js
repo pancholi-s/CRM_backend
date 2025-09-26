@@ -11,6 +11,11 @@ const progressPhaseSchema = new mongoose.Schema({
   isFinal: { type: Boolean, default: false },
   // description: { type: String },
   // files: [{ type: String }], // file URLs
+  files: [{ 
+    url: String,
+    originalName: String,
+    fileType: String 
+  }],
   data:{
   type: mongoose.Schema.Types.Mixed, // Flexible data structure
   default: {},

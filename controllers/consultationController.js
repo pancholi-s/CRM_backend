@@ -645,7 +645,6 @@ export const addProgressPhase = async (req, res) => {
       title,
       date, // user-provided date string like "2025-08-13"
       assignedDoctor,
-
       isFinalPhase,
       data // dynamic data field (with arrays of strings)
     } = req.body;
@@ -693,6 +692,38 @@ export const addProgressPhase = async (req, res) => {
       }
     }
 
+        // 3. Handle file uploads (NEW CODE ADDED HERE)
+    let uploadedFiles = [];
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        try {
+          const result = await uploadToCloudinary(
+            file.buffer, 
+            file.originalname, 
+            file.mimetype
+          );
+          uploadedFiles.push({
+            url: result.secure_url,
+            originalName: file.originalname,
+            fileType: file.mimetype
+          });
+        } catch (uploadError) {
+          console.error("File upload error:", uploadError);
+          // Continue with other files if one fails
+        }
+      }
+    }
+
+    let parsedData = {};
+    if (data) {
+      try {
+        parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+      } catch (parseError) {
+        console.error("Data parsing error:", parseError);
+        parsedData = {}; // fallback to empty object
+      }
+    }
+
     // 3. Merge user date with system time
     const now = new Date();
     const [year, month, day] = new Date(date).toISOString().split("T")[0].split("-");
@@ -705,7 +736,8 @@ export const addProgressPhase = async (req, res) => {
       title: isFinalPhase ? 'final' : title,
       date: finalDate,
       assignedDoctor,
-      data: data || {}, // Save dynamic data as arrays or strings
+      data: parsedData, 
+      files: uploadedFiles,
       isDone: false,
       isFinal: !!isFinalPhase
     });
@@ -724,50 +756,80 @@ export const addProgressPhase = async (req, res) => {
 
 
 export const updatePhase = async (req, res) => {
-  const { sourceType, sourceId } = req.params; // sourceType: "phase" or "consultation"
+  const { sourceType, sourceId } = req.params;
   const updates = req.body;
 
   try {
     let updatedItem;
 
     if (sourceType === "phase") {
-      // Find the existing phase by sourceId
+      // Find the existing phase
       updatedItem = await ProgressPhase.findById(sourceId);
       if (!updatedItem) {
         return res.status(404).json({ message: "Progress phase not found" });
       }
 
-      // Handle dynamic 'data' field update (Mixed type)
-      if (updates.data) {
-        updatedItem.data = { ...updatedItem.data, ...updates.data };  // Merge new data with existing data
+      // STEP 1: Handle NEW file uploads
+      let newUploadedFiles = [];
+      if (req.files && req.files.length > 0) {
+        for (const file of req.files) {
+          try {
+            const result = await uploadToCloudinary(
+              file.buffer,
+              file.originalname,
+              file.mimetype
+            );
+            newUploadedFiles.push({
+              url: result.secure_url,
+              originalName: file.originalname,
+              fileType: file.mimetype
+            });
+          } catch (uploadError) {
+            console.error("File upload error:", uploadError);
+          }
+        }
       }
 
-      // Convert isFinal / isDone to booleans if present
+      // STEP 2: Add new files to existing files
+      if (newUploadedFiles.length > 0) {
+        const existingFiles = updatedItem.files || [];
+        updatedItem.files = [...existingFiles, ...newUploadedFiles];
+      }
+
+      // STEP 3: Handle data update (parse if string)
+      if (updates.data) {
+        let parsedData = {};
+        try {
+          parsedData = typeof updates.data === 'string' ? JSON.parse(updates.data) : updates.data;
+        } catch (parseError) {
+          parsedData = updates.data;
+        }
+        updatedItem.data = { ...updatedItem.data, ...parsedData };
+      }
+
+      // STEP 4: Handle boolean fields
       if (typeof updates.isFinal !== "undefined") {
-        updatedItem.isFinal = typeof updates.isFinal === "string"
-          ? updates.isFinal.toLowerCase() === "yes"
-          : !!updates.isFinal;
+        updatedItem.isFinal = updates.isFinal === "true" || updates.isFinal === true;
       }
       if (typeof updates.isDone !== "undefined") {
-        updatedItem.isDone = updates.isDone === true || updates.isDone === "true";
+        updatedItem.isDone = updates.isDone === "true" || updates.isDone === true;
       }
 
-      // Update other fields
+      // STEP 5: Update other fields
       if (updates.title !== undefined) updatedItem.title = updates.title;
       if (updates.description !== undefined) updatedItem.description = updates.description;
-      if (updates.files !== undefined) updatedItem.files = updates.files;
       if (updates.assignedDoctor !== undefined) updatedItem.assignedDoctor = updates.assignedDoctor;
       if (updates.consultation !== undefined) updatedItem.consultation = updates.consultation;
 
-      // Save the updated phase
       await updatedItem.save();
+
     } else if (sourceType === "consultation") {
       updatedItem = await Consultation.findById(sourceId);
       if (!updatedItem) {
         return res.status(404).json({ message: "Consultation not found" });
       }
 
-      // Update only allowed fields for consultation
+      // Update consultation fields (same as before)
       const allowedFields = [
         "consultationData", "status", "followUpRequired", "referredToDoctor",
         "referredToDepartment", "referralReason", "preferredDate",
@@ -776,17 +838,24 @@ export const updatePhase = async (req, res) => {
 
       allowedFields.forEach(field => {
         if (updates[field] !== undefined) {
-          updatedItem[field] = updates[field];
+          if (field === "consultationData" && typeof updates[field] === 'string') {
+            try {
+              updatedItem[field] = JSON.parse(updates[field]);
+            } catch (parseError) {
+              updatedItem[field] = updates[field];
+            }
+          } else {
+            updatedItem[field] = updates[field];
+          }
         }
       });
 
-      // Save the updated consultation
       await updatedItem.save();
+
     } else {
       return res.status(400).json({ message: "Invalid sourceType. Use 'phase' or 'consultation'" });
     }
 
-    // Send the response with the updated phase or consultation
     res.status(200).json({
       message: `${sourceType} updated successfully`,
       data: updatedItem
