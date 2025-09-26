@@ -426,6 +426,10 @@ export const getAdmissionRequests = async (req, res) => {
     }
 
     const statusFilter = req.query.status;
+    const searchQuery = req.query.search; 
+    const page = parseInt(req.query.page) || 1; 
+    const limit = parseInt(req.query.limit) || 10; 
+    const skip = (page - 1) * limit;
 
     const filter = {
       hospital: hospitalId,
@@ -436,23 +440,44 @@ export const getAdmissionRequests = async (req, res) => {
     }
 
     const requests = await AdmissionRequest.find(filter)
+      .sort({ createdAt: -1 }) 
       .populate({
         path: "patient",
-        select: "name age contact phone admissionStatus",
-        match: { admissionStatus: { $ne: "Admitted" } }, // 💥 exclude admitted patients
+        select: "name age contact phone admissionStatus patId",
+        match: { admissionStatus: { $ne: "Admitted" } }, 
       })
       .populate("doctor", "name email")
       .populate("admissionDetails.room", "name roomType")
       .populate("admissionDetails.bed", "bedNumber bedType status");
 
     // Filter out null patients (those who were excluded by match)
-    const filteredRequests = requests.filter((r) => r.patient !== null);
+    let filteredRequests = requests.filter((r) => r.patient !== null);
+    
+    if (searchQuery) {
+      const search = searchQuery.toLowerCase().trim();
+      filteredRequests = filteredRequests.filter((r) => {
+        const patient = r.patient;
+        return (
+          (patient.name && patient.name.toLowerCase().includes(search)) ||
+          (patient.email && patient.email.toLowerCase().includes(search)) ||
+          (patient.phone && patient.phone.toLowerCase().includes(search)) ||
+          (patient.patId && patient.patId.toLowerCase().includes(search))
+        );
+      });
+    }
 
-    const mappedRequests = filteredRequests.map((r) => r.toObject());
+    const totalRequests = filteredRequests.length;
+
+    const paginatedRequests = filteredRequests.slice(skip, skip + limit);
+
+    const mappedRequests = paginatedRequests.map((r) => r.toObject());
 
     res.status(200).json({
       message: "Admission requests fetched successfully.",
-      count: filteredRequests.length,
+      count: mappedRequests.length,
+      totalRequests,
+      totalPages: Math.ceil(totalRequests / limit),
+      currentPage: page,
       requests: mappedRequests,
     });
   } catch (error) {

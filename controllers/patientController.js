@@ -35,7 +35,8 @@ export const getPatientsByHospital = async (req, res) => {
       filter.$or = [
         { name: { $regex: search, $options: 'i' } },        
         { email: { $regex: search, $options: 'i' } },      
-        { phone: { $regex: search, $options: 'i' } }       
+        { phone: { $regex: search, $options: 'i' } },
+        { patId: { $regex: search, $options: 'i' } },    
       ];
     }
 
@@ -162,6 +163,7 @@ export const getPatientsByStatus = async (req, res) => {
         { name: { $regex: search, $options: 'i' } },
         { email: { $regex: search, $options: 'i' } },
         { phone: { $regex: search, $options: 'i' } },
+        { patId: { $regex: search, $options: 'i' } },    
       ];
     }
 
@@ -446,7 +448,8 @@ export const getInpatients = async (req, res) => {
         return (
           (patient.name && patient.name.toLowerCase().includes(search)) ||
           (patient.email && patient.email.toLowerCase().includes(search)) ||
-          (patient.phone && patient.phone.toLowerCase().includes(search)) 
+          (patient.phone && patient.phone.toLowerCase().includes(search)) ||
+          (patient.patId && patient.patId.toLowerCase().includes(search))
         );
       });
     }

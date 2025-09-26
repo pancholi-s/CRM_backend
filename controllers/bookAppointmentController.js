@@ -7,6 +7,8 @@ import Patient from "../models/patientModel.js";
 import Appointment from "../models/appointmentModel.js";
 import RejectedAppointment from "../models/rejectedAppointmentModel.js";
 import moment from "moment";
+import { getYearlyData, getMonthlyData, getWeeklyData } from "../utils/appointmentStatsUtils.js";
+
 
 export const bookAppointment = async (req, res) => {
   const {
@@ -1261,7 +1263,6 @@ export const getAppointmentStats = async (req, res) => {
   }
 
   try {
-    // Base filter
     const baseFilter = { hospital: hospitalId };
     if (department && mongoose.Types.ObjectId.isValid(department)) {
       baseFilter.department = new mongoose.Types.ObjectId(department);
@@ -1269,7 +1270,6 @@ export const getAppointmentStats = async (req, res) => {
 
     let result = {};
 
-    // Route to specific handler
     switch (filterType) {
       case "yearly":
         result = await getYearlyData(baseFilter, year);
