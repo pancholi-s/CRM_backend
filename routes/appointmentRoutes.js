@@ -5,7 +5,7 @@ import { requireHospitalContext } from '../middleware/hospitalContext.js';
 import { updateStatusesMiddleware } from '../middleware/statusMiddleware.js';
 import { paginationMiddleware } from '../middleware/paginationMiddleware.js';
 
-import { bookAppointment, completeAppointment, getAppointmentsByStatus, getFilteredAppointments, getAppointmentCounts, getRejectedAppointments, getCancelledAppointments, getAppointmentsByVisitType, getAppointments,getAppointmentHistory, startAppointment, sendPatientToLast, getTodayQueue, getAppointmentStats } from '../controllers/bookAppointmentController.js';
+import { bookAppointment, completeAppointment, getAppointmentsByStatus, getFilteredAppointments, getAppointmentCounts, getRejectedAppointments, getCancelledAppointments, getAppointmentsByVisitType, getAppointments,getAppointmentHistory, startAppointment, sendPatientToLast, getTodayQueue, getAppointmentStats, repositionToken } from '../controllers/bookAppointmentController.js';
 import { requestAppointment, getRequestedAppointments, approveAppointment, rejectAppointment, cancelAppointment } from '../controllers/requestedAppointmentController.js';
 
 const router = express.Router();
@@ -18,6 +18,7 @@ router.post('/requestAppointment', authorizeRoles("patient"), requestAppointment
 router.post('/approveAppointment/:requestId', authorizeRoles("receptionist", "doctor"), approveAppointment);
 router.post('/rejectAppointment/:requestId', authorizeRoles("receptionist", "doctor"), rejectAppointment);
 router.post('/cancelAppointment/:appointmentId', authorizeRoles("receptionist", "patient"), cancelAppointment);
+router.post('/repositionToken', authorizeRoles("receptionist", "hospitalAdmin","doctor"), repositionToken);
 
 router.get('/getAppointmentsByStatus', authorizeRoles("receptionist", "hospitalAdmin","doctor"), updateStatusesMiddleware, getAppointmentsByStatus, paginationMiddleware);
 router.get('/getFilteredAppointments', authorizeRoles("receptionist", "hospitalAdmin","doctor"), updateStatusesMiddleware, getFilteredAppointments, paginationMiddleware);
