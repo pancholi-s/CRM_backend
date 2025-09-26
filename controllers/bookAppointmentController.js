@@ -9,7 +9,6 @@ import RejectedAppointment from "../models/rejectedAppointmentModel.js";
 import moment from "moment";
 import { getYearlyData, getMonthlyData, getWeeklyData } from "../utils/appointmentStatsUtils.js";
 
-
 export const bookAppointment = async (req, res) => {
   const {
     patientName,
@@ -872,7 +871,7 @@ export const getAppointments = async (req, res) => {
         .populate("doctor", "name specialization email")
         .populate("department", "name")
         .populate("hospital", "name address")
-        .sort({ tokenDate: 1 })
+        .sort({ tokenNumber: 1 })
         .skip(skip)
         .limit(parseInt(limit));
 
@@ -908,7 +907,7 @@ export const getAppointments = async (req, res) => {
       .populate("doctor", "name specialization email")
       .populate("department", "name")
       .populate("hospital", "name address")
-      .sort({ tokenDate: 1 })
+      .sort({ tokenNumber: 1 })
       .skip(skip)
       .limit(parseInt(limit));
 
@@ -1288,5 +1287,62 @@ export const getAppointmentStats = async (req, res) => {
       message: "Failed to get appointment stats", 
       error: err.message 
     });
+  }
+};
+
+
+export const repositionToken = async (req, res) => {
+  try {
+    const { doctorId, date, fromToken, afterToken } = req.body;
+    if (!doctorId || !date || !fromToken || !afterToken) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    // Normalize date range (full day)
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // Step 1: Fetch appointments in order
+    let appointments = await Appointment.find({
+      doctor: doctorId,
+      tokenDate: { $gte: startOfDay, $lte: endOfDay },
+      tokenNumber: { $ne: null },
+    }).sort({ tokenNumber: 1 });
+
+    if (!appointments.length) {
+      return res.status(404).json({ message: "No appointments found for this doctor/date" });
+    }
+
+    // Step 2: Rearrange in memory
+    const fromIndex = appointments.findIndex(a => a.tokenNumber === fromToken);
+    const toIndex   = appointments.findIndex(a => a.tokenNumber === afterToken);
+
+    if (fromIndex === -1 || toIndex === -1) {
+      return res.status(400).json({ message: "Invalid token numbers" });
+    }
+
+    const [moved] = appointments.splice(fromIndex, 1);  // remove from old position
+    appointments.splice(toIndex + 1, 0, moved);        // insert after target
+
+    // Step 3: Reassign token numbers sequentially
+    for (let i = 0; i < appointments.length; i++) {
+      appointments[i].tokenNumber = i + 1;
+      await appointments[i].save();
+    }
+
+    res.status(200).json({
+      message: "Tokens rearranged successfully",
+      appointments: appointments.map(a => ({
+        id: a._id,
+        patient: a.patient,
+        tokenNumber: a.tokenNumber
+      }))
+    });
+
+  } catch (error) {
+    console.error("Error rearranging tokens:", error);
+    res.status(500).json({ message: "Error rearranging tokens", error: error.message });
   }
 };
