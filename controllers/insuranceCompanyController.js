@@ -1,12 +1,13 @@
 import InsuranceCompany from "../models/insuranceCompanyModel.js";
 import mongoose from "mongoose";
 import AdmissionRequest from "../models/admissionReqModel.js";
+import Service from "../models/serviceModel.js";
 
 
 // Add a new insurance company
 export const addInsuranceCompany = async (req, res) => {
   try {
-    const { id, name, services } = req.body;
+    const { id, name } = req.body;
     const hospitalId = req.session.hospitalId;
     const createdBy = req.user._id;
 
@@ -14,26 +15,46 @@ export const addInsuranceCompany = async (req, res) => {
       return res.status(400).json({ message: "Missing required fields." });
     }
 
+    // 1. Fetch all services of the hospital
+    const hospitalServices = await Service.find({ hospital: hospitalId }).lean();
+
+    // 2. Map them into the insurance company structure
+    const servicesForInsurance = hospitalServices.map(service => ({
+      serviceName: service.name,
+      categories: service.categories.map(cat => ({
+        subCategoryName: cat.subCategoryName,
+        rateType: cat.rateType,
+        rate: cat.rate,                  // initial = same as hospital rate
+        effectiveDate: cat.effectiveDate,
+        amenities: cat.amenities || "N/A",
+        additionaldetails: cat.additionaldetails || null
+      }))
+    }));
+
+    // 3. Create insurance company with all services cloned
     const newInsuranceCompany = new InsuranceCompany({
       id,
       name,
-      services: services || [], // Optional initial services
+      services: servicesForInsurance,
       hospitalId,
       createdBy,
     });
 
     await newInsuranceCompany.save();
+
     res.status(201).json({
-      message: "Insurance company added successfully",
+      message: "Insurance company added successfully with all hospital services.",
       company: newInsuranceCompany,
     });
   } catch (error) {
+    console.error("Error adding insurance company:", error);
     res.status(500).json({
       message: "Error adding insurance company.",
       error: error.message,
     });
   }
 };
+
 
 // Add a new service to an existing insurance company
 export const addServiceToCompany = async (req, res) => {
