@@ -394,28 +394,26 @@ export const editBillDetails = async (req, res) => {
   const { services, paidAmount, status, mode } = req.body;
 
   try {
-   let bill = await Bill.findById(billId);
-
+    let bill = await Bill.findById(billId);
     if (!bill) {
       return res.status(404).json({ message: "Bill not found." });
     }
 
     if (services && Array.isArray(services)) {
-      bill.services = services.map(service => ({
+      bill.services = services.map((service) => ({
         service: service.service || null,
         category: service.category,
         quantity: service.quantity || 1,
         rate: service.rate || 0,
-        details: service.details || {} 
+        details: service.details || {},
       }));
     }
 
-    let totalAmount = 0;
-    bill.services.forEach(item => {
-      totalAmount += (item.quantity || 1) * (item.rate || 0);
-    });
-
-    bill.totalAmount = totalAmount;
+    // recalc total
+    bill.totalAmount = bill.services.reduce(
+      (sum, item) => sum + (item.quantity || 1) * (item.rate || 0),
+      0
+    );
 
     if (paidAmount !== undefined) {
       bill.paidAmount = paidAmount;
@@ -423,55 +421,26 @@ export const editBillDetails = async (req, res) => {
 
     bill.outstanding = bill.totalAmount - bill.paidAmount;
 
-    if (status) {
-      bill.status = status;
-    }
-
-    if (mode) {
-      bill.mode = mode;
-    }
+    if (status) bill.status = status;
+    if (mode) bill.mode = mode;
 
     await bill.save();
 
     const updatedBill = await Bill.findById(billId)
-      .populate("patient", "name phone")
+      .populate("patient", "name phone email patId")
       .populate("doctor", "name specialization")
-      .populate("services.service", "name");
+      .populate("services.service", "name description categories");
 
     res.status(200).json({
       message: "Bill updated successfully",
-      bill: {
-        _id: updatedBill._id,
-        caseId: updatedBill.caseId,
-        patient: updatedBill.patient,
-        doctor: updatedBill.doctor,
-        services: updatedBill.services.map(service => ({
-          service: service.service,
-          category: service.category,
-          quantity: service.quantity,
-          rate: service.rate,
-          details: service.details
-        })),
-        totalAmount: updatedBill.totalAmount,
-        paidAmount: updatedBill.paidAmount,
-        outstanding: updatedBill.outstanding,
-        status: updatedBill.status,
-        invoiceNumber: updatedBill.invoiceNumber,
-        invoiceDate: updatedBill.invoiceDate,
-        mode: updatedBill.mode,
-        createdAt: updatedBill.createdAt,
-        updatedAt: updatedBill.updatedAt
-      }
+      bill: updatedBill.toObject(), // 🔑 returns whole doc
     });
-
   } catch (error) {
     console.error("Error updating bill:", error);
-    res.status(500).json({
-      message: "Error updating bill.",
-      error: error.message
-    });
+    res.status(500).json({ message: "Error updating bill.", error: error.message });
   }
 };
+
 
 export const addToBill = async (req, res) => {
   const { billId } = req.params;
@@ -487,15 +456,11 @@ export const addToBill = async (req, res) => {
       return res.status(404).json({ message: "Bill not found." });
     }
 
-    // 🔑 billedDate is required now
     const billedDateStr =
       details?.billedDate || new Date().toISOString().split("T")[0];
 
-    // Prevent duplicates (same category + date)
     const exists = bill.services.some(
-      (s) =>
-        s.category === category &&
-        s.details?.billedDate === billedDateStr
+      (s) => s.category === category && s.details?.billedDate === billedDateStr
     );
     if (exists) {
       return res
@@ -512,7 +477,7 @@ export const addToBill = async (req, res) => {
         ...details,
         daysOccupied: 1,
         totalCharge: rate * quantity,
-        billedDate: billedDateStr, // ✅ ensure date is always there
+        billedDate: billedDateStr,
       },
     };
 
@@ -520,25 +485,24 @@ export const addToBill = async (req, res) => {
     bill.totalAmount += rate * quantity;
     bill.outstanding = bill.totalAmount - bill.paidAmount;
 
+    bill.lastBilledAt = new Date();
+
     await bill.save();
+
+    const updatedBill = await Bill.findById(billId)
+      .populate("patient", "name phone email patId")
+      .populate("doctor", "name specialization")
+      .populate("services.service", "name description categories");
 
     res.status(200).json({
       message: "Expense added successfully.",
-      bill: {
-        caseId: bill.caseId,
-        totalAmount: bill.totalAmount,
-        services: bill.services,
-        outstanding: bill.outstanding,
-      },
+      bill: updatedBill.toObject(), // 🔑 whole doc
     });
   } catch (error) {
     console.error("Error adding expense:", error);
     res.status(500).json({ message: "Error adding expense.", error: error.message });
   }
 };
-
-
-
 
 export const getRevenueByYear = async (req, res) => {
   const { year } = req.query;
