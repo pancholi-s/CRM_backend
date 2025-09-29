@@ -259,14 +259,99 @@ export const getAppointmentsByPatientId = async (req, res) => {
 };
 
 // Get Patient Details by ID
+// export const getPatientDetailsById = async (req, res) => {
+//   try {
+//     const { patientId } = req.params;
+
+//     if (!patientId) {
+//       return res.status(400).json({ message: "Patient ID is required." });
+//     }
+
+//     const patient = await Patient.findById(patientId)
+//       .select("-password -appointments -files -__v")
+//       .populate("doctors", "name email specialization")
+//       .populate("department", "name")
+//       .lean();
+
+//     if (!patient) {
+//       return res.status(404).json({ message: "Patient not found." });
+//     }
+
+//     const consultations = await Consultation.find({ patient: patientId })
+//       .populate("doctor", "name")
+//       .populate("department", "name")
+//       .sort({ date: -1 })
+//       .lean();
+
+//     const latestConsultation =
+//       consultations.length > 0 ? consultations[0] : null;
+//     const latestConsultationData = latestConsultation?.consultationData || null;
+
+//     const admissionRequest = await AdmissionRequest.findOne({ patient: patientId })
+//       .sort({ createdAt: -1 })
+//       .lean();
+
+//     const admissionDetails = admissionRequest?.admissionDetails || {};
+
+//     let createdByName = null;
+//     if (admissionRequest?.createdBy) {
+//       createdByName =
+//         (await Doctor.findById(admissionRequest.createdBy).select("name").lean())?.name ||
+//         (await Staff.findById(admissionRequest.createdBy).select("name").lean())?.name ||
+//         (await Admin.findById(admissionRequest.createdBy).select("name").lean())?.name ||
+//         (await Receptionist.findById(admissionRequest.createdBy).select("name").lean())?.name ||
+//         null;
+//     }
+
+//     const additionalFields = {
+//       bloodGroup: latestConsultationData?.bloodGroup ?? null,
+//       visitType: latestConsultationData?.visitType ?? null,
+//       // condition: latestConsultationData?.condition ?? null,
+//       // emergencyContact: latestConsultationData?.emergencyContact ?? null,
+//       relationship: latestConsultationData?.relationship ?? null,
+//       // emergencyContactName:
+//       //   latestConsultationData?.emergencyContactName ?? null,
+//       MRN: latestConsultationData?.MRN ?? null,
+//       // admittingBy: latestConsultationData?.admittingBy ?? null,
+//       // admissionDateTime: latestConsultationData?.admissionDateTime ?? null,
+//       condition: admissionDetails?.medicalNote ?? null,
+//       admissionDate: admissionDetails?.date ?? null,
+//       contact: admissionDetails?.contact ?? null,
+//       address: admissionDetails?.address ?? null,
+//       Age: admissionDetails?.age ?? null,
+//       gender: admissionDetails?.gender ?? null,
+//       time: admissionDetails?.time ?? null,
+//       emergencyContact: admissionDetails?.emergencyContact ?? null,
+//       emergencyName: admissionDetails?.emergencyName ?? null,
+//       createdByName,
+//     };
+
+//     return res.status(200).json({
+//       message: "Patient details retrieved successfully.",
+//       data: {
+//         ...patient,
+//         consultations,
+//         ...additionalFields,
+//       },
+//     });
+//   } catch (error) {
+//     console.error("Error fetching patient details:", error);
+//     return res.status(500).json({
+//       message: "Failed to fetch patient details.",
+//       error: error.message,
+//     });
+//   }
+// };
+
+
 export const getPatientDetailsById = async (req, res) => {
   try {
     const { patientId } = req.params;
-
     if (!patientId) {
       return res.status(400).json({ message: "Patient ID is required." });
     }
 
+    // 1️⃣ Fetch patient
     const patient = await Patient.findById(patientId)
       .select("-password -appointments -files -__v")
       .populate("doctors", "name email specialization")
@@ -277,43 +362,55 @@ export const getPatientDetailsById = async (req, res) => {
       return res.status(404).json({ message: "Patient not found." });
     }
 
+    // 2️⃣ Fetch consultations for this patient
     const consultations = await Consultation.find({ patient: patientId })
       .populate("doctor", "name")
       .populate("department", "name")
       .sort({ date: -1 })
       .lean();
 
-    const latestConsultation =
-      consultations.length > 0 ? consultations[0] : null;
+    const latestConsultation = consultations[0] || null;
     const latestConsultationData = latestConsultation?.consultationData || null;
 
-    const admissionRequest = await AdmissionRequest.findOne({ patient: patientId })
+    // 3️⃣ Fetch admission requests for this patient only
+    const admissionRequests = await AdmissionRequest.find({ patient: patientId })
       .sort({ createdAt: -1 })
       .lean();
 
-    const admissionDetails = admissionRequest?.admissionDetails || {};
+    // 4️⃣ For each AdmissionRequest, fetch only ProgressPhases with the same caseId
+    const requestsWithPhases = await Promise.all(
+      admissionRequests.map(async (admission) => {
+        const phases = await ProgressPhase.find({ caseId: admission.caseId })
+          .sort({ date: 1 }) // chronological order
+          .lean();
 
+        return {
+          ...admission,
+          progressPhases: phases, // only phases matching this admission's caseId
+        };
+      })
+    );
+
+    // 5️⃣ Get name of creator
     let createdByName = null;
-    if (admissionRequest?.createdBy) {
+    if (admissionRequests[0]?.createdBy) {
       createdByName =
-        (await Doctor.findById(admissionRequest.createdBy).select("name").lean())?.name ||
-        (await Staff.findById(admissionRequest.createdBy).select("name").lean())?.name ||
-        (await Admin.findById(admissionRequest.createdBy).select("name").lean())?.name ||
-        (await Receptionist.findById(admissionRequest.createdBy).select("name").lean())?.name ||
+        (await Doctor.findById(admissionRequests[0].createdBy).select("name").lean())?.name ||
+        (await Staff.findById(admissionRequests[0].createdBy).select("name").lean())?.name ||
+        (await Admin.findById(admissionRequests[0].createdBy).select("name").lean())?.name ||
+        (await Receptionist.findById(admissionRequests[0].createdBy).select("name").lean())?.name ||
         null;
     }
+
+    // 6️⃣ Latest consultation + admissionDetails for additionalFields
+    const firstAdmission = admissionRequests[0] || {};
+    const admissionDetails = firstAdmission?.admissionDetails || {};
 
     const additionalFields = {
       bloodGroup: latestConsultationData?.bloodGroup ?? null,
       visitType: latestConsultationData?.visitType ?? null,
-      // condition: latestConsultationData?.condition ?? null,
-      // emergencyContact: latestConsultationData?.emergencyContact ?? null,
       relationship: latestConsultationData?.relationship ?? null,
-      // emergencyContactName:
-      //   latestConsultationData?.emergencyContactName ?? null,
       MRN: latestConsultationData?.MRN ?? null,
-      // admittingBy: latestConsultationData?.admittingBy ?? null,
-      // admissionDateTime: latestConsultationData?.admissionDateTime ?? null,
       condition: admissionDetails?.medicalNote ?? null,
       admissionDate: admissionDetails?.date ?? null,
       contact: admissionDetails?.contact ?? null,
@@ -327,10 +424,11 @@ export const getPatientDetailsById = async (req, res) => {
     };
 
     return res.status(200).json({
-      message: "Patient details retrieved successfully.",
+      message: "Patient details with admission requests and related progress phases retrieved successfully.",
       data: {
         ...patient,
         consultations,
+        admissionRequests: requestsWithPhases,
         ...additionalFields,
       },
     });
@@ -342,6 +440,7 @@ export const getPatientDetailsById = async (req, res) => {
     });
   }
 };
+
 
 //Get Inpatients
 export const getInpatients = async (req, res) => {
@@ -953,5 +1052,79 @@ export const searchPatientByPatId = async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: "Server error" });
+  }
+};
+
+export const getAdmissionRequestsWithPhases = async (req, res) => {
+  try {
+    const hospitalId = req.session.hospitalId;
+    if (!hospitalId) {
+      return res.status(403).json({ message: "No hospital context found." });
+    }
+
+    const statusFilter = req.query.status;
+    const searchQuery = req.query.search;
+
+    const filter = { hospital: hospitalId };
+
+    if (statusFilter && statusFilter !== "all" && statusFilter !== "") {
+      filter.status = statusFilter;
+    }
+
+    // Step 1: Fetch admission requests
+    let requests = await AdmissionRequest.find(filter)
+      .sort({ createdAt: -1 })
+      .populate({
+        path: "patient",
+        select: "name age contact phone admissionStatus patId",
+        match: { admissionStatus: { $ne: "Admitted" } },
+      })
+      .populate("doctor", "name email")
+      .populate("admissionDetails.room", "name roomType")
+      .populate("admissionDetails.bed", "bedNumber bedType status")
+      .lean();
+
+    // Step 2: Filter out null patients (excluded by match)
+    requests = requests.filter((r) => r.patient !== null);
+
+    // Step 3: Apply search on name, email, phone, patId
+    if (searchQuery) {
+      const search = searchQuery.toLowerCase().trim();
+      requests = requests.filter((r) => {
+        const patient = r.patient;
+        return (
+          (patient.name && patient.name.toLowerCase().includes(search)) ||
+          (patient.email && patient.email.toLowerCase().includes(search)) ||
+          (patient.phone && patient.phone.toLowerCase().includes(search)) ||
+          (patient.patId && patient.patId.toLowerCase().includes(search))
+        );
+      });
+    }
+
+    // Step 4: For each admission request, fetch all progress phases for the same caseId
+    const requestsWithPhases = await Promise.all(
+      requests.map(async (admission) => {
+        const phases = await ProgressPhase.find({ caseId: admission.caseId })
+          .sort({ date: 1 }) // chronological order
+          .lean();
+
+        return {
+          ...admission,
+          progressPhases: phases, // attach all phases
+        };
+      })
+    );
+
+    res.status(200).json({
+      message: "Admission requests with progress phases fetched successfully",
+      count: requestsWithPhases.length,
+      requests: requestsWithPhases,
+    });
+  } catch (error) {
+    console.error("Error fetching admission requests with phases:", error);
+    res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
   }
 };
