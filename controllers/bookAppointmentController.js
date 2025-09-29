@@ -1298,38 +1298,56 @@ export const repositionToken = async (req, res) => {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
-    // Normalize date range (full day)
+    // Normalize date range
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
 
-    // Step 1: Fetch appointments in order
+    // Step 1: Fetch appointments for the day
     let appointments = await Appointment.find({
       doctor: doctorId,
       tokenDate: { $gte: startOfDay, $lte: endOfDay },
-      tokenNumber: { $ne: null },
+      tokenNumber: { $ne: null }
     }).sort({ tokenNumber: 1 });
 
     if (!appointments.length) {
-      return res.status(404).json({ message: "No appointments found for this doctor/date" });
+      return res.status(404).json({ message: "No appointments found" });
     }
 
     // Step 2: Rearrange in memory
     const fromIndex = appointments.findIndex(a => a.tokenNumber === fromToken);
-    const toIndex   = appointments.findIndex(a => a.tokenNumber === afterToken);
-
+    const toIndex = appointments.findIndex(a => a.tokenNumber === afterToken);
     if (fromIndex === -1 || toIndex === -1) {
       return res.status(400).json({ message: "Invalid token numbers" });
     }
 
-    const [moved] = appointments.splice(fromIndex, 1);  // remove from old position
-    appointments.splice(toIndex + 1, 0, moved);        // insert after target
+    const [moved] = appointments.splice(fromIndex, 1);
 
-    // Step 3: Reassign token numbers sequentially
+    // ✅ If token 1 was ongoing, reset to waiting
+    if (fromToken === 1 && moved.status === "Ongoing") {
+      moved.status = "Waiting";
+    }
+
+    appointments.splice(toIndex + 1, 0, moved);
+
+    // Step 3: Reassign tokens
     for (let i = 0; i < appointments.length; i++) {
       appointments[i].tokenNumber = i + 1;
-      await appointments[i].save();
+      // Reset statuses while we reassign
+      if (appointments[i].status === "Ongoing") {
+        appointments[i].status = "Waiting";
+      }
+    }
+
+    // ✅ Step 4: Ensure first token is marked Ongoing
+    if (appointments.length > 0) {
+      appointments[0].status = "Ongoing";
+    }
+
+    // Step 5: Save all
+    for (let a of appointments) {
+      await a.save();
     }
 
     res.status(200).json({
@@ -1337,7 +1355,8 @@ export const repositionToken = async (req, res) => {
       appointments: appointments.map(a => ({
         id: a._id,
         patient: a.patient,
-        tokenNumber: a.tokenNumber
+        tokenNumber: a.tokenNumber,
+        status: a.status
       }))
     });
 
