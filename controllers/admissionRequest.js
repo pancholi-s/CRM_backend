@@ -431,6 +431,8 @@ export const getAdmissionRequests = async (req, res) => {
     const limit = parseInt(req.query.limit) || 10; 
     const skip = (page - 1) * limit;
 
+    const sortOrder = req.query.sortOrder === "asc" ? 1 : -1; 
+
     const filter = {
       hospital: hospitalId,
     };
@@ -440,7 +442,7 @@ export const getAdmissionRequests = async (req, res) => {
     }
 
     const requests = await AdmissionRequest.find(filter)
-      .sort({ createdAt: -1 }) 
+      .sort({ createdAt: sortOrder }) 
       .populate({
         path: "patient",
         select: "name age contact phone admissionStatus patId",
@@ -478,6 +480,7 @@ export const getAdmissionRequests = async (req, res) => {
       totalRequests,
       totalPages: Math.ceil(totalRequests / limit),
       currentPage: page,
+      sortOrder: sortOrder === 1 ? "asc" : "desc", 
       requests: mappedRequests,
     });
   } catch (error) {
@@ -636,6 +639,12 @@ export const getAdmittedPatients = async (req, res) => {
       // Add the latest caseId to the patient
       patient.latestCaseId = latestCaseId;
     }
+
+    finalPatients.sort((a, b) => {
+      const dateA = new Date(a.date || a.createdAt);
+      const dateB = new Date(b.date || b.createdAt);
+      return dateB - dateA;
+    });
 
     res.status(200).json({
       message:
