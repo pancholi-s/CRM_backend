@@ -188,7 +188,7 @@ export const getBillDetails = async (req, res) => {
     }
 
     const admissionRequest = await AdmissionRequest.findOne({ caseId: bill.caseId });
-    const insuranceCompany = admissionRequest?.admissionDetails?.insurance?.insuranceCompany || "N/A";
+    const insurance = admissionRequest?.admissionDetails?.insurance|| "N/A";
 
 
     // Prepare the services and include all necessary details
@@ -245,7 +245,7 @@ export const getBillDetails = async (req, res) => {
       doctor: bill.doctor
         ? { name: bill.doctor.name, specialization: bill.doctor.specialization }
         : { name: "Unknown", specialization: "N/A" },
-      insuranceCompany,
+      insurance,
       deposit: bill.deposit,
       services,
       totalAmount: bill.totalAmount,
