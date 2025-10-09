@@ -1,4 +1,5 @@
 import cron from "node-cron";
+import moment from "moment-timezone";
 import Bill from "../models/billModel.js";
 import Bed from "../models/bedModel.js";
 import Room from "../models/roomModel.js";
@@ -6,24 +7,21 @@ import InsuranceCompany from "../models/insuranceCompanyModel.js";
 import Service from "../models/serviceModel.js";
 import AdmissionRequest from "../models/admissionReqModel.js";
 
-// Run daily at midnight
-cron.schedule("00 00 * * *", async () => {
-  console.log("⏱️ Live Billing Cron (Daily): Running...");
+const tz = "Asia/Kolkata"; // IST
+
+// Run daily at 12:00 AM IST (18:30 UTC)
+cron.schedule("30 18 * * *", async () => {
+  console.log("⏱️ Live Billing Cron (IST Midnight) Running...");
 
   try {
-    // ✅ Populate patient so we can access insurance details
-    const liveBills = await Bill.find({ isLive: true }).populate('patient');
-
-    if (!liveBills.length) {
-      console.log("ℹ️ No active live bills found.");
-      return;
-    }
+    const liveBills = await Bill.find({ isLive: true }).populate("patient");
+    if (!liveBills.length) return console.log("ℹ️ No active live bills found.");
 
     for (const bill of liveBills) {
       // Find occupied bed
       const bed = await Bed.findOne({ assignedPatient: bill.patient._id, status: "Occupied" });
       if (!bed) {
-        console.log(`⚠️ Case ${bill.caseId}: No occupied bed found, skipping...`);
+        console.log(`⚠️ Case ${bill.caseId}: No occupied bed found.`);
         continue;
       }
 
@@ -32,9 +30,9 @@ cron.schedule("00 00 * * *", async () => {
         console.log(`⚠️ Case ${bill.caseId}: Room not found, skipping...`);
         continue;
       }
+
       const roomType = room.roomType;
 
-      // Fetch admission request for insurance approval
       const admissionRequest = await AdmissionRequest.findOne({ caseId: bill.caseId });
       const insuranceApproved = admissionRequest?.admissionDetails?.insurance?.insuranceApproved;
 
@@ -48,46 +46,39 @@ cron.schedule("00 00 * * *", async () => {
         }
       }
 
-      // --- Calculate start/end dates ---
-      let startDate;
+      // --- IST-aware start and end dates ---
+      let startDateIST;
       if (bill.lastBilledAt) {
-        startDate = new Date(bill.lastBilledAt);
-        startDate.setHours(0,0,0,0);
-        startDate.setDate(startDate.getDate() + 1); // start next day
+        startDateIST = moment(bill.lastBilledAt).tz(tz).startOf("day").add(1, "day"); // next IST day
       } else if (admissionRequest?.admissionDetails?.date) {
-        startDate = new Date(admissionRequest.admissionDetails.date);
-        startDate.setHours(0,0,0,0);
+        startDateIST = moment(admissionRequest.admissionDetails.date).tz(tz).startOf("day");
       } else {
-        startDate = new Date();
-        startDate.setHours(0,0,0,0);
+        startDateIST = moment().tz(tz).startOf("day");
       }
 
-      const today = new Date();
-      today.setHours(0,0,0,0);
-      const endDate = new Date(today);
-      endDate.setDate(endDate.getDate() - 1); // up to yesterday
+      const endDateIST = moment().tz(tz).startOf("day"); // today IST
 
-      if (startDate > endDate) {
+      if (startDateIST.isAfter(endDateIST)) {
         console.log(`➡️ Case ${bill.caseId}: No new days to bill.`);
         continue;
       }
 
       let totalAdded = 0;
 
-      // --- Loop per day ---
-      for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-        const billedDateStr = d.toISOString().split("T")[0];
+      // --- Loop over each day to bill ---
+      for (let d = startDateIST.clone(); d.isSameOrBefore(endDateIST); d.add(1, "day")) {
+        const billedDateStr = d.format("YYYY-MM-DD");
 
         // Skip duplicates
-        const existingEntry = bill.services.find(s => s.details?.billedDate === billedDateStr);
-        if (existingEntry) continue;
+        if (bill.services.find((s) => s.details?.billedDate === billedDateStr)) continue;
 
         // --- Fetch rate using insurance logic ---
         let roomService, roomCategory, hospitalService;
+
         if (insuranceCompany) {
           roomService = insuranceCompany.services.find(s => s.serviceName === "Room Type Service");
           roomCategory = roomService?.categories.find(c => c.subCategoryName === roomType);
-        } 
+        }
 
         if (!roomCategory) {
           hospitalService = await Service.findOne({
@@ -98,7 +89,7 @@ cron.schedule("00 00 * * *", async () => {
         }
 
         if (!roomCategory) {
-          console.log(`⚠️ Case ${bill.caseId}: No valid room category for ${roomType}, skipping day ${billedDateStr}`);
+          console.log(`⚠️ Case ${bill.caseId}: No valid room category for ${roomType}, skipping ${billedDateStr}`);
           continue;
         }
 
@@ -127,19 +118,19 @@ cron.schedule("00 00 * * *", async () => {
       }
 
       bill.outstanding = bill.totalAmount - bill.paidAmount;
-      bill.lastBilledAt = new Date();
+      bill.lastBilledAt = new Date(); // UTC timestamp
       await bill.save();
 
       console.log(
-        `✅ Case ${bill.caseId}: Added daily room charges from ${startDate.toISOString().split("T")[0]} to ${endDate.toISOString().split("T")[0]}.
-           Room Type: ${roomType}
-           Total added: ${totalAdded}
-           New Total: ${bill.totalAmount}`
+        `✅ Case ${bill.caseId}: Added daily room charges from ${startDateIST.format("YYYY-MM-DD")} to ${endDateIST.format("YYYY-MM-DD")}.
+         Room Type: ${roomType}
+         Total added: ${totalAdded}
+         New Total: ${bill.totalAmount}`
       );
     }
 
-    console.log("✅ Live Billing Cron (Daily): Cycle complete.\n");
+    console.log("✅ Live Billing Cron (IST Midnight) Complete.");
   } catch (err) {
-    console.error("❌ Error in daily billing cron:", err);
+    console.error("❌ Error in Live Billing Cron:", err);
   }
 });
