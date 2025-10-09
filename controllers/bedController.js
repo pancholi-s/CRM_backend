@@ -1079,3 +1079,53 @@ export const releaseAttendantBed = async (req, res) => {
     });
   }
 };
+
+export const editBed = async (req, res) => {
+  const { bedId } = req.params;
+  const updates = req.body; 
+  const hospitalId = req.session.hospitalId;
+
+  if (!hospitalId) {
+    return res.status(403).json({ message: "Unauthorized access. Hospital not found." });
+  }
+
+  if (!bedId) {
+    return res.status(400).json({ message: "Bed ID is required." });
+  }
+
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const bed = await Bed.findOne({ _id: bedId, hospital: hospitalId }).session(session);
+    if (!bed) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({ message: "Bed not found in this hospital." });
+    }
+
+    Object.keys(updates).forEach((key) => {
+      bed[key] = updates[key];
+    });
+
+    await bed.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    const updatedBed = await Bed.findById(bedId)
+      .populate("room", "roomID name")
+      .populate("department", "name")
+      .lean();
+
+    res.status(200).json({
+      message: "Bed updated successfully.",
+      bed: updatedBed,
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.error("Error updating bed:", error);
+    res.status(500).json({ message: "Failed to update bed.", error: error.message });
+  }
+};

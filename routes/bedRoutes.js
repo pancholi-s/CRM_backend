@@ -12,6 +12,7 @@ import {
   getAttendantRequests,
   processAttendantRequest,
   releaseAttendantBed,
+  editBed,
 } from "../controllers/bedController.js";
 import { authorizeRoles } from "../middleware/roleMiddleware.js";
 import { requireHospitalContext } from "../middleware/hospitalContext.js";
@@ -99,6 +100,13 @@ router.patch(
   requireHospitalContext,
   authorizeRoles("hospitalAdmin", "doctor", "receptionist"),
   releaseAttendantBed
+);
+
+router.patch(
+  "/beds/:bedId",
+  requireHospitalContext,
+  authorizeRoles("hospitalAdmin", "doctor", "receptionist"),
+  editBed
 );
 
 export default router;
