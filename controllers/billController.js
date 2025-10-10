@@ -566,7 +566,7 @@ export const getRevenueByYear = async (req, res) => {
 
 export const createEstimatedBill = async (req, res) => {
   try {
-    const { admissionRequestId, grandTotal, categories } = req.body;
+    const { admissionRequestId, grandTotal, categories } = req.body;  // date is inside each item, no need for global date field
     const hospitalId = req.session.hospitalId;
 
     if (!hospitalId) return res.status(403).json({ message: "No hospital context." });
@@ -576,11 +576,19 @@ export const createEstimatedBill = async (req, res) => {
       return res.status(404).json({ message: "Admission request not found." });
     }
 
+    // Create a new estimated bill with the provided categories
     const newEstimate = new EstimatedBill({
       admissionRequest: admissionRequest._id,
       hospital: hospitalId,
       grandTotal,
-      categories
+      categories: categories.map(category => ({
+        ...category,  // spread existing category data
+        items: category.items.map(item => ({
+          ...item,      // spread existing item data
+          date: item.date || new Date().toISOString().split("T")[0] // Set default date if not provided
+        }))
+      })),
+      date: new Date().toISOString().split("T")[0] // You can set this to the current date
     });
 
     await newEstimate.save();
