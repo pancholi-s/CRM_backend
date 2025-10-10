@@ -444,7 +444,7 @@ export const editBillDetails = async (req, res) => {
 
 export const addToBill = async (req, res) => {
   const { billId } = req.params;
-  const { category, quantity, rate, details } = req.body;
+  const { category, quantity, rate, details, date } = req.body; // Accept date from the body
 
   if (!mongoose.Types.ObjectId.isValid(billId)) {
     return res.status(400).json({ message: "Invalid Bill ID format." });
@@ -456,8 +456,8 @@ export const addToBill = async (req, res) => {
       return res.status(404).json({ message: "Bill not found." });
     }
 
-    const billedDateStr =
-      details?.billedDate || new Date().toISOString().split("T")[0];
+    // If date is not provided, use the current date (today's date)
+    const billedDateStr = date || new Date().toISOString().split("T")[0];
 
     const exists = bill.services.some(
       (s) => s.category === category && s.details?.billedDate === billedDateStr
@@ -474,10 +474,10 @@ export const addToBill = async (req, res) => {
       quantity,
       rate,
       details: {
-        ...details,
+        name: details,
         daysOccupied: 1,
         totalCharge: rate * quantity,
-        billedDate: billedDateStr,
+        billedDate: billedDateStr, // Use the provided date or current date
       },
     };
 
