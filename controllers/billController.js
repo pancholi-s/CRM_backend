@@ -188,7 +188,7 @@ export const getBillDetails = async (req, res) => {
     }
 
     const admissionRequest = await AdmissionRequest.findOne({ caseId: bill.caseId });
-    const insuranceCompany = admissionRequest?.admissionDetails?.insurance?.insuranceCompany || "N/A";
+    const insurance = admissionRequest?.admissionDetails?.insurance|| "N/A";
 
 
     // Prepare the services and include all necessary details
@@ -245,7 +245,7 @@ export const getBillDetails = async (req, res) => {
       doctor: bill.doctor
         ? { name: bill.doctor.name, specialization: bill.doctor.specialization }
         : { name: "Unknown", specialization: "N/A" },
-      insuranceCompany,
+      insurance,
       deposit: bill.deposit,
       services,
       totalAmount: bill.totalAmount,
@@ -444,7 +444,7 @@ export const editBillDetails = async (req, res) => {
 
 export const addToBill = async (req, res) => {
   const { billId } = req.params;
-  const { category, quantity, rate, details } = req.body;
+  const { category, quantity, rate, details, date } = req.body; // Accept date from the body
 
   if (!mongoose.Types.ObjectId.isValid(billId)) {
     return res.status(400).json({ message: "Invalid Bill ID format." });
@@ -456,8 +456,8 @@ export const addToBill = async (req, res) => {
       return res.status(404).json({ message: "Bill not found." });
     }
 
-    const billedDateStr =
-      details?.billedDate || new Date().toISOString().split("T")[0];
+    // If date is not provided, use the current date (today's date)
+    const billedDateStr = date || new Date().toISOString().split("T")[0];
 
     const exists = bill.services.some(
       (s) => s.category === category && s.details?.billedDate === billedDateStr
@@ -474,10 +474,10 @@ export const addToBill = async (req, res) => {
       quantity,
       rate,
       details: {
-        ...details,
+        name: details,
         daysOccupied: 1,
         totalCharge: rate * quantity,
-        billedDate: billedDateStr,
+        billedDate: billedDateStr, // Use the provided date or current date
       },
     };
 
@@ -566,7 +566,7 @@ export const getRevenueByYear = async (req, res) => {
 
 export const createEstimatedBill = async (req, res) => {
   try {
-    const { admissionRequestId, grandTotal, categories } = req.body;
+    const { admissionRequestId, grandTotal, categories } = req.body;  // date is inside each item, no need for global date field
     const hospitalId = req.session.hospitalId;
 
     if (!hospitalId) return res.status(403).json({ message: "No hospital context." });
@@ -576,11 +576,19 @@ export const createEstimatedBill = async (req, res) => {
       return res.status(404).json({ message: "Admission request not found." });
     }
 
+    // Create a new estimated bill with the provided categories
     const newEstimate = new EstimatedBill({
       admissionRequest: admissionRequest._id,
       hospital: hospitalId,
       grandTotal,
-      categories
+      categories: categories.map(category => ({
+        ...category,  // spread existing category data
+        items: category.items.map(item => ({
+          ...item,      // spread existing item data
+          date: item.date || new Date().toISOString().split("T")[0] // Set default date if not provided
+        }))
+      })),
+      date: new Date().toISOString().split("T")[0] // You can set this to the current date
     });
 
     await newEstimate.save();

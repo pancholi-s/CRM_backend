@@ -27,7 +27,8 @@ const estimatedBillSchema = new mongoose.Schema(
             package: { type: String },
             rate: { type: Number, required: true },
             unit: { type: Number, required: true },
-            total: { type: Number, required: true }
+            total: { type: Number, required: true },
+            date: { type: Date, required: true }
           }
         ]
       }
