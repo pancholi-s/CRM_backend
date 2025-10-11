@@ -10,6 +10,7 @@ import Staff from "../models/staffModel.js";
 import Doctor from "../models/doctorModel.js";
 import Admin from "../models/hospitalAdminModel.js";
 import Receptionist from "../models/receptionistModel.js";
+import PatientFile from "../models/patientFileModel.js";
 import moment from "moment";
 // Get Patients by Hospital with Sorting
 export const getPatientsByHospital = async (req, res) => {
@@ -377,6 +378,13 @@ export const getPatientDetailsById = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
+    // 🆕 3.1️⃣ Fetch files for this patient
+    const files = await PatientFile.find({ patient: patientId })
+      .sort({ uploadedAt: -1 })
+      .select("-__v")
+      .lean();
+
+
     // 4️⃣ For each AdmissionRequest, fetch only ProgressPhases with the same caseId
     const requestsWithPhases = await Promise.all(
       admissionRequests.map(async (admission) => {
@@ -429,6 +437,7 @@ export const getPatientDetailsById = async (req, res) => {
         ...patient,
         consultations,
         admissionRequests: requestsWithPhases,
+        otherDocuments: files,
         ...additionalFields,
       },
     });
