@@ -179,7 +179,7 @@ export const getBillDetails = async (req, res) => {
 
   try {
     const bill = await Bill.findById(billId)
-      .populate("patient", "name phone")
+      .populate("patient", "name phone patId")
       .populate("doctor", "name specialization")
       .populate("services.service", "name categories");
 
@@ -240,7 +240,7 @@ export const getBillDetails = async (req, res) => {
       caseId: bill.caseId,
       invoiceDate: bill.invoiceDate,
       patient: bill.patient
-        ? { name: bill.patient.name, phone: bill.patient.phone }
+        ? { name: bill.patient.name, phone: bill.patient.phone, patId: bill.patient.patId }
         : { name: "Unknown", phone: "N/A" },
       doctor: bill.doctor
         ? { name: bill.doctor.name, specialization: bill.doctor.specialization }

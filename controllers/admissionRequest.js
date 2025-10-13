@@ -107,6 +107,9 @@ export const createAdmissionRequest = async (req, res) => {
         name,
         email,
         phone: mobileNumber,
+        age: admissionDetails.age || null,
+        gender: admissionDetails.gender || null,
+        address: admissionDetails.address || "",
         hospital: hospitalId,
         password: hashedPassword,
         status: "active",
@@ -218,6 +221,7 @@ export const createAdmissionRequest = async (req, res) => {
       invoiceNumber: invoiceNumber,
       hospital: hospitalId,
       mode: "Cash",
+      doctor: doctor || null,
     });
 
     await bill.save();
