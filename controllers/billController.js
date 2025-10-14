@@ -387,11 +387,9 @@ export const getBillsByPatient = async (req, res) => {
 };
 
 
-
-
 export const editBillDetails = async (req, res) => {
   const { billId } = req.params;
-  const { services, paidAmount, status, mode } = req.body;
+  const { services, paidAmount, mode } = req.body; // remove status from frontend input
 
   try {
     let bill = await Bill.findById(billId);
@@ -409,19 +407,24 @@ export const editBillDetails = async (req, res) => {
       }));
     }
 
-    // recalc total
+    // Recalculate total
     bill.totalAmount = bill.services.reduce(
       (sum, item) => sum + (item.quantity || 1) * (item.rate || 0),
       0
     );
 
+    // Update paid amount if provided
     if (paidAmount !== undefined) {
       bill.paidAmount = paidAmount;
     }
 
+    // Recalculate outstanding
     bill.outstanding = bill.totalAmount - bill.paidAmount;
 
-    if (status) bill.status = status;
+    // Auto-update status based on outstanding
+    bill.status = bill.outstanding <= 0 ? "Paid" : "Pending";
+
+    // Update mode if provided
     if (mode) bill.mode = mode;
 
     await bill.save();
@@ -433,7 +436,7 @@ export const editBillDetails = async (req, res) => {
 
     res.status(200).json({
       message: "Bill updated successfully",
-      bill: updatedBill.toObject(), // 🔑 returns whole doc
+      bill: updatedBill.toObject(),
     });
   } catch (error) {
     console.error("Error updating bill:", error);

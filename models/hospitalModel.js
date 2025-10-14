@@ -53,8 +53,8 @@ const hospitalSchema = new mongoose.Schema({
   },
   licenses: [
     {
-      name: { type: String, required: true },
-      file: { type: String, required: true },
+      name: { type: String },
+      file: { type: String },
     },
   ],
   nabhAccreditation: {
