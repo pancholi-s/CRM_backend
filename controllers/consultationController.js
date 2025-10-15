@@ -963,7 +963,7 @@ export const addProgressPhase = async (req, res) => {
       data // dynamic JSON or string
     } = req.body;
 
-    if (!caseId || !patient || !title || !assignedDoctor) {
+    if ( !patient || !title || !assignedDoctor) {
       return res.status(400).json({ message: 'Required fields are missing' });
     }
 
