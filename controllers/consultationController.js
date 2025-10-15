@@ -834,29 +834,179 @@ export const getProgressPhaseCounts = async (req, res) => {
 };
 
 
+// export const addProgressPhase = async (req, res) => {
+//   try {
+//     const {
+//       caseId,
+//       patient,
+//       title,
+//       date, // user-provided date string like "2025-08-13"
+//       assignedDoctor,
+//       isFinalPhase,
+//       data // dynamic data field (with arrays of strings)
+//     } = req.body;
+
+//     if (!caseId || !patient || !title || !assignedDoctor) {
+//       return res.status(400).json({ message: 'Required fields are missing' });
+//     }
+
+//     // 1. Block if final phase exists
+//     const finalExists = await ProgressPhase.exists({ caseId, isFinal: true });
+//     if (finalExists) {
+//       return res.status(400).json({ message: 'Cannot add more phases. Final phase already exists.' });
+//     }
+
+//     // 2. Close the latest item (phase or consultation)
+//     const lastPhase = await ProgressPhase.findOne({ caseId }).sort({ date: -1 });
+//     const lastConsultation = await Consultation.findOne({ caseId }).sort({ date: -1 });
+
+//     let latestItem = null;
+//     let latestType = null;
+
+//     if (lastPhase && lastConsultation) {
+//       if (new Date(lastPhase.date) > new Date(lastConsultation.date)) {
+//         latestItem = lastPhase;
+//         latestType = "phase";
+//       } else {
+//         latestItem = lastConsultation;
+//         latestType = "consultation";
+//       }
+//     } else if (lastPhase) {
+//       latestItem = lastPhase;
+//       latestType = "phase";
+//     } else if (lastConsultation) {
+//       latestItem = lastConsultation;
+//       latestType = "consultation";
+//     }
+
+//     if (latestItem) {
+//       if (latestType === "phase" && !latestItem.isDone) {
+//         latestItem.isDone = true;
+//         await latestItem.save();
+//       } else if (latestType === "consultation" && latestItem.status !== "completed") {
+//         latestItem.status = "completed";
+//         await latestItem.save();
+//       }
+//     }
+
+//         // 3. Handle file uploads (NEW CODE ADDED HERE)
+//     let uploadedFiles = [];
+//     if (req.files && req.files.length > 0) {
+//       for (const file of req.files) {
+//         try {
+//           const result = await uploadToCloudinary(
+//             file.buffer, 
+//             file.originalname, 
+//             file.mimetype
+//           );
+//           uploadedFiles.push({
+//             url: result.secure_url,
+//             originalName: file.originalname,
+//             fileType: file.mimetype
+//           });
+//         } catch (uploadError) {
+//           console.error("File upload error:", uploadError);
+//           // Continue with other files if one fails
+//         }
+//       }
+//     }
+
+//     let parsedData = {};
+//     if (data) {
+//       try {
+//         parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+//       } catch (parseError) {
+//         console.error("Data parsing error:", parseError);
+//         parsedData = {}; // fallback to empty object
+//       }
+//     }
+
+//     // 3. Merge user date with system time
+//     const now = new Date();
+//     const [year, month, day] = new Date(date).toISOString().split("T")[0].split("-");
+//     const finalDate = new Date(`${year}-${month}-${day}T${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}Z`);
+
+//     // 4. Create new phase with dynamic 'data' field (arrays of strings)
+//     const newPhase = await ProgressPhase.create({
+//       caseId,
+//       patient,
+//       title: isFinalPhase ? 'final' : title,
+//       date: finalDate,
+//       assignedDoctor,
+//       data: parsedData, 
+//       files: uploadedFiles,
+//       isDone: false,
+//       isFinal: !!isFinalPhase
+//     });
+
+//     res.status(201).json({
+//       message: "Progress phase added successfully",
+//       phase: newPhase
+//     });
+
+//   } catch (error) {
+//     console.error("Error adding progress phase:", error);
+//     res.status(500).json({ message: "Server error", error: error.message });
+//   }
+// };
+
 export const addProgressPhase = async (req, res) => {
   try {
     const {
-      caseId,
+      caseId: providedCaseId,
       patient,
       title,
-      date, // user-provided date string like "2025-08-13"
+      date, // e.g. "2025-08-13"
       assignedDoctor,
       isFinalPhase,
-      data // dynamic data field (with arrays of strings)
+      data // dynamic JSON or string
     } = req.body;
 
     if (!caseId || !patient || !title || !assignedDoctor) {
       return res.status(400).json({ message: 'Required fields are missing' });
     }
 
-    // 1. Block if final phase exists
-    const finalExists = await ProgressPhase.exists({ caseId, isFinal: true });
-    if (finalExists) {
-      return res.status(400).json({ message: 'Cannot add more phases. Final phase already exists.' });
+    // 1️⃣ Determine correct latest caseId (Admission > Consultation)
+    const latestConsultation = await Consultation.findOne({ patient })
+      .sort({ date: -1 })
+      .select("caseId date")
+      .lean();
+
+    const latestAdmission = await AdmissionRequest.findOne({ patient })
+      .sort({ createdAt: -1 })
+      .select("caseId createdAt")
+      .lean();
+
+    let caseId = providedCaseId;
+
+    if (latestConsultation && latestAdmission) {
+      caseId =
+        new Date(latestAdmission.createdAt) > new Date(latestConsultation.date)
+          ? latestAdmission.caseId
+          : latestConsultation.caseId;
+    } else if (latestConsultation) {
+      caseId = latestConsultation.caseId;
+    } else if (latestAdmission) {
+      caseId = latestAdmission.caseId;
     }
 
-    // 2. Close the latest item (phase or consultation)
+    if (!caseId) {
+      return res
+        .status(400)
+        .json({ message: "No valid caseId found for this patient." });
+    }
+
+    console.log("✅ Using latest caseId:", caseId);
+
+    // 2️⃣ Block if final phase already exists
+    const finalExists = await ProgressPhase.exists({ caseId, isFinal: true });
+    if (finalExists) {
+      return res
+        .status(400)
+        .json({ message: "Cannot add more phases. Final phase already exists." });
+    }
+
+    // 3️⃣ Close latest item (phase or consultation)
     const lastPhase = await ProgressPhase.findOne({ caseId }).sort({ date: -1 });
     const lastConsultation = await Consultation.findOne({ caseId }).sort({ date: -1 });
 
@@ -889,35 +1039,35 @@ export const addProgressPhase = async (req, res) => {
       }
     }
 
-        // 3. Handle file uploads (NEW CODE ADDED HERE)
+    // 4️⃣ Handle file uploads (if any)
     let uploadedFiles = [];
     if (req.files && req.files.length > 0) {
       for (const file of req.files) {
         try {
           const result = await uploadToCloudinary(
-            file.buffer, 
-            file.originalname, 
+            file.buffer,
+            file.originalname,
             file.mimetype
           );
           uploadedFiles.push({
             url: result.secure_url,
             originalName: file.originalname,
-            fileType: file.mimetype
+            fileType: file.mimetype,
           });
         } catch (uploadError) {
           console.error("File upload error:", uploadError);
-          // Continue with other files if one fails
         }
       }
     }
 
+    // 5️⃣ Parse data safely
     let parsedData = {};
     if (data) {
       try {
-        parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+        parsedData = typeof data === "string" ? JSON.parse(data) : data;
       } catch (parseError) {
         console.error("Data parsing error:", parseError);
-        parsedData = {}; // fallback to empty object
+        parsedData = {};
       }
     }
 
@@ -926,30 +1076,28 @@ export const addProgressPhase = async (req, res) => {
     const [year, month, day] = new Date(date).toISOString().split("T")[0].split("-");
     const finalDate = new Date(`${year}-${month}-${day}T${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}Z`);
 
-    // 4. Create new phase with dynamic 'data' field (arrays of strings)
+    // 7️⃣ Create new progress phase
     const newPhase = await ProgressPhase.create({
       caseId,
       patient,
-      title: isFinalPhase ? 'final' : title,
+      title: isFinalPhase ? "final" : title,
       date: finalDate,
       assignedDoctor,
-      data: parsedData, 
+      data: parsedData,
       files: uploadedFiles,
       isDone: false,
-      isFinal: !!isFinalPhase
+      isFinal: !!isFinalPhase,
     });
 
     res.status(201).json({
       message: "Progress phase added successfully",
       phase: newPhase
     });
-
   } catch (error) {
     console.error("Error adding progress phase:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
 
 
 export const updatePhase = async (req, res) => {
