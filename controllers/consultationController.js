@@ -7,6 +7,7 @@ import ProgressPhase from '../models/ProgressPhase.js';
 import ProgressLog from '../models/progressLog.js';
 import Service from '../models/serviceModel.js';
 import Doctor from '../models/doctorModel.js';
+import AdmissionRequest from '../models/admissionReqModel.js';
 
 import { updateBillAfterAction } from '../middleware/billingMiddleware.js'; // Import the billing middleware function
 import {uploadToCloudinary} from '../utils/cloudinary.js';
