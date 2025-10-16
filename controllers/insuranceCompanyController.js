@@ -117,17 +117,36 @@ export const addServiceToCompany = async (req, res) => {
 // Get all insurance companies
 export const getInsuranceCompanies = async (req, res) => {
   try {
-    const companies = await InsuranceCompany.find().lean();
-    res
-      .status(200)
-      .json({ message: "Insurance companies fetched successfully", companies });
+    const hospitalId = req.session.hospitalId;
+    if (!hospitalId) {
+      return res
+        .status(403)
+        .json({ message: "Unauthorized access. No hospital context." });
+    }
+
+    // ✅ Fetch insurance companies for this hospital
+    const companies = await InsuranceCompany.find({ hospitalId }).lean();
+
+    if (!companies.length) {
+      return res.status(404).json({
+        message: "No insurance companies found for this hospital.",
+      });
+    }
+
+    res.status(200).json({
+      message: "Insurance companies fetched successfully.",
+      companies,
+    });
   } catch (error) {
+    console.error("❌ Error fetching insurance companies:", error);
     res.status(500).json({
       message: "Error fetching insurance companies.",
       error: error.message,
     });
   }
 };
+
+
 
 // Get a specific insurance company by ID
 export const getInsuranceCompanyDetails = async (req, res) => {
