@@ -11,6 +11,7 @@ import Doctor from "../models/doctorModel.js";
 import Admin from "../models/hospitalAdminModel.js";
 import Receptionist from "../models/receptionistModel.js";
 import PatientFile from "../models/patientFileModel.js";
+import { generatePatientSummary } from "../utils/generatePatientSummary.js";
 import moment from "moment";
 // Get Patients by Hospital with Sorting
 export const getPatientsByHospital = async (req, res) => {
@@ -431,6 +432,14 @@ export const getPatientDetailsById = async (req, res) => {
       createdByName,
     };
 
+    const patientSummary = await generatePatientSummary({
+      patient,
+      consultations,
+      admissionRequests: requestsWithPhases,
+      otherDocuments: files,
+      additionalFields,
+    });
+
     return res.status(200).json({
       message: "Patient details with admission requests and related progress phases retrieved successfully.",
       data: {
@@ -439,6 +448,7 @@ export const getPatientDetailsById = async (req, res) => {
         admissionRequests: requestsWithPhases,
         otherDocuments: files,
         ...additionalFields,
+        aiSummary: patientSummary,
       },
     });
   } catch (error) {
@@ -449,7 +459,6 @@ export const getPatientDetailsById = async (req, res) => {
     });
   }
 };
-
 
 //Get Inpatients
 export const getInpatients = async (req, res) => {
