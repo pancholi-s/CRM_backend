@@ -45,7 +45,7 @@ const billSchema = new mongoose.Schema(
       {
         amount: { type: Number, required: true },
         date: { type: Date, default: Date.now },
-        mode: { type: String, enum: ["Online", "Cash"], default: "Cash" },
+        mode: { type: String, enum: ["UPI", "Cash","Card", "Net Banking"], default: "Cash" },
         reference: { type: String },
       },
     ],

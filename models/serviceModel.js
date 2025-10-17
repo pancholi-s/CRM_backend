@@ -32,7 +32,7 @@ const serviceSchema = new mongoose.Schema(
     department: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Department",
-      required: true,
+      // required: true,
     },
     revenueType: {
       type: String,

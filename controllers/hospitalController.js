@@ -1,5 +1,8 @@
 import Hospital from "../models/hospitalModel.js";
 import { uploadToCloudinary } from "../utils/cloudinary.js";
+import Service from "../models/serviceModel.js";
+import Department from "../models/departmentModel.js";
+
 export const registerHospital = async (req, res) => {
   const {
     name,
@@ -15,13 +18,11 @@ export const registerHospital = async (req, res) => {
     description,
   } = req.body;
 
-  // Check for required fields
   if (!name || !address || !phone || !email) {
     return res.status(400).json({ message: "Required fields are missing." });
   }
 
   try {
-    // Check if the hospital name or phone number already exists
     const existingHospital = await Hospital.findOne({
       $or: [{ name }, { phone }],
     });
@@ -31,7 +32,6 @@ export const registerHospital = async (req, res) => {
         .json({ message: "Hospital with this name or phone already exists." });
     }
 
-    // Create a new hospital object
     const newHospital = new Hospital({
       name,
       address,
@@ -40,14 +40,51 @@ export const registerHospital = async (req, res) => {
       website,
       establishedDate,
       departments,
-      administrativeDetails, // Optional
-      licenses, // Optional
-      nabhAccreditation, // Optional
-      description, // Optional
+      administrativeDetails,
+      licenses,
+      nabhAccreditation,
+      description,
     });
 
-    // Save the hospital to the database
     await newHospital.save();
+
+    // -------- Auto-create essential billing services --------
+    const baseDate = new Date("2025-01-01");
+
+    const coreServices = [
+      {
+        name: "Consultation",
+        description: "Service related charges",
+        categories: [
+          {
+            subCategoryName: "Doctor Consultation",
+            rateType: "Per Consultation",
+            rate: 0,
+            effectiveDate: baseDate,
+            amenities: "N/A",
+            hospital: newHospital._id,
+          },
+        ],
+        hospital: newHospital._id,
+      },
+      {
+        name: "Room Type Service",
+        description: "Room Related Charges",
+        categories: [
+          {
+            subCategoryName: "room",
+            rateType: "Per Day",
+            rate: 0,
+            effectiveDate: baseDate,
+            amenities: "AC, Wi-Fi, TV",
+            hospital: newHospital._id,
+          },
+        ],
+        hospital: newHospital._id,
+      },
+    ];
+
+    await Service.insertMany(coreServices);
 
     res.status(201).json({
       message: "Hospital registered successfully.",
@@ -58,6 +95,7 @@ export const registerHospital = async (req, res) => {
     res.status(500).json({ message: "Error registering hospital." });
   }
 };
+
 
 export const addHospitalImage = async (req, res) => {
   try {

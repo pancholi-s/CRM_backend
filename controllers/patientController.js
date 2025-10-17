@@ -376,6 +376,7 @@ export const getPatientDetailsById = async (req, res) => {
 
     // 3️⃣ Fetch admission requests for this patient only
     const admissionRequests = await AdmissionRequest.find({ patient: patientId })
+      .populate("doctor", "name")
       .sort({ createdAt: -1 })
       .lean();
 
