@@ -91,9 +91,12 @@ const parsePrescriptionTextToObject = (text) => {
 };
 
 export const getAIPrescription = async (inputData) => {
-  let patientInfo = `Medical History: ${JSON.stringify(
-    inputData.medicalHistory
-  )}\n`;
+  let patientInfo = "";
+  if (inputData.medicalHistory) {
+    patientInfo += `Medical History: ${JSON.stringify(
+      inputData.medicalHistory
+    )}\n`;
+  }
 
   Object.entries(inputData).forEach(([key, value]) => {
     if (key !== "medicalHistory" && value) {
