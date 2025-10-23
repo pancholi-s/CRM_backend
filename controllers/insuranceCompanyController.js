@@ -127,14 +127,11 @@ export const getInsuranceCompanies = async (req, res) => {
     // ✅ Fetch insurance companies for this hospital
     const companies = await InsuranceCompany.find({ hospitalId }).lean();
 
-    if (!companies.length) {
-      return res.status(404).json({
-        message: "No insurance companies found for this hospital.",
-      });
-    }
-
     res.status(200).json({
-      message: "Insurance companies fetched successfully.",
+       message:
+        companies.length > 0
+          ? "Insurance companies fetched successfully."
+          : "No insurance companies found for this hospital.",
       companies,
     });
   } catch (error) {

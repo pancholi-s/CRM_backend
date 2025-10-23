@@ -155,6 +155,31 @@ export const bookAppointment = async (req, res) => {
       }
     }
 
+    // 🧩 Check for duplicate appointment (same patient + doctor + date + department)
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const existingAppointment = await Appointment.findOne({
+      patient: patient._id,
+      doctor: doctor._id,
+      department: department._id,
+      tokenDate: { $gte: startOfDay, $lte: endOfDay },
+      status: { $nin: ["Cancelled", "RescheduledOld", "Completed"] },
+    });
+
+    if (existingAppointment) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(400).json({
+        message:
+          "Oops! This patient already has an appointment booked for today.",
+        existingAppointmentId: existingAppointment._id,
+      });
+    }
+
     const newAppointment = new Appointment({
       patient: patient._id,
       doctor: doctor._id,
