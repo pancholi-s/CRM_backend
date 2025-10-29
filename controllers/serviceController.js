@@ -11,20 +11,18 @@ export const addService = async (req, res) => {
     rate,
     effectiveDate,
     amenities,
-    departmentNames,  // List of department names
-    departmentIds,    // Or multiple department IDs
-    additionaldetails, // Only for room services
+    departmentNames,
+    departmentIds,
+    additionaldetails,
   } = req.body;
 
   const hospitalId = req.session.hospitalId;
   if (!hospitalId) {
-    return res
-      .status(403)
-      .json({ message: "Unauthorized access. No hospital context." });
+    return res.status(403).json({ message: "Unauthorized access. No hospital context." });
   }
 
   try {
-    // Ensure the departments belong to the current hospital
+    // ✅ Fetch valid departments
     const deptFilter = { hospital: hospitalId };
     let targetDepts = [];
 
@@ -38,20 +36,20 @@ export const addService = async (req, res) => {
       return res.status(404).json({ message: "No matching departments found." });
     }
 
-    const deptIds = targetDepts.map(d => d._id); // Get all department IDs for the service
+    const deptIds = targetDepts.map(d => d._id);
 
-    // Find if the service already exists
+    // ✅ Find service by hospital and name
     let service = await Service.findOne({ hospital: hospitalId, name });
 
     if (!service) {
-      // Create new service if it doesn't exist
+      // ✅ Create new service
       const categories = [{
         subCategoryName,
         rateType,
-        rate,  // Use the same rate for now
+        rate,
         effectiveDate,
         amenities,
-        departments: deptIds, // All departments are linked here
+        departments: deptIds, // ✅ all departments together
         additionaldetails: additionaldetails || null,
         hospital: hospitalId,
       }];
@@ -60,75 +58,59 @@ export const addService = async (req, res) => {
         name,
         description,
         hospital: hospitalId,
-        departments: deptIds, // Add all departments here
+        departments: deptIds,
         categories,
       });
       await service.save();
     } else {
-      // If the service exists, check if the subCategoryName already exists and manage rate logic
-      const existingCategory = service.categories.find(c => c.subCategoryName === subCategoryName && c.rate === rate);
+      // ✅ Look for existing subcategory+rate match
+      const existingCategory = service.categories.find(
+        c => c.subCategoryName === subCategoryName && c.rate === rate
+      );
 
       if (existingCategory) {
-        // If the rate is the same for multiple departments, we add the department to the existing subcategory
-        if (existingCategory.rate === rate) {
-          // Add all departments to the same category
-          existingCategory.departments = [...new Set([...existingCategory.departments, ...deptIds])]; // Prevent duplicates
-        } else {
-          // If the rate is different for each department, create separate entries for each department
-          targetDepts.forEach(department => {
-            service.categories.push({
-              subCategoryName,
-              rateType,
-              rate,
-              effectiveDate,
-              amenities,
-              departments: [department._id],
-              additionaldetails: additionaldetails || null,
-              hospital: hospitalId,
-            });
-          });
-        }
-        service.lastUpdated = new Date();
-        await service.save();
+        // ✅ merge departments
+        existingCategory.departments = [...new Set([...existingCategory.departments, ...deptIds])];
       } else {
-        // Add new category for each department if the subcategory doesn't exist yet
-        targetDepts.forEach(department => {
-          service.categories.push({
-            subCategoryName,
-            rateType,
-            rate,
-            effectiveDate,
-            amenities,
-            departments: [department._id],
-            additionaldetails: additionaldetails || null,
-            hospital: hospitalId,
-          });
+        // ✅ add one new combined category
+        service.categories.push({
+          subCategoryName,
+          rateType,
+          rate,
+          effectiveDate,
+          amenities,
+          departments: deptIds, // ✅ not looping
+          additionaldetails: additionaldetails || null,
+          hospital: hospitalId,
         });
-        service.lastUpdated = new Date();
-        await service.save();
       }
+
+      service.lastUpdated = new Date();
+      await service.save();
     }
 
-    // Link the service to the departments in the top-level departments array
+    // ✅ Link service to all departments
     await Department.updateMany(
       { _id: { $in: deptIds } },
       { $addToSet: { services: service._id } }
     );
 
-    // Populate all departments and the service details
     const populatedService = await Service.findById(service._id)
-      .populate("departments", "name")  // Populate multiple departments
+      .populate("departments", "name")
+      .populate({ path: "categories.departments", select: "name" })
       .lean();
 
     return res.status(201).json({
-      message: service ? "Service added/updated successfully." : "Service created successfully.",
+      message: "Service added/updated successfully.",
       service: populatedService,
     });
   } catch (error) {
-    return res.status(500).json({ message: "Error adding service.", error: error.message });
+    return res.status(500).json({
+      message: "Error adding service.",
+      error: error.message,
+    });
   }
 };
-
 
 
 
