@@ -66,7 +66,7 @@ export const addService = async (req, res) => {
       await service.save();
     } else {
       // If the service exists, check if the subCategoryName already exists and manage rate logic
-      const existingCategory = service.categories.find(  c => c.subCategoryName === subCategoryName && c.rate === rate);
+      const existingCategory = service.categories.find(c => c.subCategoryName === subCategoryName && c.rate === rate);
 
       if (existingCategory) {
         // If the rate is the same for multiple departments, we add the department to the existing subcategory
@@ -154,7 +154,11 @@ export const getServices = async (req, res) => {
     const total = await Service.countDocuments(filter);
 
     const services = await Service.find(filter)
-      .populate("department", "name")
+      .populate("departments", "name")
+      .populate({
+        path: "categories.departments", // ✅ nested populate inside categories
+        select: "name",                 // only get department name
+      })
       .skip(skip)
       .limit(parseInt(limit));
 
@@ -176,7 +180,7 @@ export const getServices = async (req, res) => {
 export const editService = async (req, res) => {
   const { serviceId } = req.params;
   const { name, description, revenueType, categories, rate, subCategoryName } = req.body;
-  
+
   const hospitalId = req.session.hospitalId;
 
   if (!hospitalId) {
@@ -211,8 +215,8 @@ export const editService = async (req, res) => {
         if (categoryToUpdate) {
           categoryToUpdate.rate = parseInt(rate);
         } else {
-          return res.status(404).json({ 
-            message: `Subcategory '${subCategoryName}' not found.` 
+          return res.status(404).json({
+            message: `Subcategory '${subCategoryName}' not found.`
           });
         }
       } else if (service.categories.length > 0) {
@@ -262,7 +266,7 @@ export const editService = async (req, res) => {
       message: "Service updated successfully.",
       service: updatedService,
     });
-    
+
   } catch (error) {
     res
       .status(500)
@@ -399,7 +403,7 @@ export const getServicesByDep = async (req, res) => {
       hospital: hospitalId,
     })
       .select("name description categories lastUpdated revenueType")
-      .sort({ createdAt: -1})
+      .sort({ createdAt: -1 })
       .lean();
 
     const response = {
