@@ -34,8 +34,9 @@ import nursingRoutes from './routes/nursingRoutes.js';
 import departmentStatRoutes from './routes/departmentStatRoutes.js';
 import insuranceCompanyController from './routes/insuranceCompanyRoutes.js';
 import fileRoutes from './routes/patientFileRoutes.js';
-
+import newPrescriptionRoutes from './routes/newPrescriptionRoutes.js';
 import "./middleware/billingCron.js"; // Start the billing cron job
+import chatRoutes from "./routes/chatRoutes.js";
 
 dotenv.config();
 
@@ -94,7 +95,8 @@ app.use('/', nursingRoutes);
 app.use('/', departmentStatRoutes);
 app.use('/', insuranceCompanyController);
 app.use('/', fileRoutes);
-
+app.use('/', newPrescriptionRoutes);
+app.use("/", chatRoutes);
 // Base route
 app.get('/', (req, res) => {
   res.send('Welcome to the CRM Backend API with MongoDB');
