@@ -10,7 +10,7 @@ import Doctor from '../models/doctorModel.js';
 import AdmissionRequest from '../models/admissionReqModel.js';
 
 import { updateBillAfterAction } from '../middleware/billingMiddleware.js'; // Import the billing middleware function
-import {uploadToCloudinary} from '../utils/cloudinary.js';
+import { uploadToCloudinary } from '../utils/cloudinary.js';
 
 export const submitConsultation = async (req, res) => {
   const session = await Consultation.startSession();
@@ -163,7 +163,7 @@ export const submitConsultation = async (req, res) => {
       patient,
       appointment,
       department,
-      consultationData, 
+      consultationData,
       status: "completed",
       followUpRequired: false,
       caseId
@@ -229,37 +229,56 @@ export const submitConsultation = async (req, res) => {
       { session }
     );
 
-    // ✅ Billing logic
+    // ✅ Department-aware Billing Logic
     const consultationService = await Service.findOne({
       name: "Consultation",
-      hospital: hospitalId
+      hospital: hospitalId,
+      "categories.subCategoryName": "Doctor Consultation"
     }).session(session);
+
     let consultationRate = 0;
+
     if (consultationService) {
-      const consultationCategory = consultationService.categories.find(
-        (c) => c.subCategoryName === "Doctor Consultation"
+      // Try to find department-specific rate
+      const deptCategory = consultationService.categories.find(
+        (cat) =>
+          cat.subCategoryName === "Doctor Consultation" &&
+          cat.departments.some(
+            (dep) => dep.toString() === department?.toString()
+          )
       );
-      if (consultationCategory) consultationRate = consultationCategory.rate;
+
+      // Fallback if department not mapped
+      const fallbackCategory = consultationService.categories.find(
+        (cat) => cat.subCategoryName === "Doctor Consultation"
+      );
+
+      consultationRate = deptCategory
+        ? deptCategory.rate
+        : fallbackCategory?.rate || 0;
     }
 
+    // ✅ Construct charge object
     const consultationCharge = {
       service: consultationService ? consultationService._id : null,
       category: "Doctor Consultation",
       quantity: 1,
       rate: consultationRate,
       details: {
-        consultationData,
+        department, // store department ID
         doctorName,
-        consultationDate: new Date()
-      }
+        consultationDate: new Date(),
+        consultationData,
+      },
     };
 
-    await updateBillAfterAction(caseId, session, consultationCharge);
+    // ✅ Update / create bill
+    await updateBillAfterAction(caseId, session, null , consultationCharge);
+
 
     res.status(200).json({
-      message: `Consultation successfully ${
-        action === "complete" ? "completed" : action
-      }.`,
+      message: `Consultation successfully ${action === "complete" ? "completed" : action
+        }.`,
       data: newConsultation
     });
   } catch (error) {
@@ -745,8 +764,8 @@ export const getProgressTracker = async (req, res) => {
         (item.status === "final"
           ? "final"
           : item.status === "completed"
-          ? "final"
-          : "ongoing"),
+            ? "final"
+            : "ongoing"),
       status: item.status,
       doctor: item.doctor?._id || null,
       department: item.department?._id || null,
@@ -963,7 +982,7 @@ export const addProgressPhase = async (req, res) => {
       data // dynamic JSON or string
     } = req.body;
 
-    if ( !patient || !title || !assignedDoctor) {
+    if (!patient || !title || !assignedDoctor) {
       return res.status(400).json({ message: 'Required fields are missing' });
     }
 

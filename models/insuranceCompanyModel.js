@@ -12,6 +12,13 @@ const insuranceCompanySchema = new mongoose.Schema({
         rate: { type: Number, required: true },  // Insurance-specific rate
         effectiveDate: { type: Date, required: true },
         amenities: { type: String, default: "N/A" },
+        departments: [
+              {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: "Department", // ✅ link same departments as in hospital service
+              },
+            ],
+
         additionaldetails: { 
           type: mongoose.Schema.Types.Mixed, // Store dynamic details for room types
           default: null

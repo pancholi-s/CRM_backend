@@ -7,13 +7,14 @@ import Service from "../models/serviceModel.js";
 import Hospital from "../models/hospitalModel.js";
 import EstimatedBill from "../models/estimatedBillModel.js";
 import AdmissionRequest from '../models/admissionReqModel.js';
+import Department from "../models/departmentModel.js";
 
 export const createBill = async (req, res) => {
-  const { patientId, caseID, services, paidAmount, mode } = req.body;
+  const { patientId, caseID, services, paidAmount, mode, departmentId } = req.body;
   const { hospitalId } = req.session;
 
   if (!hospitalId) {
-    return { error: "Access denied. No hospital context found." }; // Return an error instead of sending a response directly
+    return res.status(403).json({ error: "Access denied. No hospital context found." });
   }
 
   try {
@@ -35,10 +36,29 @@ export const createBill = async (req, res) => {
     });
 
     if (!appointment) {
-      return { error: "Appointment not found." };
+      return res.status(404).json({ error: "Appointment not found." });
     }
 
-    // Validate services
+    // ✅ Department-aware rate lookup helper
+    const getDepartmentRate = (serviceDoc, subCategoryName, departmentId) => {
+      if (!serviceDoc || !Array.isArray(serviceDoc.categories)) return 0;
+
+      const deptSpecific = serviceDoc.categories.find(
+        (cat) =>
+          cat.subCategoryName === subCategoryName &&
+          cat.departments?.some(
+            (dep) => dep.toString() === departmentId?.toString()
+          )
+      );
+
+      const fallback = serviceDoc.categories.find(
+        (cat) => cat.subCategoryName === subCategoryName
+      );
+
+      return deptSpecific?.rate || fallback?.rate || 0;
+    };
+
+    // Validate and calculate services
     let totalAmount = 0;
     const validatedServices = [];
 
@@ -49,24 +69,32 @@ export const createBill = async (req, res) => {
       });
 
       if (!service) {
-        return { error: `Service not found: ${serviceItem.serviceId}` };
+        return res.status(404).json({ error: `Service not found: ${serviceItem.serviceId}` });
       }
 
-      const serviceDetails = service.categories.find(
-        (sub) => sub.subCategoryName === serviceItem.category
+      const rate = getDepartmentRate(
+        service,
+        serviceItem.category,
+        serviceItem.departmentId || departmentId
       );
 
-      if (!serviceDetails) {
-        return { error: `Sub-category not found: ${serviceItem.category}` };
+      if (!rate) {
+        return res.status(400).json({
+          error: `Rate not found for category '${serviceItem.category}' in selected department.`,
+        });
       }
 
-      const serviceTotal = serviceDetails.rate * serviceItem.quantity;
+      const serviceTotal = rate * serviceItem.quantity;
+
       validatedServices.push({
         service: service._id,
         category: serviceItem.category,
         quantity: serviceItem.quantity,
-        rate: serviceDetails.rate,
+        rate,
         total: serviceTotal,
+        details: {
+          department: serviceItem.departmentId || departmentId || null,
+        },
       });
 
       totalAmount += serviceTotal;
@@ -95,37 +123,46 @@ export const createBill = async (req, res) => {
       { $inc: { revenue: paidAmount } }
     );
 
-    // Instead of sending a response, return the new bill object
-    return { success: true, bill: newBill };
+    // ✅ Proper response
+    res.status(201).json({
+      success: true,
+      message: "Bill created successfully.",
+      bill: newBill,
+    });
   } catch (error) {
-    return { error: `Error generating bill: ${error.message}` };
+    console.error("Error creating bill:", error);
+    res.status(500).json({ error: `Error generating bill: ${error.message}` });
   }
 };
 
+
 export const getAllBills = async (req, res) => {
   const { hospitalId } = req.session;
-  const { page = 1, limit = 10 , search = ""} = req.query;
+  const { page = 1, limit = 10, search = "" } = req.query;
   const skip = (page - 1) * limit;
 
   if (!hospitalId) {
-    return res.status(403).json({ message: "Access denied. No hospital context found." });
+    return res
+      .status(403)
+      .json({ message: "Access denied. No hospital context found." });
   }
 
   try {
     let filter = { hospital: hospitalId };
 
+    // 🔎 Optional search
     if (search) {
       const matchingPatients = await Patient.find({
-        name: { $regex: search, $options: "i" }
+        name: { $regex: search, $options: "i" },
       }).select("_id");
 
-      const patientIds = matchingPatients.map(p => p._id);
+      const patientIds = matchingPatients.map((p) => p._id);
 
       filter.$or = [
         { caseId: { $regex: search, $options: "i" } },
         { invoiceNumber: { $regex: search, $options: "i" } },
         { status: { $regex: search, $options: "i" } },
-        { patient: { $in: patientIds } }  
+        { patient: { $in: patientIds } },
       ];
     }
 
@@ -134,23 +171,71 @@ export const getAllBills = async (req, res) => {
     const bills = await Bill.find(filter)
       .populate("patient", "name phone")
       .populate("doctor", "name specialization")
-      .populate("services.service", "name")
+      .populate({
+        path: "services.service",
+        populate: {
+          path: "categories.departments",
+          select: "name",
+        },
+        select: "name categories",
+      })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
 
-    const formattedBills = bills.map(bill => ({
+    // ✅ Collect all department IDs used in bills
+    const departmentIds = [
+      ...new Set(
+        bills
+          .flatMap((bill) =>
+            bill.services.map((s) => s.details?.department).filter(Boolean)
+          )
+      ),
+    ];
+
+    // ✅ Fetch department names once
+    const departments = await Department.find({
+      _id: { $in: departmentIds },
+    }).select("name");
+
+    const departmentMap = {};
+    departments.forEach((dept) => {
+      departmentMap[dept._id.toString()] = dept.name;
+    });
+
+    // 🧾 Format response with department names injected
+    const formattedBills = bills.map((bill) => ({
       _id: bill._id,
       caseId: bill.caseId,
       patient: bill.patient,
       doctor: bill.doctor,
-      services: bill.services.map(service => ({
-        service: service.service,
-        category: service.category,
-        quantity: service.quantity,
-        rate: service.rate,
-        details: service.details 
-      })),
+      services: bill.services.map((service) => {
+        const serviceDoc = service.service || {};
+        const category = serviceDoc?.categories?.find(
+          (c) => c.subCategoryName === service.category
+        );
+
+        const departmentNames =
+          category?.departments?.map((d) => d.name).join(", ") || "N/A";
+
+        const deptId = service.details?.department;
+        const deptName = deptId
+          ? departmentMap[deptId.toString()] || "Unknown"
+          : "N/A";
+
+        return {
+          service: serviceDoc?.name || "Unknown Service",
+          category: service.category,
+          quantity: service.quantity,
+          rate: service.rate,
+          total: service.rate * service.quantity,
+          departments: departmentNames, // from service model
+          details: {
+            ...service.details,
+            department: { _id: deptId, name: deptName }, // ✅ inject department name
+          },
+        };
+      }),
       totalAmount: bill.totalAmount,
       paidAmount: bill.paidAmount,
       outstanding: bill.outstanding,
@@ -159,7 +244,7 @@ export const getAllBills = async (req, res) => {
       invoiceDate: bill.invoiceDate,
       mode: bill.mode,
       createdAt: bill.createdAt,
-      updatedAt: bill.updatedAt
+      updatedAt: bill.updatedAt,
     }));
 
     res.status(200).json({
@@ -167,12 +252,17 @@ export const getAllBills = async (req, res) => {
       totalBills: total,
       totalPages: Math.ceil(total / limit),
       currentPage: parseInt(page),
-      bills: formattedBills
+      bills: formattedBills,
     });
   } catch (error) {
-    res.status(500).json({ message: "Error fetching bills.", error: error.message });
+    console.error("Error fetching bills:", error);
+    res
+      .status(500)
+      .json({ message: "Error fetching bills.", error: error.message });
   }
 };
+
+
 
 export const getBillDetails = async (req, res) => {
   const { billId } = req.params;
@@ -181,69 +271,105 @@ export const getBillDetails = async (req, res) => {
     const bill = await Bill.findById(billId)
       .populate("patient", "name phone patId")
       .populate("doctor", "name specialization")
-      .populate("services.service", "name categories");
+      .populate({
+        path: "services.service",
+        populate: {
+          path: "categories.departments",
+          select: "name"
+        },
+        select: "name categories"
+      });
 
     if (!bill) {
       return res.status(404).json({ message: "Bill not found." });
     }
 
     const admissionRequest = await AdmissionRequest.findOne({ caseId: bill.caseId });
-    const insurance = admissionRequest?.admissionDetails?.insurance|| "N/A";
+    const insurance = admissionRequest?.admissionDetails?.insurance || "N/A";
 
+    // ✅ Collect all department IDs used in this bill
+    const departmentIds = [
+      ...new Set(
+        bill.services
+          .map((s) => s.details?.department)
+          .filter(Boolean)
+      ),
+    ];
 
-    // Prepare the services and include all necessary details
-    const services = bill.services.map((item) => {
-      // If the service is available, return the details
-      let serviceDetails = item.details || {};  // Ensure details is included
+    // ✅ Fetch department names once
+    const departments = await Department.find({
+      _id: { $in: departmentIds },
+    }).select("name");
 
-      if (item.service) {
-        // Add additional information from the Service categories
-        const serviceName = item.service.name || "Unknown Service";
-        const categories = item.service.categories || [];
-        
-        // Find the matching category (based on subCategoryName)
-        const selectedCategory = categories.find(
-          (category) => category.subCategoryName === item.category
-        ) || {};
-
-        serviceDetails = {
-          ...serviceDetails,
-          rate: selectedCategory.rate || 0,  // Ensure rate is included
-          rateType: selectedCategory.rateType || "Unknown",
-        };
-
-        return {
-          serviceId: item.service._id,  // Use service ID for reference
-          service: item.service.name || "Unknown Service",
-          category: item.category || "Unknown Category",
-          quantity: item.quantity || 1,
-          rate: item.rate || 0,
-          details: serviceDetails,
-        };
-      } else {
-        // If the service is null (e.g., Unknown Room), include the details directly
-        return {
-          serviceId: null,  // No service ID for custom expenses
-          service: "Unknown Service",
-          category: item.category || "Unknown Category",
-          quantity: item.quantity || 1,
-          rate: item.rate || 0,
-          details: serviceDetails,  // The details already exist as input
-        };
-      }
+    const departmentMap = {};
+    departments.forEach((dept) => {
+      departmentMap[dept._id.toString()] = dept.name;
     });
 
-    const payments = bill.payments || [];
+    // 🧩 Build detailed service info with department support
+    const services = bill.services.map((item) => {
+      const serviceDoc = item.service;
+      const baseDetails = item.details || {};
+
+      if (!serviceDoc) {
+        return {
+          serviceId: null,
+          service: "Unknown Service",
+          category: item.category,
+          quantity: item.quantity,
+          rate: item.rate,
+          details: baseDetails,
+        };
+      }
+
+      const categories = serviceDoc.categories || [];
+      const category = categories.find(
+        (c) => c.subCategoryName === item.category
+      ) || {};
+
+      const departmentsFromCategory =
+        category.departments?.map((dep) => dep.name).join(", ") || "N/A";
+
+      // ✅ Inject department name from map (if exists)
+      const deptId = baseDetails?.department;
+      const deptName = deptId
+        ? departmentMap[deptId.toString()] || "Unknown"
+        : "N/A";
+
+      return {
+        serviceId: serviceDoc._id,
+        service: serviceDoc.name || "Unknown Service",
+        category: item.category || "Unknown Category",
+        quantity: item.quantity || 1,
+        rate: item.rate || 0,
+        details: {
+          ...baseDetails,
+          department: deptId
+            ? { _id: deptId, name: deptName }
+            : { _id: null, name: "N/A" }, // ✅ full object
+          rateType: category.rateType || "Unknown",
+          effectiveDate: category.effectiveDate || null,
+          departments: departmentsFromCategory,
+        },
+      };
+    });
 
     res.status(200).json({
       invoiceNumber: bill.invoiceNumber,
       caseId: bill.caseId,
       invoiceDate: bill.invoiceDate,
       patient: bill.patient
-        ? { name: bill.patient.name, phone: bill.patient.phone, patId: bill.patient.patId }
+        ? {
+            name: bill.patient.name,
+            phone: bill.patient.phone,
+            patId: bill.patient.patId,
+          }
         : { name: "Unknown", phone: "N/A" },
       doctor: bill.doctor
-        ? { name: bill.doctor.name, specialization: bill.doctor.specialization }
+        ? {
+            name: bill.doctor.name,
+            specialization: bill.doctor.specialization,
+          }
         : { name: "Unknown", specialization: "N/A" },
       insurance,
       deposit: bill.deposit,
@@ -253,13 +379,17 @@ export const getBillDetails = async (req, res) => {
       outstanding: bill.outstanding,
       status: bill.status,
       mode: bill.mode,
-      payments,
+      payments: bill.payments || [],
     });
   } catch (error) {
     console.error("Error fetching bill details:", error);
-    res.status(500).json({ message: "Error fetching bill details.", error: error.message });
+    res
+      .status(500)
+      .json({ message: "Error fetching bill details.", error: error.message });
   }
 };
+
+
 
 export const getBillsByPatient = async (req, res) => {
   try {

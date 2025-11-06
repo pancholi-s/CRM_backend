@@ -9,7 +9,8 @@ import AdmissionRequest from '../models/admissionReqModel.js';
 import Hospital from '../models/hospitalModel.js';
 import mongoose from 'mongoose';
 
-export const updateBillAfterAction = async (caseId, session, medicationCharge) => {
+export const updateBillAfterAction = async (caseId, session, medicationCharge, incomingCharge = null) => {
+  let services = [];
   try {
     if (!caseId) throw new Error("Case ID is required.");
 
@@ -44,42 +45,71 @@ export const updateBillAfterAction = async (caseId, session, medicationCharge) =
     const caseIdValue = appointment.caseId || (admissionRequest && admissionRequest.caseId);
     if (!caseIdValue) throw new Error("caseId not found for bill.");
 
-    // Fetch consultation service
-    const consultationService = await Service.findOne({ name: 'Consultation', hospital: hospitalId }).session(session);
-    if (!consultationService) throw new Error("Consultation service not found.");
+    // ---------------- CONSULTATION BILLING ----------------
+    const consultationService = await Service.findOne({
+      name: "Consultation",
+      hospital: hospitalId,
+      "categories.subCategoryName": "Doctor Consultation",
+    }).session(session);
 
-    const consultations = await Consultation.find({ caseId, status: "Completed" }).session(session);
+    if (!consultationService) {
+      console.warn("⚠️ Consultation service not found, skipping consultation billing.");
+    } else {
+      // 1️⃣ Add consultation passed from submitConsultation (if available)
+      if (incomingCharge) {
+        services.push({
+          service: consultationService._id,
+          category: incomingCharge.category || "Doctor Consultation",
+          quantity: incomingCharge.quantity || 1,
+          rate: incomingCharge.rate || 0,
+          details: {
+            department: incomingCharge.details?.department || appointment.department?._id,
+            departmentName: incomingCharge.details?.departmentName || appointment.department?.name,
+            doctorName: incomingCharge.details?.doctorName || appointment.doctor?.name,
+            consultationDate: incomingCharge.details?.consultationDate || new Date(),
+          },
+        });
+      }
 
-    let services = [];
+      // 2️⃣ Also include existing completed consultations
+      const consultations = await Consultation.find({
+        caseId,
+        status: "Completed",
+      })
+        .populate("department", "name")
+        .populate("doctor", "name")
+        .session(session);
 
-    // Add medication charges if available
-    if (medicationCharge) {
-      services.push({
-        service: medicationCharge.service || null,
-        category: medicationCharge.category,
-        quantity: medicationCharge.quantity,
-        rate: medicationCharge.rate,
-        details: medicationCharge.details,
-      });
+      for (const c of consultations) {
+        const deptId = c.department?._id?.toString();
+
+        const deptCategory = consultationService.categories.find(
+          (cat) =>
+            cat.subCategoryName === "Doctor Consultation" &&
+            cat.departments.some((dep) => dep.toString() === deptId)
+        );
+
+        const fallbackCategory = consultationService.categories.find(
+          (cat) => cat.subCategoryName === "Doctor Consultation"
+        );
+
+        const rate = deptCategory ? deptCategory.rate : fallbackCategory?.rate || 0;
+
+        services.push({
+          service: consultationService._id,
+          category: "Doctor Consultation",
+          quantity: 1,
+          rate,
+          details: {
+            department: deptId,
+            departmentName: c.department?.name || "Unknown Department",
+            doctorName: c.doctor?.name || "Unknown Doctor",
+            consultationDate: c.createdAt || new Date(),
+          },
+        });
+      }
     }
 
-    // Add consultation services
-    consultations.forEach(consultation => {
-      const consultationRateCategory = consultationService.categories.find(c => c.subCategoryName === "Doctor Consultation");
-      const consultationRate = consultationRateCategory ? consultationRateCategory.rate : 0;
-
-      services.push({
-        service: consultationService._id,
-        category: "Doctor Consultation",
-        quantity: 1,
-        rate: consultationRate,
-        details: {
-          consultationData: consultation.consultationData || {},
-          doctorName: consultation.doctor.name,  // Add doctor's name
-          consultationDate: consultation.date,  // Add consultation date
-        },
-      });
-    });
 
     // Room & Bed Charges
     let roomAndBedCharges = [];
@@ -197,118 +227,6 @@ export const updateBillAfterAction = async (caseId, session, medicationCharge) =
   }
 };
 
-// export const recalculateBillForInsuranceChange = async (caseId) => {
-//   const session = await mongoose.startSession();
-//   session.startTransaction();
-
-//   try {
-//     if (!caseId) throw new Error("Case ID is required for recalculation.");
-
-//     // Find the bill
-//     let bill = await Bill.findOne({ caseId }).populate("patient").session(session);
-//     if (!bill) throw new Error(`No bill found for caseId: ${caseId}`);
-
-//     const oldTotal = bill.totalAmount;
-
-//     // Get admission details
-//     const admission = await AdmissionRequest.findOne({ caseId }).session(session);
-//     if (!admission) throw new Error("Admission request not found for bill recalculation.");
-
-//     const insurance = admission.admissionDetails.insurance || {};
-//     const insuranceStatus = insurance.insuranceApproved;
-//     const hasInsurance = insurance.hasInsurance && insuranceStatus === "approved";
-
-//     // Get rates from insurance company or hospital
-//     let serviceRates = {};
-//     if (hasInsurance) {
-//       console.log(`📌 Patient has insurance approved. Fetching rates from company: ${insurance.insuranceCompany}`);
-//       const insuranceCompany = await InsuranceCompany.findOne({
-//         name: insurance.insuranceCompany,
-//       }).session(session);
-
-//       if (!insuranceCompany) throw new Error("Insurance company not found for insured patient.");
-
-//       insuranceCompany.services.forEach(service => {
-//         service.categories.forEach(cat => {
-//           serviceRates[cat.subCategoryName] = cat.rate;
-//           console.log(`   • Insurance Service Loaded: ${cat.subCategoryName} = ${cat.rate}`);
-//         });
-//       });
-
-//     } else {
-//       console.log("📌 Using hospital service rates.");
-//       const services = await Service.find().session(session);
-//       services.forEach((srv) => {
-//         srv.categories.forEach((cat) => {
-//           serviceRates[cat.name] = cat.rate;
-//         });
-//       });
-//     }
-
-//     let newTotal = 0;
-//     let serviceLogs = [];
-
-//     bill.services.forEach((srv, index) => {
-//       const oldRate = srv.rate;
-
-//       let categoryKey = srv.category;
-//       if (srv.category.includes("Room Charges") && srv.details?.bedType) {
-//         categoryKey = srv.details.bedType;
-//       }
-
-//       const newRate = serviceRates[categoryKey] || oldRate;
-
-//       srv.rate = newRate;
-
-//       // ✅ Update totalCharge inside details
-//       if (srv.details) {
-//         srv.details.totalCharge = newRate * (srv.quantity || 1);
-
-//         // mark nested Mixed path as modified
-//         bill.markModified(`services.${index}.details`);
-
-//       }
-
-//       newTotal += srv.details?.totalCharge || (newRate * (srv.quantity || 1));
-
-//       if (oldRate !== newRate) {
-//         const billedDateStr = srv.details?.billedDate
-//           ? new Date(srv.details.billedDate).toISOString().split("T")[0]
-//           : "N/A";
-
-//         serviceLogs.push(
-//           `   • ${srv.category} (Date: ${billedDateStr}) : ${oldRate} → ${newRate}`
-//         );
-//       }
-//     });
-
-//     bill.totalAmount = newTotal;
-//     bill.outstanding = newTotal - bill.paidAmount;
-
-//     await bill.save({ session });
-
-//     await session.commitTransaction();
-//     session.endSession();
-
-//     console.log(`📌 Service-level changes for caseId=${caseId}:`);
-//     if (serviceLogs.length > 0) {
-//       serviceLogs.forEach((log) => console.log(log));
-//     } else {
-//       console.log("   • No rate changes detected.");
-//     }
-
-//     console.log(
-//       `🔄 Bill recalculated for caseId=${caseId}. Old Total: ${oldTotal}, New Total: ${newTotal}`
-//     );
-
-//     return { oldTotal, newTotal, serviceLogs };
-//   } catch (error) {
-//     console.error("❌ Error recalculating bill:", error);
-//     await session.abortTransaction();
-//     session.endSession();
-//     throw new Error("Failed to recalculate bill after insurance change.");
-//   }
-// };
 
 export const recalculateBillForInsuranceChange = async (caseId) => {
   const session = await mongoose.startSession();
