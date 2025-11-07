@@ -11,7 +11,7 @@ router.use(requireHospitalContext);
 router.post("/addService", authorizeRoles("hospitalAdmin"), addService);
 router.get("/getServices", authorizeRoles("receptionist", "hospitalAdmin"), getServices);
 router.get("/getservicesbydep/:id", authorizeRoles("receptionist", "hospitalAdmin","doctor"), getServicesByDep);
-router.patch("/editService/edit/:serviceId", authorizeRoles("receptionist", "hospitalAdmin"), editService);
+router.put("/editService/edit/:serviceId", authorizeRoles("receptionist", "hospitalAdmin"), editService);
 router.delete("/deleteService/delete/:serviceId", authorizeRoles("receptionist", "hospitalAdmin"), deleteService);
 router.delete("/deleteSubcategory/:serviceId/:subcategoryId", authorizeRoles("receptionist", "hospitalAdmin"), deleteSubcategory);
 

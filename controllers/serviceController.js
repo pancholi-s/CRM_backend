@@ -160,72 +160,88 @@ export const getServices = async (req, res) => {
 };
 
 export const editService = async (req, res) => {
-  const { serviceId } = req.params; // could be Service ID or Category ID
-  const { name, description, revenueType, categories, rate, subCategoryName } = req.body;
+  const { serviceId } = req.params; // Main service ID
+  const { name, description, revenueType, categories } = req.body;
 
   const hospitalId = req.session.hospitalId;
   if (!hospitalId) {
-    return res.status(403).json({ message: "Unauthorized access. No hospital context." });
+    return res
+      .status(403)
+      .json({ message: "Unauthorized access. No hospital context." });
   }
 
   try {
-    // 🔍 Find either the service or a service containing the category ID
+    // 🔍 Find the main service by ID and hospital
     const service = await Service.findOne({
+      _id: serviceId,
       hospital: hospitalId,
-      $or: [{ _id: serviceId }, { "categories._id": serviceId }],
     });
 
     if (!service) {
-      return res.status(404).json({ message: "Service not found or access denied." });
+      return res
+        .status(404)
+        .json({ message: "Service not found or access denied." });
     }
 
-    // If we found the service by category ID → update that category only
-    const category = service.categories.find(
-      (cat) => cat._id.toString() === serviceId
-    );
-
-    if (category) {
-      // ✅ Update the specific subcategory fields
-      if (name) category.subCategoryName = name;
-      if (rate) category.rate = parseInt(rate);
-      if (subCategoryName) category.subCategoryName = subCategoryName;
-      if (categories) category.additionaldetails = categories.additionaldetails || category.additionaldetails;
-
-      service.lastUpdated = new Date();
-      await service.save();
-
-      return res.status(200).json({
-        message: "Category updated successfully.",
-        updatedCategory: category,
-      });
-    }
-
-    // Otherwise, update top-level Service
+    // ✅ Update top-level service fields
     if (name) service.name = name;
     if (description) service.description = description;
     if (revenueType) service.revenueType = revenueType;
 
+    // ✅ Handle categories array updates
+    if (Array.isArray(categories) && categories.length > 0) {
+      for (const catUpdate of categories) {
+        const { _id, subCategoryName, rate, rateType, amenities, additionaldetails } =
+          catUpdate;
+
+        // Find category by its _id
+        const existingCategory = service.categories.id(_id);
+
+        if (existingCategory) {
+          // ✅ Update existing category fields
+          if (subCategoryName)
+            existingCategory.subCategoryName = subCategoryName;
+          if (rate) existingCategory.rate = parseInt(rate);
+          if (rateType) existingCategory.rateType = rateType;
+          if (amenities) existingCategory.amenities = amenities;
+          if (additionaldetails !== undefined)
+            existingCategory.additionaldetails = additionaldetails;
+        } else {
+          // ✅ Add as new category if not found
+          service.categories.push({
+            subCategoryName,
+            rateType,
+            rate: parseInt(rate) || 0,
+            amenities: amenities || "N/A",
+            additionaldetails: additionaldetails || null,
+            hospital: hospitalId,
+          });
+        }
+      }
+    }
+
     service.lastUpdated = new Date();
     await service.save();
 
+    // ✅ Populate related fields for response
     const updatedService = await Service.findById(service._id)
       .populate("departments", "name")
       .populate("hospital", "name")
-      .populate({ path: "categories.departments", select: "name" });
+      .populate({ path: "categories.departments", select: "name" })
+      .lean();
 
-    return res.status(200).json({
+    res.status(200).json({
       message: "Service updated successfully.",
       service: updatedService,
     });
   } catch (error) {
+    console.error("❌ Error updating service:", error);
     res.status(500).json({
       message: "Error updating service.",
       error: error.message,
     });
   }
 };
-
-
 
 export const deleteService = async (req, res) => {
   const { serviceId } = req.params;
