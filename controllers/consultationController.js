@@ -40,7 +40,9 @@ export const submitConsultation = async (req, res) => {
       specialtyArea,
       supportingDocument,
       treatment,
-      followUpRequired
+      followUpRequired,
+      transferToDoctor, // ✅ added
+      transferNote      // ✅ added
     } = req.body;
 
     // ✅ Handle file uploads
@@ -129,7 +131,8 @@ export const submitConsultation = async (req, res) => {
     if (!doctorDoc) throw new Error("Doctor not found");
     const doctorName = doctorDoc.name;
 
-    const validActions = ["complete", "refer", "schedule"];
+    // ✅ Added "transfer" here
+    const validActions = ["complete", "refer", "schedule", "transfer"];
     if (!validActions.includes(action)) {
       return res.status(400).json({ message: "Invalid action type." });
     }
@@ -216,6 +219,60 @@ export const submitConsultation = async (req, res) => {
       );
     }
 
+    // ✅ NEW: handle "transfer"
+    if (action === "transfer") {
+      if (!transferToDoctor)
+        return res.status(400).json({ message: "Transfer target doctor is required." });
+
+      const newDoctor = await Doctor.findById(transferToDoctor)
+        .populate("departments")
+        .session(session);
+      if (!newDoctor) throw new Error("Target doctor not found.");
+
+    const isSameDept = newDoctor.departments.some((dep) => {
+      const depId = dep._id ? dep._id.toString() : dep.toString();
+      return depId === department.toString();
+    });
+
+    if (!isSameDept) {
+      throw new Error(
+        `Target doctor (${newDoctor._id}) is not assigned to department ${department}.`
+      );
+    }
+
+
+      consultationPayload.status = "transferred";
+      consultationPayload.followUpRequired = true;
+      consultationPayload.transferToDoctor = transferToDoctor;
+      consultationPayload.transferNote = transferNote || "";
+
+      // ✅ Create a new appointment under new doctor (reuse same caseId)
+      const newAppointment = new Appointment({
+        patient,
+        doctor: transferToDoctor,
+        hospital: hospitalId,
+        department,
+        type: "Consultation",
+        typeVisit: "Referral",
+        tokenDate: new Date(),
+        status: "Scheduled",
+        note: `Transferred from Dr. ${doctorName}${
+          transferNote ? ` - ${transferNote}` : ""
+        }`,
+        caseId // reuse same caseId
+      });
+
+      await newAppointment.save({ session });
+      consultationPayload.newAppointment = newAppointment._id;
+
+      // Mark old appointment as completed
+      await Appointment.findByIdAndUpdate(
+        appointment,
+        { status: "completed" },
+        { session }
+      );
+    }
+
     // ✅ Create consultation
     const newConsultation = await Consultation.create(
       [consultationPayload],
@@ -272,9 +329,12 @@ export const submitConsultation = async (req, res) => {
       },
     };
 
-    // ✅ Update / create bill
-    await updateBillAfterAction(caseId, session, null , consultationCharge);
-
+    // ✅ Update / create bill (skip billing for transfer)
+    if (action !== "transfer") {
+      await updateBillAfterAction(caseId, session, null, consultationCharge);
+    } else {
+      await session.commitTransaction(); // <-- Needed so MongoDB saves consultation + new appointment
+    }
 
     res.status(200).json({
       message: `Consultation successfully ${action === "complete" ? "completed" : action
@@ -291,6 +351,7 @@ export const submitConsultation = async (req, res) => {
     if (session) session.endSession();
   }
 };
+
 
 export const getConsultationByAppointment = async (req, res) => {
   try {

@@ -11,7 +11,7 @@ const consultationSchema = new mongoose.Schema({
 
   status: {
     type: String,
-    enum: ["completed", "referred", "scheduled"],
+    enum: ["completed", "referred", "scheduled","transferred"],
     default: "completed"
   },
   followUpRequired: { type: Boolean, default: false },
@@ -50,7 +50,12 @@ const consultationSchema = new mongoose.Schema({
     treatmentDate: { type: Date },
     availableSlot: { type: String },
     note: { type: String }
-  }
+  },
+
+  //transfer doctor
+  transferToDoctor: { type: mongoose.Schema.Types.ObjectId, ref: 'Doctor' },
+  transferNote: { type: String },
+  newAppointment: { type: mongoose.Schema.Types.ObjectId, ref: 'Appointment' } // link to new appointment
 });
 
 export default mongoose.model('Consultation', consultationSchema);

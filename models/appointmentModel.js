@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 const appointmentSchema = new mongoose.Schema({
   caseId: {
     type: String,
-    unique: true,
+    index: true,
     default: () => `CASE-${Array.from({ length: 6 }, () => 
       "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"[Math.floor(Math.random() * 36)]
     ).join("")}`,
