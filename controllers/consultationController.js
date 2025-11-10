@@ -219,7 +219,6 @@ export const submitConsultation = async (req, res) => {
       );
     }
 
-    // ✅ NEW: handle "transfer"
     if (action === "transfer") {
       if (!transferToDoctor)
         return res.status(400).json({ message: "Transfer target doctor is required." });
@@ -239,7 +238,6 @@ export const submitConsultation = async (req, res) => {
         `Target doctor (${newDoctor._id}) is not assigned to department ${department}.`
       );
     }
-
 
       consultationPayload.status = "transferred";
       consultationPayload.followUpRequired = true;
@@ -261,6 +259,26 @@ export const submitConsultation = async (req, res) => {
         }`,
         caseId // reuse same caseId
       });
+
+      // ✅ Allocate token number
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date();
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const lastAppointment = await Appointment.findOne({
+        doctor: transferToDoctor,
+        department,
+        hospital: hospitalId,
+        tokenDate: { $gte: startOfDay, $lte: endOfDay },
+        tokenNumber: { $ne: null },
+      })
+        .sort({ tokenNumber: -1 })
+        .session(session);
+
+      newAppointment.tokenNumber = lastAppointment
+        ? lastAppointment.tokenNumber + 1
+        : 1;
 
       await newAppointment.save({ session });
       consultationPayload.newAppointment = newAppointment._id;
