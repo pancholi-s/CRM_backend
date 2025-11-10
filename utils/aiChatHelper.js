@@ -29,7 +29,8 @@ Diagnosis: ${prescription.patient?.diagnosis || "N/A"}
 Here is the current AI-generated prescription:
 ${JSON.stringify(prescription.aiPrescription, null, 2)}
 
-Now continue the chat with the doctor naturally, giving accurate and concise medical guidance.
+Now continue the chat with the doctor naturally, but respond in a **very short and concise way (1–2 lines only)**. 
+Avoid long explanations or paragraphs — keep it direct and focused.
 `;
 
   const messages = [
@@ -45,7 +46,7 @@ Now continue the chat with the doctor naturally, giving accurate and concise med
     model: "gpt-4o-mini",
     messages,
     temperature: 0.4,
-    max_tokens: 300,
+    max_tokens: 100,
   });
 
   return response.choices[0].message.content.trim();
