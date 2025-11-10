@@ -252,7 +252,7 @@ export const submitConsultation = async (req, res) => {
         department,
         type: "Consultation",
         typeVisit: "Referral",
-        tokenDate: new Date(),
+        tokenDate: appointmentDoc.tokenDate,
         status: "Scheduled",
         note: `Transferred from Dr. ${doctorName}${
           transferNote ? ` - ${transferNote}` : ""
