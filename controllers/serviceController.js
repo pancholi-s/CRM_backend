@@ -11,113 +11,108 @@ export const addService = async (req, res) => {
     rate,
     effectiveDate,
     amenities,
-    departmentName,
-    additionaldetails, // Only for room services
+    departmentNames,
+    departmentIds,
+    additionaldetails,
   } = req.body;
 
   const hospitalId = req.session.hospitalId;
-
   if (!hospitalId) {
-    return res
-      .status(403)
-      .json({ message: "Unauthorized access. No hospital context." });
+    return res.status(403).json({ message: "Unauthorized access. No hospital context." });
   }
 
   try {
-    // Ensure departments belong to the current hospital
-    const department = await Department.findOne({
-      name: departmentName,
-      hospital: hospitalId,
-    });
+    // ✅ Fetch valid departments
+    const deptFilter = { hospital: hospitalId };
+    let targetDepts = [];
 
-    if (!department) {
-      return res
-        .status(404)
-        .json({ message: "No matching departments found." });
+    if (Array.isArray(departmentIds) && departmentIds.length) {
+      targetDepts = await Department.find({ ...deptFilter, _id: { $in: departmentIds } }).lean();
+    } else if (Array.isArray(departmentNames) && departmentNames.length) {
+      targetDepts = await Department.find({ ...deptFilter, name: { $in: departmentNames } }).lean();
     }
 
-    const existingService = await Service.findOne({
-      name,
-      department: department._id,
-    });
+    if (!targetDepts.length) {
+      return res.status(404).json({ message: "No matching departments found." });
+    }
 
-    if (existingService) {
-      // Check if the subcategory already exists in the service
-      const subCategoryExists = existingService.categories.some(
-        (cat) => cat.subCategoryName === subCategoryName
-      );
+    const deptIds = targetDepts.map(d => d._id);
 
-      if (subCategoryExists) {
-        return res
-          .status(400)
-          .json({ message: "Subcategory already exists in this service." });
-      }
+    // ✅ Find service by hospital and name
+    let service = await Service.findOne({ hospital: hospitalId, name });
 
-      // Add new subcategory to the existing service
-      existingService.categories.push({
+    if (!service) {
+      // ✅ Create new service
+      const categories = [{
         subCategoryName,
         rateType,
         rate,
         effectiveDate,
         amenities,
-        additionaldetails: additionaldetails || null,  // Add details only if available (for room-type services)
+        departments: deptIds, // ✅ all departments together
+        additionaldetails: additionaldetails || null,
         hospital: hospitalId,
+      }];
+
+      service = new Service({
+        name,
+        description,
+        hospital: hospitalId,
+        departments: deptIds,
+        categories,
       });
-      existingService.lastUpdated = new Date();
-      await existingService.save();
+      await service.save();
+    } else {
+      // ✅ Look for existing subcategory+rate match
+      const existingCategory = service.categories.find(
+        c => c.subCategoryName === subCategoryName && c.rate === rate
+      );
 
-      // Populate department name before sending response
-      const populatedService = await Service.findById(existingService._id)
-        .populate("department", "name")
-        .lean();
-
-      return res.status(200).json({
-        message: "Subcategory added successfully to the existing service.",
-        service: populatedService,
-      });
-    }
-
-    // Create a new service
-    const newService = new Service({
-      name,
-      description,
-      categories: [
-        {
+      if (existingCategory) {
+        // ✅ merge departments
+        existingCategory.departments = [...new Set([...existingCategory.departments, ...deptIds])];
+      } else {
+        // ✅ add one new combined category
+        service.categories.push({
           subCategoryName,
           rateType,
           rate,
           effectiveDate,
           amenities,
-          additionaldetails: additionaldetails || null,  // Add details if it's a room-type service
+          departments: deptIds, // ✅ not looping
+          additionaldetails: additionaldetails || null,
           hospital: hospitalId,
-        },
-      ],
-      hospital: hospitalId,
-      department: department._id,
-    });
+        });
+      }
 
-    await newService.save();
+      service.lastUpdated = new Date();
+      await service.save();
+    }
 
-    // Push the new service ID into the specified departments' services array
-    await Department.findByIdAndUpdate(department._id, {
-      $push: { services: newService._id },
-    });
+    // ✅ Link service to all departments
+    await Department.updateMany(
+      { _id: { $in: deptIds } },
+      { $addToSet: { services: service._id } }
+    );
 
-    // Fetch the newly created service along with the department name
-    const populatedNewService = await Service.findById(newService._id)
-      .populate("department", "name")
+    const populatedService = await Service.findById(service._id)
+      .populate("departments", "name")
+      .populate({ path: "categories.departments", select: "name" })
       .lean();
 
-    res.status(201).json({
-      message: "Service added successfully and linked to departments.",
-      service: populatedNewService,
+    return res.status(201).json({
+      message: "Service added/updated successfully.",
+      service: populatedService,
     });
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Error adding service.", error: error.message });
+    return res.status(500).json({
+      message: "Error adding service.",
+      error: error.message,
+    });
   }
 };
+
+
 
 export const getServices = async (req, res) => {
   try {
@@ -141,7 +136,11 @@ export const getServices = async (req, res) => {
     const total = await Service.countDocuments(filter);
 
     const services = await Service.find(filter)
-      .populate("department", "name")
+      .populate("departments", "name")
+      .populate({
+        path: "categories.departments", // ✅ nested populate inside categories
+        select: "name",                 // only get department name
+      })
       .skip(skip)
       .limit(parseInt(limit));
 
@@ -161,11 +160,10 @@ export const getServices = async (req, res) => {
 };
 
 export const editService = async (req, res) => {
-  const { serviceId } = req.params;
-  const { name, description, revenueType, categories, rate, subCategoryName } = req.body;
-  
-  const hospitalId = req.session.hospitalId;
+  const { serviceId } = req.params; // Main service ID
+  const { name, description, revenueType, categories } = req.body;
 
+  const hospitalId = req.session.hospitalId;
   if (!hospitalId) {
     return res
       .status(403)
@@ -173,6 +171,7 @@ export const editService = async (req, res) => {
   }
 
   try {
+    // 🔍 Find the main service by ID and hospital
     const service = await Service.findOne({
       _id: serviceId,
       hospital: hospitalId,
@@ -184,76 +183,63 @@ export const editService = async (req, res) => {
         .json({ message: "Service not found or access denied." });
     }
 
-    // Update service details
+    // ✅ Update top-level service fields
     if (name) service.name = name;
     if (description) service.description = description;
     if (revenueType) service.revenueType = revenueType;
 
-    // Handle direct rate update (for simple rate changes)
-    if (rate && !categories) {
-      if (subCategoryName) {
-        const categoryToUpdate = service.categories.find(
-          cat => cat.subCategoryName === subCategoryName
-        );
-        if (categoryToUpdate) {
-          categoryToUpdate.rate = parseInt(rate);
+    // ✅ Handle categories array updates
+    if (Array.isArray(categories) && categories.length > 0) {
+      for (const catUpdate of categories) {
+        const { _id, subCategoryName, rate, rateType, amenities, additionaldetails } =
+          catUpdate;
+
+        // Find category by its _id
+        const existingCategory = service.categories.id(_id);
+
+        if (existingCategory) {
+          // ✅ Update existing category fields
+          if (subCategoryName)
+            existingCategory.subCategoryName = subCategoryName;
+          if (rate) existingCategory.rate = parseInt(rate);
+          if (rateType) existingCategory.rateType = rateType;
+          if (amenities) existingCategory.amenities = amenities;
+          if (additionaldetails !== undefined)
+            existingCategory.additionaldetails = additionaldetails;
         } else {
-          return res.status(404).json({ 
-            message: `Subcategory '${subCategoryName}' not found.` 
+          // ✅ Add as new category if not found
+          service.categories.push({
+            subCategoryName,
+            rateType,
+            rate: parseInt(rate) || 0,
+            amenities: amenities || "N/A",
+            additionaldetails: additionaldetails || null,
+            hospital: hospitalId,
           });
         }
-      } else if (service.categories.length > 0) {
-        service.categories[0].rate = parseInt(rate);
       }
-    }
-
-    // Handle categories array updates
-    if (categories && Array.isArray(categories)) {
-      categories.forEach((newCategory) => {
-        if (newCategory._id) {
-          // Update existing category
-          const existingCategory = service.categories.find(
-            (cat) => cat._id.toString() === newCategory._id
-          );
-
-          if (existingCategory) {
-            Object.keys(newCategory).forEach(key => {
-              if (key !== '_id' && newCategory[key] !== undefined) {
-                if (key === 'rate') {
-                  existingCategory[key] = parseInt(newCategory[key]);
-                } else {
-                  existingCategory[key] = newCategory[key];
-                }
-              }
-            });
-          }
-        } else {
-          // Add new category
-          const categoryToAdd = { ...newCategory, hospital: hospitalId };
-          if (categoryToAdd.rate) {
-            categoryToAdd.rate = parseInt(categoryToAdd.rate);
-          }
-          service.categories.push(categoryToAdd);
-        }
-      });
     }
 
     service.lastUpdated = new Date();
     await service.save();
 
-    const updatedService = await Service.findById(serviceId)
-      .populate("department", "name")
-      .populate("hospital", "name");
+    // ✅ Populate related fields for response
+    const updatedService = await Service.findById(service._id)
+      .populate("departments", "name")
+      .populate("hospital", "name")
+      .populate({ path: "categories.departments", select: "name" })
+      .lean();
 
     res.status(200).json({
       message: "Service updated successfully.",
       service: updatedService,
     });
-    
   } catch (error) {
-    res
-      .status(500)
-      .json({ message: "Error updating service.", error: error.message });
+    console.error("❌ Error updating service:", error);
+    res.status(500).json({
+      message: "Error updating service.",
+      error: error.message,
+    });
   }
 };
 
@@ -386,7 +372,7 @@ export const getServicesByDep = async (req, res) => {
       hospital: hospitalId,
     })
       .select("name description categories lastUpdated revenueType")
-      .sort({ createdAt: -1})
+      .sort({ createdAt: -1 })
       .lean();
 
     const response = {

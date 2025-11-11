@@ -10,7 +10,7 @@ import Doctor from '../models/doctorModel.js';
 import AdmissionRequest from '../models/admissionReqModel.js';
 
 import { updateBillAfterAction } from '../middleware/billingMiddleware.js'; // Import the billing middleware function
-import {uploadToCloudinary} from '../utils/cloudinary.js';
+import { uploadToCloudinary } from '../utils/cloudinary.js';
 
 export const submitConsultation = async (req, res) => {
   const session = await Consultation.startSession();
@@ -40,7 +40,9 @@ export const submitConsultation = async (req, res) => {
       specialtyArea,
       supportingDocument,
       treatment,
-      followUpRequired
+      followUpRequired,
+      transferToDoctor, // ✅ added
+      transferNote      // ✅ added
     } = req.body;
 
     // ✅ Handle file uploads
@@ -129,7 +131,8 @@ export const submitConsultation = async (req, res) => {
     if (!doctorDoc) throw new Error("Doctor not found");
     const doctorName = doctorDoc.name;
 
-    const validActions = ["complete", "refer", "schedule"];
+    // ✅ Added "transfer" here
+    const validActions = ["complete", "refer", "schedule", "transfer"];
     if (!validActions.includes(action)) {
       return res.status(400).json({ message: "Invalid action type." });
     }
@@ -163,7 +166,7 @@ export const submitConsultation = async (req, res) => {
       patient,
       appointment,
       department,
-      consultationData, 
+      consultationData,
       status: "completed",
       followUpRequired: false,
       caseId
@@ -216,6 +219,78 @@ export const submitConsultation = async (req, res) => {
       );
     }
 
+    if (action === "transfer") {
+      if (!transferToDoctor)
+        return res.status(400).json({ message: "Transfer target doctor is required." });
+
+      const newDoctor = await Doctor.findById(transferToDoctor)
+        .populate("departments")
+        .session(session);
+      if (!newDoctor) throw new Error("Target doctor not found.");
+
+    const isSameDept = newDoctor.departments.some((dep) => {
+      const depId = dep._id ? dep._id.toString() : dep.toString();
+      return depId === department.toString();
+    });
+
+    if (!isSameDept) {
+      throw new Error(
+        `Target doctor (${newDoctor._id}) is not assigned to department ${department}.`
+      );
+    }
+
+      consultationPayload.status = "transferred";
+      consultationPayload.followUpRequired = true;
+      consultationPayload.transferToDoctor = transferToDoctor;
+      consultationPayload.transferNote = transferNote || "";
+
+      // ✅ Create a new appointment under new doctor (reuse same caseId)
+      const newAppointment = new Appointment({
+        patient,
+        doctor: transferToDoctor,
+        hospital: hospitalId,
+        department,
+        type: "Consultation",
+        typeVisit: "Referral",
+        tokenDate: appointmentDoc.tokenDate,
+        status: "Scheduled",
+        note: `Transferred from Dr. ${doctorName}${
+          transferNote ? ` - ${transferNote}` : ""
+        }`,
+        caseId // reuse same caseId
+      });
+
+      // ✅ Allocate token number
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date();
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const lastAppointment = await Appointment.findOne({
+        doctor: transferToDoctor,
+        department,
+        hospital: hospitalId,
+        tokenDate: { $gte: startOfDay, $lte: endOfDay },
+        tokenNumber: { $ne: null },
+      })
+        .sort({ tokenNumber: -1 })
+        .session(session);
+
+      newAppointment.tokenNumber = lastAppointment
+        ? lastAppointment.tokenNumber + 1
+        : 1;
+
+      await newAppointment.save({ session });
+      consultationPayload.newAppointment = newAppointment._id;
+
+      // Mark old appointment as completed
+      await Appointment.findByIdAndUpdate(
+        appointment,
+        { status: "completed" },
+        { session }
+      );
+    }
+
     // ✅ Create consultation
     const newConsultation = await Consultation.create(
       [consultationPayload],
@@ -229,37 +304,59 @@ export const submitConsultation = async (req, res) => {
       { session }
     );
 
-    // ✅ Billing logic
+    // ✅ Department-aware Billing Logic
     const consultationService = await Service.findOne({
       name: "Consultation",
-      hospital: hospitalId
+      hospital: hospitalId,
+      "categories.subCategoryName": "Doctor Consultation"
     }).session(session);
+
     let consultationRate = 0;
+
     if (consultationService) {
-      const consultationCategory = consultationService.categories.find(
-        (c) => c.subCategoryName === "Doctor Consultation"
+      // Try to find department-specific rate
+      const deptCategory = consultationService.categories.find(
+        (cat) =>
+          cat.subCategoryName === "Doctor Consultation" &&
+          cat.departments.some(
+            (dep) => dep.toString() === department?.toString()
+          )
       );
-      if (consultationCategory) consultationRate = consultationCategory.rate;
+
+      // Fallback if department not mapped
+      const fallbackCategory = consultationService.categories.find(
+        (cat) => cat.subCategoryName === "Doctor Consultation"
+      );
+
+      consultationRate = deptCategory
+        ? deptCategory.rate
+        : fallbackCategory?.rate || 0;
     }
 
+    // ✅ Construct charge object
     const consultationCharge = {
       service: consultationService ? consultationService._id : null,
       category: "Doctor Consultation",
       quantity: 1,
       rate: consultationRate,
       details: {
-        consultationData,
+        department, // store department ID
         doctorName,
-        consultationDate: new Date()
-      }
+        consultationDate: new Date(),
+        consultationData,
+      },
     };
 
-    await updateBillAfterAction(caseId, session, consultationCharge);
+    // ✅ Update / create bill (skip billing for transfer)
+    if (action !== "transfer") {
+      await updateBillAfterAction(caseId, session, null, consultationCharge);
+    } else {
+      await session.commitTransaction(); // <-- Needed so MongoDB saves consultation + new appointment
+    }
 
     res.status(200).json({
-      message: `Consultation successfully ${
-        action === "complete" ? "completed" : action
-      }.`,
+      message: `Consultation successfully ${action === "complete" ? "completed" : action
+        }.`,
       data: newConsultation
     });
   } catch (error) {
@@ -272,6 +369,7 @@ export const submitConsultation = async (req, res) => {
     if (session) session.endSession();
   }
 };
+
 
 export const getConsultationByAppointment = async (req, res) => {
   try {
@@ -745,8 +843,8 @@ export const getProgressTracker = async (req, res) => {
         (item.status === "final"
           ? "final"
           : item.status === "completed"
-          ? "final"
-          : "ongoing"),
+            ? "final"
+            : "ongoing"),
       status: item.status,
       doctor: item.doctor?._id || null,
       department: item.department?._id || null,
@@ -963,7 +1061,7 @@ export const addProgressPhase = async (req, res) => {
       data // dynamic JSON or string
     } = req.body;
 
-    if ( !patient || !title || !assignedDoctor) {
+    if (!patient || !title || !assignedDoctor) {
       return res.status(400).json({ message: 'Required fields are missing' });
     }
 

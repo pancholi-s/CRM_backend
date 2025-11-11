@@ -16,10 +16,15 @@ const serviceSchema = new mongoose.Schema(
           ref: "Hospital",
           required: true,
         },
-        // Room pricing details are optional, only used for room-type services
-        additionaldetails: { 
-          type: mongoose.Schema.Types.Mixed,  // Store dynamic details for room types
-          default: null // Optional field for room service breakdown
+        departments: [
+          {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Department", // Referring multiple departments where the service is available
+          },
+        ],
+        additionaldetails: {
+          type: mongoose.Schema.Types.Mixed, // Optional details for room services
+          default: null,
         },
       },
     ],
@@ -29,17 +34,21 @@ const serviceSchema = new mongoose.Schema(
       ref: "Hospital",
       required: true,
     },
-    department: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Department",
-      // required: true,
-    },
+    departments: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Department", // Referring multiple departments where the service is available
+      },
+    ],
     revenueType: {
       type: String,
-      enum: ['Outpatient', 'Inpatient', 'Surgery', 'Diagnostics'],
+      enum: ["Outpatient", "Inpatient", "Surgery", "Diagnostics"],
     },
   },
   { timestamps: true }
 );
+
+// Ensure one service per hospital by name
+serviceSchema.index({ hospital: 1, name: 1 }, { unique: true });
 
 export default mongoose.model("Service", serviceSchema);

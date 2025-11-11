@@ -1067,7 +1067,7 @@ export const dischargePatient = async (req, res) => {
         // ✅ Push final room charge
         bill.services.push({
           service: null,
-          category: "Room Charges discharge",
+          category: "Room Charges",
           quantity: 1,
           rate: rateToApply,
           details: {

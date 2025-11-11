@@ -27,6 +27,7 @@ export const addInsuranceCompany = async (req, res) => {
         rate: cat.rate,                  // initial = same as hospital rate
         effectiveDate: cat.effectiveDate,
         amenities: cat.amenities || "N/A",
+        departments: cat.departments?.map((d) => d._id) || [], // ✅ NEW
         additionaldetails: cat.additionaldetails || null
       }))
     }));
@@ -56,7 +57,6 @@ export const addInsuranceCompany = async (req, res) => {
 };
 
 
-// Add a new service to an existing insurance company
 export const addServiceToCompany = async (req, res) => {
   try {
     const { companyId } = req.params;
@@ -79,40 +79,88 @@ export const addServiceToCompany = async (req, res) => {
       return res.status(404).json({ message: "Insurance company not found." });
     }
 
-    // Check if the service already exists
+    // ✅ Ensure department IDs are valid (and remove duplicates)
+    const cleanedCategories = categories.map((cat) => ({
+      ...cat,
+      departments: Array.isArray(cat.departments)
+        ? [...new Set(cat.departments.map((d) => d.toString()))]
+        : [],
+    }));
+
+    // 🔍 Check if the service already exists
     const existingService = company.services.find(
       (s) => s.serviceName === serviceName
     );
+
     if (existingService) {
-      // Add new categories or update existing ones
-      categories.forEach((newCategory) => {
+      // 🧩 Update or append categories
+      cleanedCategories.forEach((newCategory) => {
         const existingCategory = existingService.categories.find(
           (c) => c.subCategoryName === newCategory.subCategoryName
         );
+
         if (existingCategory) {
-          // Update existing category
-          Object.assign(existingCategory, newCategory);
+          // ✅ Update all core fields + merge departments
+          existingCategory.subCategoryName =
+            newCategory.subCategoryName || existingCategory.subCategoryName;
+          existingCategory.rateType =
+            newCategory.rateType || existingCategory.rateType;
+          existingCategory.rate =
+            newCategory.rate ?? existingCategory.rate;
+          existingCategory.effectiveDate =
+            newCategory.effectiveDate || existingCategory.effectiveDate;
+          existingCategory.amenities =
+            newCategory.amenities || existingCategory.amenities;
+          existingCategory.additionaldetails =
+            newCategory.additionaldetails || existingCategory.additionaldetails;
+
+          // ✅ Merge department references (avoid duplicates)
+          if (Array.isArray(newCategory.departments)) {
+            const mergedDepts = new Set([
+              ...(existingCategory.departments || []).map((d) => d.toString()),
+              ...newCategory.departments.map((d) => d.toString()),
+            ]);
+            existingCategory.departments = [...mergedDepts];
+          }
         } else {
-          // Add new category
-          existingService.categories.push(newCategory);
+          // ✅ Add as new category (with departments)
+          existingService.categories.push({
+            ...newCategory,
+            departments: newCategory.departments || [],
+          });
         }
       });
     } else {
-      // Add the new service with categories
-      company.services.push({ serviceName, categories });
+      // 🧱 Add the new service with categories (including departments)
+      company.services.push({
+        serviceName,
+        categories: cleanedCategories.map((c) => ({
+          ...c,
+          departments: c.departments || [],
+        })),
+      });
     }
 
     await company.save();
-    res
-      .status(200)
-      .json({ message: "Service added/updated successfully", company });
+
+    // Populate departments for response readability
+    const updatedCompany = await InsuranceCompany.findById(companyId)
+      .populate("services.categories.departments", "name")
+      .lean();
+
+    res.status(200).json({
+      message: "Service added/updated successfully.",
+      company: updatedCompany,
+    });
   } catch (error) {
+    console.error("Error adding service to insurance company:", error);
     res.status(500).json({
       message: "Error adding service to insurance company.",
       error: error.message,
     });
   }
 };
+
 
 // Get all insurance companies
 export const getInsuranceCompanies = async (req, res) => {
@@ -124,18 +172,33 @@ export const getInsuranceCompanies = async (req, res) => {
         .json({ message: "Unauthorized access. No hospital context." });
     }
 
-    // ✅ Fetch insurance companies for this hospital
-    const companies = await InsuranceCompany.find({ hospitalId }).lean();
+    // ✅ Populate nested departments inside categories
+    const companies = await InsuranceCompany.find({ hospitalId })
+      .populate("services.categories.departments", "name") // 🔍 populate dept names
+      .lean();
 
-    if (!companies.length) {
-      return res.status(404).json({
-        message: "No insurance companies found for this hospital.",
-      });
-    }
+    // 🧩 Format response with clear department details
+    const formattedCompanies = companies.map((company) => ({
+      ...company,
+      services: company.services.map((service) => ({
+        ...service,
+        categories: service.categories.map((category) => ({
+          ...category,
+          departments: category.departments?.map((dept) =>
+            typeof dept === "object"
+              ? { _id: dept._id, name: dept.name }
+              : { _id: dept, name: "Unknown" }
+          ) || [],
+        })),
+      })),
+    }));
 
     res.status(200).json({
-      message: "Insurance companies fetched successfully.",
-      companies,
+      message:
+        companies.length > 0
+          ? "Insurance companies fetched successfully."
+          : "No insurance companies found for this hospital.",
+      companies: formattedCompanies,
     });
   } catch (error) {
     console.error("❌ Error fetching insurance companies:", error);
@@ -145,8 +208,6 @@ export const getInsuranceCompanies = async (req, res) => {
     });
   }
 };
-
-
 
 // Get a specific insurance company by ID
 export const getInsuranceCompanyDetails = async (req, res) => {

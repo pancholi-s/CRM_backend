@@ -99,7 +99,7 @@ cron.schedule("30 18 * * *", async () => {
         // --- Push daily entry ---
         bill.services.push({
           service: roomService?._id || hospitalService?._id || null,
-          category: "Room Charges daily",
+          category: "Room Charges",
           quantity: 1,
           rate: rateToApply,
           details: {
