@@ -34,8 +34,10 @@ import nursingRoutes from './routes/nursingRoutes.js';
 import departmentStatRoutes from './routes/departmentStatRoutes.js';
 import insuranceCompanyController from './routes/insuranceCompanyRoutes.js';
 import fileRoutes from './routes/patientFileRoutes.js';
-
+import newPrescriptionRoutes from './routes/newPrescriptionRoutes.js';
 import "./middleware/billingCron.js"; // Start the billing cron job
+import chatRoutes from "./routes/chatRoutes.js";
+import conversationRoutes from "./routes/conversationRoutes.js";
 
 dotenv.config();
 
@@ -94,6 +96,9 @@ app.use('/', nursingRoutes);
 app.use('/', departmentStatRoutes);
 app.use('/', insuranceCompanyController);
 app.use('/', fileRoutes);
+app.use('/', newPrescriptionRoutes);
+app.use("/", chatRoutes);
+app.use("/", conversationRoutes);
 
 // Base route
 app.get('/', (req, res) => {
