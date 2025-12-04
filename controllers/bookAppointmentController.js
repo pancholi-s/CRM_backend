@@ -1343,7 +1343,7 @@ export const getAppointmentStats = async (req, res) => {
 export const repositionToken = async (req, res) => {
   try {
     const { doctorId, date, fromToken, afterToken } = req.body;
-    if (!doctorId || !date || !fromToken || !afterToken) {
+    if (!doctorId || !date || !fromToken==null || !afterToken==null) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
