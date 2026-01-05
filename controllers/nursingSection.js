@@ -193,20 +193,18 @@ export const getMedicalRecords = async (req, res) => {
     const { patientId } = req.params;
 
     const records = await MedicalRecord.find({ patient: patientId })
-      .sort({ createdAt: -1 })
-      .lean(); // important so we can safely modify response
+      .sort({ date: -1 }) 
+      .lean();
 
     const formattedRecords = records.map(record => {
-      const createdAt = new Date(record.createdAt);
-
       return {
         ...record,
-        date: createdAt.toISOString().split("T")[0], // YYYY-MM-DD
-        time: createdAt.toLocaleTimeString("en-IN", {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true
-        }),
+
+        date: record.date
+          ? new Date(record.date).toISOString().split("T")[0]
+          : null,
+
+        time: record.time
       };
     });
 
@@ -223,4 +221,3 @@ export const getMedicalRecords = async (req, res) => {
     });
   }
 };
-
