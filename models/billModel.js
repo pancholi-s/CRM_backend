@@ -45,7 +45,7 @@ const billSchema = new mongoose.Schema(
       {
         amount: { type: Number, required: true },
         date: { type: Date, default: Date.now },
-        mode: { type: String, enum: ["UPI", "Cash","Card", "Net Banking"], default: "Cash" },
+        mode: { type: String, enum: ["UPI", "Cash", "Card", "Net Banking"], default: "Cash" },
         reference: { type: String },
       },
     ],
@@ -74,6 +74,27 @@ const billSchema = new mongoose.Schema(
     },
     isLive: { type: Boolean, default: false },
     lastBilledAt: { type: Date, default: null },
+
+    discount: {
+      type: {
+        type: String,
+        enum: ["Flat", "Percentage"],
+      },
+      value: { type: Number, default: 0 },
+      amount: { type: Number, default: 0 }, // computed discount amount
+      reason: { type: String },
+      appliedAt: { type: Date }
+    },
+
+    grossAmount: {
+      type: Number,
+      default: 0
+    },
+
+    netAmount: {
+      type: Number,
+      default: 0
+    }
 
 
   },

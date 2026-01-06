@@ -10,25 +10,27 @@ import AdmissionRequest from '../models/admissionReqModel.js';
 import Department from "../models/departmentModel.js";
 
 export const createBill = async (req, res) => {
-  const { patientId, caseID, services, paidAmount, mode, departmentId } = req.body;
+  const { patientId, caseID, services, paidAmount = 0, mode, departmentId } = req.body;
   const { hospitalId } = req.session;
 
   if (!hospitalId) {
-    return res.status(403).json({ error: "Access denied. No hospital context found." });
+    return res.status(403).json({
+      error: "Access denied. No hospital context found."
+    });
   }
 
   try {
-    // Fetch patient
+    // 1️⃣ Fetch patient
     const patient = await Patient.findOne({
       _id: patientId,
       hospital: hospitalId,
     }).select("name phone");
 
     if (!patient) {
-      return { error: "Patient not found." };
+      return res.status(404).json({ error: "Patient not found." });
     }
 
-    // Validate appointment (caseId)
+    // 2️⃣ Validate appointment (caseId)
     const appointment = await Appointment.findOne({
       caseId: caseID,
       patient: patientId,
@@ -39,10 +41,11 @@ export const createBill = async (req, res) => {
       return res.status(404).json({ error: "Appointment not found." });
     }
 
-    // ✅ Department-aware rate lookup helper
+    // 3️⃣ Department-aware rate lookup helper
     const getDepartmentRate = (serviceDoc, subCategoryName, departmentId) => {
       if (!serviceDoc || !Array.isArray(serviceDoc.categories)) return 0;
 
+      // Department-specific rate
       const deptSpecific = serviceDoc.categories.find(
         (cat) =>
           cat.subCategoryName === subCategoryName &&
@@ -51,6 +54,7 @@ export const createBill = async (req, res) => {
           )
       );
 
+      // Fallback rate
       const fallback = serviceDoc.categories.find(
         (cat) => cat.subCategoryName === subCategoryName
       );
@@ -58,8 +62,8 @@ export const createBill = async (req, res) => {
       return deptSpecific?.rate || fallback?.rate || 0;
     };
 
-    // Validate and calculate services
-    let totalAmount = 0;
+    // 4️⃣ Validate services & calculate GROSS amount
+    let grossAmount = 0;
     const validatedServices = [];
 
     for (const serviceItem of services) {
@@ -69,7 +73,9 @@ export const createBill = async (req, res) => {
       });
 
       if (!service) {
-        return res.status(404).json({ error: `Service not found: ${serviceItem.serviceId}` });
+        return res.status(404).json({
+          error: `Service not found: ${serviceItem.serviceId}`,
+        });
       }
 
       const rate = getDepartmentRate(
@@ -97,19 +103,27 @@ export const createBill = async (req, res) => {
         },
       });
 
-      totalAmount += serviceTotal;
+      grossAmount += serviceTotal;
     }
 
-    const outstanding = totalAmount - paidAmount;
+    // 5️⃣ Discount-ready amounts (NO discount applied yet)
+    const netAmount = grossAmount; // 👈 important
+    const outstanding = netAmount - paidAmount;
 
+    // 6️⃣ Create bill
     const newBill = new Bill({
       patient: patient._id,
       caseId: appointment.caseId,
       services: validatedServices,
-      totalAmount,
+
+      // 💰 Amounts
+      grossAmount,
+      netAmount,
+      totalAmount: netAmount, // 🔒 backward compatibility
       paidAmount,
       outstanding,
-      status: outstanding === 0 ? "Paid" : "Pending",
+
+      status: outstanding <= 0 ? "Paid" : "Pending",
       mode,
       hospital: hospitalId,
       invoiceNumber: `INV${Date.now().toString().slice(-6)}`,
@@ -117,23 +131,29 @@ export const createBill = async (req, res) => {
 
     await newBill.save();
 
-    // Update hospital revenue
-    await Hospital.updateOne(
-      { _id: hospitalId },
-      { $inc: { revenue: paidAmount } }
-    );
+    // 7️⃣ Update hospital revenue (only paid amount)
+    if (paidAmount > 0) {
+      await Hospital.updateOne(
+        { _id: hospitalId },
+        { $inc: { revenue: paidAmount } }
+      );
+    }
 
-    // ✅ Proper response
-    res.status(201).json({
+    // 8️⃣ Response
+    return res.status(201).json({
       success: true,
       message: "Bill created successfully.",
       bill: newBill,
     });
+
   } catch (error) {
-    console.error("Error creating bill:", error);
-    res.status(500).json({ error: `Error generating bill: ${error.message}` });
+    console.error("❌ Error creating bill:", error);
+    return res.status(500).json({
+      error: `Error generating bill: ${error.message}`,
+    });
   }
 };
+
 
 
 export const getAllBills = async (req, res) => {
@@ -830,4 +850,50 @@ export const addPayment = async (req, res) => {
     console.error("Error adding payment:", error);
     res.status(500).json({ message: "Internal Server Error", error: error.message });
   }
+};
+
+
+export const applyDiscount = async (req, res) => {
+  const { billId } = req.params;
+  const { type, value, reason } = req.body;
+
+  const bill = await Bill.findById(billId);
+  if (!bill) return res.status(404).json({ message: "Bill not found" });
+
+  const gross = bill.grossAmount || bill.totalAmount;
+
+  let discountAmount = 0;
+
+  if (type === "Percentage") {
+    discountAmount = (gross * value) / 100;
+  } else if (type === "Flat") {
+    discountAmount = value;
+  }
+
+  // ❗ Guardrails
+  if (discountAmount < 0) discountAmount = 0;
+  if (discountAmount > gross) discountAmount = gross;
+
+  bill.discount = {
+    type,
+    value,
+    amount: discountAmount,
+    reason,
+    appliedBy: req.user?._id,
+    appliedAt: new Date()
+  };
+
+  bill.netAmount = gross - discountAmount;
+  bill.totalAmount = bill.netAmount; // keep old code safe
+  bill.outstanding = bill.netAmount - bill.paidAmount;
+
+  // auto status update
+  bill.status = bill.outstanding <= 0 ? "Paid" : "Pending";
+
+  await bill.save();
+
+  res.status(200).json({
+    message: "Discount applied successfully",
+    bill
+  });
 };
