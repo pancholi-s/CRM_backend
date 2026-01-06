@@ -193,31 +193,46 @@ export const getMedicalRecords = async (req, res) => {
     const { patientId } = req.params;
 
     const records = await MedicalRecord.find({ patient: patientId })
-      .sort({ date: -1 }) 
+      .sort({ date: -1, time: -1 })
       .lean();
 
-    const formattedRecords = records.map(record => {
+    const normalizedRecords = records.map(r => {
+      // -------- DATE (always YYYY-MM-DD) --------
+      let formattedDate = r.date;
+      if (r.date instanceof Date) {
+        formattedDate = r.date.toISOString().split("T")[0];
+      }
+
+      // -------- TIME (force HH:mm) --------
+      let formattedTime = r.time;
+
+      // if ISO string → convert
+      if (typeof r.time === "string" && r.time.includes("T")) {
+        const t = new Date(r.time);
+        formattedTime = t.toLocaleTimeString("en-IN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        });
+      }
+
       return {
-        ...record,
-
-        date: record.date
-          ? new Date(record.date).toISOString().split("T")[0]
-          : null,
-
-        time: record.time
+        ...r,
+        date: formattedDate,   // ✅ overwrite
+        time: formattedTime,   // ✅ overwrite
       };
     });
 
     res.status(200).json({
       message: "Medical records fetched",
-      records: formattedRecords
+      records: normalizedRecords,
     });
-
   } catch (error) {
     console.error("Medical record fetch error:", error);
     res.status(500).json({
       message: "Internal server error",
-      error: error.message
+      error: error.message,
     });
   }
 };
+
