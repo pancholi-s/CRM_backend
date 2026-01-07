@@ -978,3 +978,71 @@ export const applyDiscount = async (req, res) => {
     bill,
   });
 };
+
+
+export const refundBill = async (req, res) => {
+  const { billId } = req.params;
+  const { mode = "Original", reference = "Manual refund" } = req.body;
+
+  try {
+    const bill = await Bill.findById(billId);
+    if (!bill) {
+      return res.status(404).json({ message: "Bill not found" });
+    }
+
+    //  gross & net are correct
+    const computedGross = bill.services.reduce(
+      (sum, s) => sum + (s.rate || 0) * (s.quantity || 1),
+      0
+    );
+
+    const grossAmount =
+      bill.grossAmount && bill.grossAmount > 0
+        ? bill.grossAmount
+        : computedGross;
+
+    const discountAmount = bill.discount?.amount || 0;
+    const netAmount = bill.netAmount ?? grossAmount - discountAmount;
+
+    bill.grossAmount = grossAmount;
+    bill.netAmount = netAmount;
+    bill.totalAmount = netAmount;
+
+    // 🧮 Refund calculation
+    const refundAmount = bill.paidAmount - netAmount;
+
+    if (refundAmount <= 0) {
+      return res.status(400).json({
+        message: "No refundable amount available for this bill",
+      });
+    }
+
+    // 💸 Record refund (negative payment)
+    bill.payments.push({
+      amount: -refundAmount,
+      mode,
+      reference,
+      type: "Refund",
+      date: new Date(),
+    });
+
+    // Update paid & outstanding
+    bill.paidAmount -= refundAmount;
+    bill.outstanding = 0;
+    bill.status = "Paid";
+
+    await bill.save();
+
+    return res.status(200).json({
+      message: "Refund processed successfully",
+      refundAmount,
+      bill,
+    });
+  } catch (error) {
+    console.error("Error processing refund:", error);
+    return res.status(500).json({
+      message: "Error processing refund",
+      error: error.message,
+    });
+  }
+};

@@ -43,10 +43,19 @@ const billSchema = new mongoose.Schema(
     deposit: { type: Number, default: 0 },
     payments: [
       {
-        amount: { type: Number, required: true },
+        amount: Number,       // +ve = payment, -ve = refund
         date: { type: Date, default: Date.now },
-        mode: { type: String, enum: ["UPI", "Cash", "Card", "Net Banking"], default: "Cash" },
-        reference: { type: String },
+        mode: {
+          type: String,
+          enum: ["UPI", "Cash", "Card", "Net Banking","Original"],
+          default: "Cash",
+        },
+        reference: String,
+        type: {
+          type: String,
+          enum: ["Payment", "Refund"],
+          default: "Payment",
+        },
       },
     ],
     status: {
