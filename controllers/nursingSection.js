@@ -98,10 +98,10 @@ export const updateMedicationAction = async (req, res) => {
   session.startTransaction();  // Start the transaction
 
   try {
-    const { recordId, action, givenBy, newTime, notes } = req.body;
+    const { recordId, action, givenBy, newTime, newDate, notes } = req.body;
 
     // Fetch the record from the MedicalRecord model
-    const record = await MedicalRecord.findById(recordId).session(session); 
+    const record = await MedicalRecord.findById(recordId).session(session);
     if (!record) {
       return res.status(404).json({ message: "Medical record not found." });
     }
@@ -124,14 +124,29 @@ export const updateMedicationAction = async (req, res) => {
       record.givenBy = givenBy;
       if (notes) record.notes = notes;
     } else if (action === "Reschedule") {
-      if (!newTime) {
-        return res.status(400).json({ message: "'newTime' is required when rescheduling." });
+      if (!newDate || !newTime) {
+        return res.status(400).json({
+          message: "'newDate' and 'newTime' are required when rescheduling."
+        });
       }
 
-      record.time = newTime;
-      record.status = "Scheduled"; // optional: you can use "Rescheduled" if you want to track this
+      // ✅ Normalize DATE → Date object
+      record.date = new Date(`${newDate}T00:00:00.000Z`);
+
+      // ✅ Normalize TIME → HH:mm only
+      let formattedTime = newTime;
+
+      // If frontend accidentally sends ISO
+      if (newTime.includes("T")) {
+        formattedTime = new Date(newTime).toISOString().substring(11, 16);
+      }
+
+      record.time = formattedTime;
+      record.status = "Scheduled";
+
       if (notes) record.notes = notes;
-    } else {
+    }
+    else {
       return res.status(400).json({ message: "Invalid action type. Must be 'Given' or 'Reschedule'." });
     }
 
