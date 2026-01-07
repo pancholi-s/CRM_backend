@@ -923,21 +923,36 @@ export const applyDiscount = async (req, res) => {
   const { type, value, reason } = req.body;
 
   const bill = await Bill.findById(billId);
-  if (!bill) return res.status(404).json({ message: "Bill not found" });
+  if (!bill) {
+    return res.status(404).json({ message: "Bill not found" });
+  }
 
-  const gross = bill.grossAmount || bill.totalAmount;
+  // 🔒 ALWAYS recompute from services
+  const computedGross = bill.services.reduce(
+    (sum, s) => sum + (s.rate || 0) * (s.quantity || 1),
+    0
+  );
+
+  // Use stored gross only if valid
+  const grossAmount =
+    bill.grossAmount && bill.grossAmount > 0
+      ? bill.grossAmount
+      : computedGross;
+
+  // Lock correct grossAmount
+  bill.grossAmount = grossAmount;
 
   let discountAmount = 0;
 
   if (type === "Percentage") {
-    discountAmount = (gross * value) / 100;
+    discountAmount = (grossAmount * value) / 100;
   } else if (type === "Flat") {
     discountAmount = value;
   }
 
-  // ❗ Guardrails
-  if (discountAmount < 0) discountAmount = 0;
-  if (discountAmount > gross) discountAmount = gross;
+  // Guardrails
+  discountAmount = Math.max(0, discountAmount);
+  discountAmount = Math.min(discountAmount, grossAmount);
 
   bill.discount = {
     type,
@@ -945,20 +960,21 @@ export const applyDiscount = async (req, res) => {
     amount: discountAmount,
     reason,
     appliedBy: req.user?._id,
-    appliedAt: new Date()
+    appliedAt: new Date(),
   };
 
-  bill.netAmount = gross - discountAmount;
-  bill.totalAmount = bill.netAmount; // keep old code safe
-  bill.outstanding = bill.netAmount - bill.paidAmount;
+  bill.netAmount = grossAmount - discountAmount;
 
-  // auto status update
+  // Backward compatibility
+  bill.totalAmount = bill.netAmount;
+
+  bill.outstanding = bill.netAmount - bill.paidAmount;
   bill.status = bill.outstanding <= 0 ? "Paid" : "Pending";
 
   await bill.save();
 
-  res.status(200).json({
+  return res.status(200).json({
     message: "Discount applied successfully",
-    bill
+    bill,
   });
 };
