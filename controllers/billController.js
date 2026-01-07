@@ -162,9 +162,9 @@ export const getAllBills = async (req, res) => {
   const skip = (page - 1) * limit;
 
   if (!hospitalId) {
-    return res
-      .status(403)
-      .json({ message: "Access denied. No hospital context found." });
+    return res.status(403).json({
+      message: "Access denied. No hospital context found.",
+    });
   }
 
   try {
@@ -206,10 +206,9 @@ export const getAllBills = async (req, res) => {
     // ✅ Collect all department IDs used in bills
     const departmentIds = [
       ...new Set(
-        bills
-          .flatMap((bill) =>
-            bill.services.map((s) => s.details?.department).filter(Boolean)
-          )
+        bills.flatMap((bill) =>
+          bill.services.map((s) => s.details?.department).filter(Boolean)
+        ),
       ),
     ];
 
@@ -223,49 +222,79 @@ export const getAllBills = async (req, res) => {
       departmentMap[dept._id.toString()] = dept.name;
     });
 
-    // 🧾 Format response with department names injected
-    const formattedBills = bills.map((bill) => ({
-      _id: bill._id,
-      caseId: bill.caseId,
-      patient: bill.patient,
-      doctor: bill.doctor,
-      services: bill.services.map((service) => {
-        const serviceDoc = service.service || {};
-        const category = serviceDoc?.categories?.find(
-          (c) => c.subCategoryName === service.category
+    // 🧾 Format response
+    const formattedBills = bills.map((bill) => {
+      const grossAmount =
+        bill.grossAmount ??
+        bill.services.reduce(
+          (sum, s) => sum + (s.rate || 0) * (s.quantity || 1),
+          0
         );
 
-        const departmentNames =
-          category?.departments?.map((d) => d.name).join(", ") || "N/A";
+      const discountAmount = bill.discount?.amount || 0;
+      const netAmount = bill.netAmount ?? grossAmount - discountAmount;
 
-        const deptId = service.details?.department;
-        const deptName = deptId
-          ? departmentMap[deptId.toString()] || "Unknown"
-          : "N/A";
+      return {
+        _id: bill._id,
+        caseId: bill.caseId,
+        patient: bill.patient,
+        doctor: bill.doctor,
 
-        return {
-          service: serviceDoc?.name || "Unknown Service",
-          category: service.category,
-          quantity: service.quantity,
-          rate: service.rate,
-          total: service.rate * service.quantity,
-          departments: departmentNames, // from service model
-          details: {
-            ...service.details,
-            department: { _id: deptId, name: deptName }, // ✅ inject department name
-          },
-        };
-      }),
-      totalAmount: bill.totalAmount,
-      paidAmount: bill.paidAmount,
-      outstanding: bill.outstanding,
-      status: bill.status,
-      invoiceNumber: bill.invoiceNumber,
-      invoiceDate: bill.invoiceDate,
-      mode: bill.mode,
-      createdAt: bill.createdAt,
-      updatedAt: bill.updatedAt,
-    }));
+        services: bill.services.map((service) => {
+          const serviceDoc = service.service || {};
+          const category = serviceDoc?.categories?.find(
+            (c) => c.subCategoryName === service.category
+          );
+
+          const departmentNames =
+            category?.departments?.map((d) => d.name).join(", ") || "N/A";
+
+          const deptId = service.details?.department;
+          const deptName = deptId
+            ? departmentMap[deptId.toString()] || "Unknown"
+            : "N/A";
+
+          return {
+            service: serviceDoc?.name || "Unknown Service",
+            category: service.category,
+            quantity: service.quantity,
+            rate: service.rate,
+            total: service.rate * service.quantity,
+            departments: departmentNames,
+            details: {
+              ...service.details,
+              department: deptId
+                ? { _id: deptId, name: deptName }
+                : null,
+            },
+          };
+        }),
+
+        // 💰 Amounts (NEW & IMPORTANT)
+        grossAmount,
+        discount: bill.discount
+          ? {
+              type: bill.discount.type,
+              value: bill.discount.value,
+              amount: bill.discount.amount,
+              reason: bill.discount.reason,
+            }
+          : null,
+        netAmount,
+
+        // 🔒 Backward compatibility
+        totalAmount: bill.totalAmount,
+
+        paidAmount: bill.paidAmount,
+        outstanding: bill.outstanding,
+        status: bill.status,
+        invoiceNumber: bill.invoiceNumber,
+        invoiceDate: bill.invoiceDate,
+        mode: bill.mode,
+        createdAt: bill.createdAt,
+        updatedAt: bill.updatedAt,
+      };
+    });
 
     res.status(200).json({
       count: formattedBills.length,
@@ -276,9 +305,10 @@ export const getAllBills = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching bills:", error);
-    res
-      .status(500)
-      .json({ message: "Error fetching bills.", error: error.message });
+    res.status(500).json({
+      message: "Error fetching bills.",
+      error: error.message,
+    });
   }
 };
 
@@ -295,24 +325,24 @@ export const getBillDetails = async (req, res) => {
         path: "services.service",
         populate: {
           path: "categories.departments",
-          select: "name"
+          select: "name",
         },
-        select: "name categories"
+        select: "name categories",
       });
 
     if (!bill) {
       return res.status(404).json({ message: "Bill not found." });
     }
 
-    const admissionRequest = await AdmissionRequest.findOne({ caseId: bill.caseId });
+    const admissionRequest = await AdmissionRequest.findOne({
+      caseId: bill.caseId,
+    });
     const insurance = admissionRequest?.admissionDetails?.insurance || "N/A";
 
     // ✅ Collect all department IDs used in this bill
     const departmentIds = [
       ...new Set(
-        bill.services
-          .map((s) => s.details?.department)
-          .filter(Boolean)
+        bill.services.map((s) => s.details?.department).filter(Boolean)
       ),
     ];
 
@@ -326,7 +356,7 @@ export const getBillDetails = async (req, res) => {
       departmentMap[dept._id.toString()] = dept.name;
     });
 
-    // 🧩 Build detailed service info with department support
+    // 🧩 Build detailed service info
     const services = bill.services.map((item) => {
       const serviceDoc = item.service;
       const baseDetails = item.details || {};
@@ -338,6 +368,7 @@ export const getBillDetails = async (req, res) => {
           category: item.category,
           quantity: item.quantity,
           rate: item.rate,
+          total: (item.rate || 0) * (item.quantity || 1),
           details: baseDetails,
         };
       }
@@ -362,11 +393,12 @@ export const getBillDetails = async (req, res) => {
         category: item.category || "Unknown Category",
         quantity: item.quantity || 1,
         rate: item.rate || 0,
+        total: (item.rate || 0) * (item.quantity || 1),
         details: {
           ...baseDetails,
           department: deptId
             ? { _id: deptId, name: deptName }
-            : { _id: null, name: "N/A" }, // ✅ full object
+            : { _id: null, name: "N/A" },
           rateType: category.rateType || "Unknown",
           effectiveDate: category.effectiveDate || null,
           departments: departmentsFromCategory,
@@ -374,10 +406,22 @@ export const getBillDetails = async (req, res) => {
       };
     });
 
+    // 💰 Amount calculations (safe fallback)
+    const grossAmount =
+      bill.grossAmount ??
+      bill.services.reduce(
+        (sum, s) => sum + (s.rate || 0) * (s.quantity || 1),
+        0
+      );
+
+    const discountAmount = bill.discount?.amount || 0;
+    const netAmount = bill.netAmount ?? grossAmount - discountAmount;
+
     res.status(200).json({
       invoiceNumber: bill.invoiceNumber,
       caseId: bill.caseId,
       invoiceDate: bill.invoiceDate,
+
       patient: bill.patient
         ? {
             name: bill.patient.name,
@@ -385,16 +429,34 @@ export const getBillDetails = async (req, res) => {
             patId: bill.patient.patId,
           }
         : { name: "Unknown", phone: "N/A" },
+
       doctor: bill.doctor
         ? {
             name: bill.doctor.name,
             specialization: bill.doctor.specialization,
           }
         : { name: "Unknown", specialization: "N/A" },
+
       insurance,
       deposit: bill.deposit,
+
       services,
+
+      // 💰 NEW: discount-aware amounts
+      grossAmount,
+      discount: bill.discount
+        ? {
+            type: bill.discount.type,
+            value: bill.discount.value,
+            amount: bill.discount.amount,
+            reason: bill.discount.reason,
+          }
+        : null,
+      netAmount,
+
+      // 🔒 Backward compatibility
       totalAmount: bill.totalAmount,
+
       paidAmount: bill.paidAmount,
       outstanding: bill.outstanding,
       status: bill.status,
@@ -403,11 +465,14 @@ export const getBillDetails = async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching bill details:", error);
-    res
-      .status(500)
-      .json({ message: "Error fetching bill details.", error: error.message });
+    res.status(500).json({
+      message: "Error fetching bill details.",
+      error: error.message,
+    });
   }
 };
+
+
 
 
 
