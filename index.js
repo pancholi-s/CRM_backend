@@ -38,6 +38,7 @@ import newPrescriptionRoutes from './routes/newPrescriptionRoutes.js';
 import "./middleware/billingCron.js"; // Start the billing cron job
 import chatRoutes from "./routes/chatRoutes.js";
 import conversationRoutes from "./routes/conversationRoutes.js";
+import tpaReportRoutes from "./routes/tpaReportRoutes.js";
 
 dotenv.config();
 
@@ -99,6 +100,7 @@ app.use('/', fileRoutes);
 app.use('/', newPrescriptionRoutes);
 app.use("/", chatRoutes);
 app.use("/", conversationRoutes);
+app.use("/", tpaReportRoutes);
 
 // Base route
 app.get('/', (req, res) => {
