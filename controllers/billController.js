@@ -203,7 +203,7 @@ export const getAllBills = async (req, res) => {
       .skip(skip)
       .limit(parseInt(limit));
 
-    // ✅ Collect all department IDs used in bills
+    // ✅ Collect department IDs
     const departmentIds = [
       ...new Set(
         bills.flatMap((bill) =>
@@ -212,7 +212,6 @@ export const getAllBills = async (req, res) => {
       ),
     ];
 
-    // ✅ Fetch department names once
     const departments = await Department.find({
       _id: { $in: departmentIds },
     }).select("name");
@@ -222,17 +221,37 @@ export const getAllBills = async (req, res) => {
       departmentMap[dept._id.toString()] = dept.name;
     });
 
-    // 🧾 Format response
     const formattedBills = bills.map((bill) => {
+      // 💰 Amounts
+      const computedGross = bill.services.reduce(
+        (sum, s) => sum + (s.rate || 0) * (s.quantity || 1),
+        0
+      );
+
       const grossAmount =
-        bill.grossAmount ??
-        bill.services.reduce(
-          (sum, s) => sum + (s.rate || 0) * (s.quantity || 1),
-          0
-        );
+        bill.grossAmount && bill.grossAmount > 0
+          ? bill.grossAmount
+          : computedGross;
 
       const discountAmount = bill.discount?.amount || 0;
       const netAmount = bill.netAmount ?? grossAmount - discountAmount;
+
+      // 💸 Refund summary (LIST SAFE)
+      // 💸 Refund extraction
+      const refunds = (bill.payments || []).filter(
+        (p) => p.type === "Refund" || p.amount < 0
+      );
+
+      const totalRefunded = refunds.reduce(
+        (sum, r) => sum + Math.abs(r.amount),
+        0
+      );
+
+      const refundableAmount = Math.max(
+        0,
+        bill.paidAmount - netAmount
+      );
+
 
       return {
         _id: bill._id,
@@ -270,24 +289,30 @@ export const getAllBills = async (req, res) => {
           };
         }),
 
-        // 💰 Amounts (NEW & IMPORTANT)
+        // 💰 Billing
         grossAmount,
         discount: bill.discount
           ? {
-              type: bill.discount.type,
-              value: bill.discount.value,
-              amount: bill.discount.amount,
-              reason: bill.discount.reason,
-            }
+            type: bill.discount.type,
+            value: bill.discount.value,
+            amount: bill.discount.amount,
+            reason: bill.discount.reason,
+          }
           : null,
         netAmount,
 
-        // 🔒 Backward compatibility
         totalAmount: bill.totalAmount,
-
         paidAmount: bill.paidAmount,
         outstanding: bill.outstanding,
         status: bill.status,
+
+        // 💸 Refund awareness
+        refundSummary: {
+          refunds,
+          totalRefunded,
+          refundableAmount,
+        },
+
         invoiceNumber: bill.invoiceNumber,
         invoiceDate: bill.invoiceDate,
         mode: bill.mode,
@@ -311,6 +336,7 @@ export const getAllBills = async (req, res) => {
     });
   }
 };
+
 
 
 
@@ -339,14 +365,13 @@ export const getBillDetails = async (req, res) => {
     });
     const insurance = admissionRequest?.admissionDetails?.insurance || "N/A";
 
-    // ✅ Collect all department IDs used in this bill
+    // ✅ Department mapping
     const departmentIds = [
       ...new Set(
         bill.services.map((s) => s.details?.department).filter(Boolean)
       ),
     ];
 
-    // ✅ Fetch department names once
     const departments = await Department.find({
       _id: { $in: departmentIds },
     }).select("name");
@@ -356,7 +381,7 @@ export const getBillDetails = async (req, res) => {
       departmentMap[dept._id.toString()] = dept.name;
     });
 
-    // 🧩 Build detailed service info
+    // 🧩 Services
     const services = bill.services.map((item) => {
       const serviceDoc = item.service;
       const baseDetails = item.details || {};
@@ -406,16 +431,34 @@ export const getBillDetails = async (req, res) => {
       };
     });
 
-    // 💰 Amount calculations (safe fallback)
+    // 💰 Amounts
+    const computedGross = bill.services.reduce(
+      (sum, s) => sum + (s.rate || 0) * (s.quantity || 1),
+      0
+    );
+
     const grossAmount =
-      bill.grossAmount ??
-      bill.services.reduce(
-        (sum, s) => sum + (s.rate || 0) * (s.quantity || 1),
-        0
-      );
+      bill.grossAmount && bill.grossAmount > 0
+        ? bill.grossAmount
+        : computedGross;
 
     const discountAmount = bill.discount?.amount || 0;
     const netAmount = bill.netAmount ?? grossAmount - discountAmount;
+
+    // 💸 Refund separation
+    const refunds = (bill.payments || []).filter(
+      (p) => p.type === "Refund" || p.amount < 0
+    );
+
+    const totalRefunded = refunds.reduce(
+      (sum, r) => sum + Math.abs(r.amount),
+      0
+    );
+
+    const refundableAmount = Math.max(
+      0,
+      bill.paidAmount - netAmount
+    );
 
     res.status(200).json({
       invoiceNumber: bill.invoiceNumber,
@@ -424,17 +467,17 @@ export const getBillDetails = async (req, res) => {
 
       patient: bill.patient
         ? {
-            name: bill.patient.name,
-            phone: bill.patient.phone,
-            patId: bill.patient.patId,
-          }
+          name: bill.patient.name,
+          phone: bill.patient.phone,
+          patId: bill.patient.patId,
+        }
         : { name: "Unknown", phone: "N/A" },
 
       doctor: bill.doctor
         ? {
-            name: bill.doctor.name,
-            specialization: bill.doctor.specialization,
-          }
+          name: bill.doctor.name,
+          specialization: bill.doctor.specialization,
+        }
         : { name: "Unknown", specialization: "N/A" },
 
       insurance,
@@ -442,26 +485,30 @@ export const getBillDetails = async (req, res) => {
 
       services,
 
-      // 💰 NEW: discount-aware amounts
       grossAmount,
       discount: bill.discount
         ? {
-            type: bill.discount.type,
-            value: bill.discount.value,
-            amount: bill.discount.amount,
-            reason: bill.discount.reason,
-          }
+          type: bill.discount.type,
+          value: bill.discount.value,
+          amount: bill.discount.amount,
+          reason: bill.discount.reason,
+        }
         : null,
       netAmount,
 
-      // 🔒 Backward compatibility
       totalAmount: bill.totalAmount,
-
       paidAmount: bill.paidAmount,
       outstanding: bill.outstanding,
       status: bill.status,
       mode: bill.mode,
+
+      // 🧾 Ledger
       payments: bill.payments || [],
+      refunds,
+      refundSummary: {
+        totalRefunded,
+        refundableAmount,
+      },
     });
   } catch (error) {
     console.error("Error fetching bill details:", error);
@@ -471,9 +518,6 @@ export const getBillDetails = async (req, res) => {
     });
   }
 };
-
-
-
 
 
 export const getBillsByPatient = async (req, res) => {

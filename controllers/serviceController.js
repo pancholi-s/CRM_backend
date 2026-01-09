@@ -1,6 +1,7 @@
 import Service from "../models/serviceModel.js";
 import Department from "../models/departmentModel.js";
 import Hospital from "../models/hospitalModel.js";
+import mongoose from "mongoose";
 
 export const addService = async (req, res) => {
   const {
@@ -402,5 +403,59 @@ export const getServicesByDep = async (req, res) => {
     res
       .status(500)
       .json({ message: "Error fetching department details.", error: error.message });
+  }
+};
+
+
+export const searchServiceSubCategories = async (req, res) => {
+  try {
+    const { query = "" } = req.query;
+    const hospitalId = req.session.hospitalId;
+
+    if (!hospitalId) {
+      return res.status(403).json({
+        message: "Unauthorized access. No hospital context."
+      });
+    }
+
+    if (!query.trim()) {
+      return res.status(400).json({
+        message: "Search query is required."
+      });
+    }
+
+    const services = await Service.aggregate([
+      {
+        $match: {
+          hospital: new mongoose.Types.ObjectId(hospitalId),
+          "categories.subCategoryName": { $regex: query, $options: "i" }
+        }
+      },
+      { $unwind: "$categories" },
+      {
+        $match: {
+          "categories.subCategoryName": { $regex: query, $options: "i" }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          subCategoryName: "$categories.subCategoryName",
+          rate: "$categories.rate",
+          rateType: "$categories.rateType"
+        }
+      }
+    ]);
+
+    res.status(200).json({
+      count: services.length,
+      results: services
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      message: "Error searching subcategories",
+      error: error.message
+    });
   }
 };

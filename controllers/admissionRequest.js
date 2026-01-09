@@ -673,27 +673,38 @@ export const getAdmissionRequestsWithInsurance = async (req, res) => {
         .json({ message: "Unauthorized: No hospital context." });
     }
 
-    // Fetch all admission requests for the hospital with insurance
     const requests = await AdmissionRequest.find({
       hospital: hospitalId,
       "admissionDetails.insurance.hasInsurance": true,
     })
-      .populate(
-        "patient",
-        "name patId email phone hasInsurance insuranceDetails"
-      )
+      .populate("patient", "name patId email phone hasInsurance insuranceDetails")
       .populate("admissionDetails.room", "roomID")
       .populate("admissionDetails.bed", "bedNumber")
       .populate("doctor", "name specialization")
       .sort({ createdAt: -1 })
-      .lean(); // Convert to plain objects
+      .lean();
 
     if (!requests || requests.length === 0) {
       return res.status(404).json({ message: "No insured admissions found." });
     }
 
-    // Ensure insuranceApproved is always present and include the AdmissionRequest _id
-    const dataWithInsuranceApproved = requests.map((admission) => {
+    // 🔹 Fetch live bills in one go (performance-safe)
+    const caseIds = requests.map(r => r.caseId);
+
+    const liveBills = await Bill.find({
+      hospital: hospitalId,
+      caseId: { $in: caseIds },
+      isLive: true
+    })
+      .select("_id caseId")
+      .lean();
+
+    const billMap = {};
+    liveBills.forEach(bill => {
+      billMap[bill.caseId] = bill._id;
+    });
+
+    const enrichedData = requests.map((admission) => {
       if (
         admission.admissionDetails.insurance &&
         !admission.admissionDetails.insurance.insuranceApproved
@@ -701,17 +712,16 @@ export const getAdmissionRequestsWithInsurance = async (req, res) => {
         admission.admissionDetails.insurance.insuranceApproved = "pending";
       }
 
-      // Make sure _id of AdmissionRequest is returned explicitly
       return {
-        _id: admission._id,
         ...admission,
+        latestLiveBillId: billMap[admission.caseId] || null
       };
     });
 
     res.status(200).json({
       message: "Insured admission requests retrieved successfully.",
-      count: dataWithInsuranceApproved.length,
-      data: dataWithInsuranceApproved,
+      count: enrichedData.length,
+      data: enrichedData,
     });
   } catch (error) {
     console.error("❌ Error fetching insured admissions:", error);

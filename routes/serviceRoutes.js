@@ -3,7 +3,7 @@ import express from "express";
 import { authorizeRoles } from "../middleware/roleMiddleware.js";
 import { requireHospitalContext } from "../middleware/hospitalContext.js";
 
-import { addService, getServices, getPackages, editService, deleteService, deleteSubcategory, getServicesByDep } from "../controllers/serviceController.js";
+import { addService, getServices, getPackages, editService, deleteService, deleteSubcategory, getServicesByDep, searchServiceSubCategories } from "../controllers/serviceController.js";
 
 const router = express.Router();
 router.use(requireHospitalContext);
@@ -16,5 +16,6 @@ router.delete("/deleteService/delete/:serviceId", authorizeRoles("receptionist",
 router.delete("/deleteSubcategory/:serviceId/:subcategoryId", authorizeRoles("receptionist", "hospitalAdmin"), deleteSubcategory);
 
 router.get("/getPackages", authorizeRoles("receptionist", "hospitalAdmin"),getPackages );
+router.get("/searchServiceSubCategories", authorizeRoles("receptionist", "hospitalAdmin","doctor"),searchServiceSubCategories );
 
 export default router;
