@@ -260,91 +260,6 @@ export const getAppointmentsByPatientId = async (req, res) => {
   }
 };
 
-// Get Patient Details by ID
-// export const getPatientDetailsById = async (req, res) => {
-//   try {
-//     const { patientId } = req.params;
-
-//     if (!patientId) {
-//       return res.status(400).json({ message: "Patient ID is required." });
-//     }
-
-//     const patient = await Patient.findById(patientId)
-//       .select("-password -appointments -files -__v")
-//       .populate("doctors", "name email specialization")
-//       .populate("department", "name")
-//       .lean();
-
-//     if (!patient) {
-//       return res.status(404).json({ message: "Patient not found." });
-//     }
-
-//     const consultations = await Consultation.find({ patient: patientId })
-//       .populate("doctor", "name")
-//       .populate("department", "name")
-//       .sort({ date: -1 })
-//       .lean();
-
-//     const latestConsultation =
-//       consultations.length > 0 ? consultations[0] : null;
-//     const latestConsultationData = latestConsultation?.consultationData || null;
-
-//     const admissionRequest = await AdmissionRequest.findOne({ patient: patientId })
-//       .sort({ createdAt: -1 })
-//       .lean();
-
-//     const admissionDetails = admissionRequest?.admissionDetails || {};
-
-//     let createdByName = null;
-//     if (admissionRequest?.createdBy) {
-//       createdByName =
-//         (await Doctor.findById(admissionRequest.createdBy).select("name").lean())?.name ||
-//         (await Staff.findById(admissionRequest.createdBy).select("name").lean())?.name ||
-//         (await Admin.findById(admissionRequest.createdBy).select("name").lean())?.name ||
-//         (await Receptionist.findById(admissionRequest.createdBy).select("name").lean())?.name ||
-//         null;
-//     }
-
-//     const additionalFields = {
-//       bloodGroup: latestConsultationData?.bloodGroup ?? null,
-//       visitType: latestConsultationData?.visitType ?? null,
-//       // condition: latestConsultationData?.condition ?? null,
-//       // emergencyContact: latestConsultationData?.emergencyContact ?? null,
-//       relationship: latestConsultationData?.relationship ?? null,
-//       // emergencyContactName:
-//       //   latestConsultationData?.emergencyContactName ?? null,
-//       MRN: latestConsultationData?.MRN ?? null,
-//       // admittingBy: latestConsultationData?.admittingBy ?? null,
-//       // admissionDateTime: latestConsultationData?.admissionDateTime ?? null,
-//       condition: admissionDetails?.medicalNote ?? null,
-//       admissionDate: admissionDetails?.date ?? null,
-//       contact: admissionDetails?.contact ?? null,
-//       address: admissionDetails?.address ?? null,
-//       Age: admissionDetails?.age ?? null,
-//       gender: admissionDetails?.gender ?? null,
-//       time: admissionDetails?.time ?? null,
-//       emergencyContact: admissionDetails?.emergencyContact ?? null,
-//       emergencyName: admissionDetails?.emergencyName ?? null,
-//       createdByName,
-//     };
-
-//     return res.status(200).json({
-//       message: "Patient details retrieved successfully.",
-//       data: {
-//         ...patient,
-//         consultations,
-//         ...additionalFields,
-//       },
-//     });
-//   } catch (error) {
-//     console.error("Error fetching patient details:", error);
-//     return res.status(500).json({
-//       message: "Failed to fetch patient details.",
-//       error: error.message,
-//     });
-//   }
-// };
-
 
 export const getPatientDetailsById = async (req, res) => {
   try {
@@ -364,7 +279,7 @@ export const getPatientDetailsById = async (req, res) => {
       return res.status(404).json({ message: "Patient not found." });
     }
 
-    // 2️⃣ Fetch consultations for this patient
+    // 2️⃣ Fetch consultations
     const consultations = await Consultation.find({ patient: patientId })
       .populate("doctor", "name")
       .populate("department", "name")
@@ -374,34 +289,52 @@ export const getPatientDetailsById = async (req, res) => {
     const latestConsultation = consultations[0] || null;
     const latestConsultationData = latestConsultation?.consultationData || null;
 
-    // 3️⃣ Fetch admission requests for this patient only
+    // 3️⃣ Fetch admission requests
     const admissionRequests = await AdmissionRequest.find({ patient: patientId })
       .populate("doctor", "name")
       .sort({ createdAt: -1 })
       .lean();
 
-    // 🆕 3.1️⃣ Fetch files for this patient
+    // 4️⃣ Fetch ALL bills for this patient
+    const allBills = await Bill.find({ patient: patientId })
+      .sort({ createdAt: -1 })
+      .select(
+        "_id caseId invoiceNumber totalAmount paidAmount outstanding status mode isLive createdAt updatedAt"
+      )
+      .lean();
+
+    // 5️⃣ Fetch STRICT latest LIVE bill (no fallback)
+    const latestLiveBill = await Bill.findOne({
+      patient: patientId,
+      isLive: true,
+    })
+      .sort({ createdAt: -1 })
+      .select(
+        "_id caseId invoiceNumber totalAmount paidAmount outstanding status isLive createdAt"
+      )
+      .lean();
+
+    // 6️⃣ Fetch patient files
     const files = await PatientFile.find({ patient: patientId })
       .sort({ uploadedAt: -1 })
       .select("-__v")
       .lean();
 
-
-    // 4️⃣ For each AdmissionRequest, fetch only ProgressPhases with the same caseId
+    // 7️⃣ Attach progress phases per admission
     const requestsWithPhases = await Promise.all(
       admissionRequests.map(async (admission) => {
         const phases = await ProgressPhase.find({ caseId: admission.caseId })
-          .sort({ date: 1 }) // chronological order
+          .sort({ date: 1 })
           .lean();
 
         return {
           ...admission,
-          progressPhases: phases, // only phases matching this admission's caseId
+          progressPhases: phases,
         };
       })
     );
 
-    // 5️⃣ Get name of creator
+    // 8️⃣ Resolve creator name
     let createdByName = null;
     if (admissionRequests[0]?.createdBy) {
       createdByName =
@@ -412,7 +345,7 @@ export const getPatientDetailsById = async (req, res) => {
         null;
     }
 
-    // 6️⃣ Latest consultation + admissionDetails for additionalFields
+    // 9️⃣ Additional fields
     const firstAdmission = admissionRequests[0] || {};
     const admissionDetails = firstAdmission?.admissionDetails || {};
 
@@ -441,8 +374,12 @@ export const getPatientDetailsById = async (req, res) => {
       additionalFields,
     });
 
+    // ✅ FINAL RESPONSE STRUCTURE (AS REQUESTED)
     return res.status(200).json({
-      message: "Patient details with admission requests and related progress phases retrieved successfully.",
+      message:
+        "Patient details with admission requests and billing retrieved successfully.",
+      latestLiveBill: latestLiveBill || null, // 👈 STRICT
+      allBills,                               // 👈 ALL BILLS
       data: {
         ...patient,
         consultations,
@@ -460,6 +397,7 @@ export const getPatientDetailsById = async (req, res) => {
     });
   }
 };
+
 
 //Get Inpatients
 export const getInpatients = async (req, res) => {
