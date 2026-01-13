@@ -8,6 +8,7 @@ import Patient from "../models/patientModel.js";
 import Hospital from "../models/hospitalModel.js";
 import Department from "../models/departmentModel.js";
 import HospitalAdmin from "../models/hospitalAdminModel.js";
+import Staff from "../models/staffModel.js";
 
 import { sendPasswordResetEmail } from "../utils/emailService.js";
 
@@ -18,6 +19,7 @@ const models = {
   hospital: Hospital,
   department: Department,
   hospitalAdmin: HospitalAdmin,
+  staff: Staff,
 };
 
 export const registerUser = async (req, res) => {
@@ -157,17 +159,29 @@ export const loginUser = async (req, res) => {
     let user = null;
     let role = null;
 
-    for (const [key, Model] of Object.entries(models)) {
-    if (key === "doctor") {
-      user = await Model.findOne({ email }).populate("hospital").populate("departments");
-    } else {
-      user = await Model.findOne({ email }).populate("hospital");
-    }
-      if (user) {
-        role = key;
-        break;
-      }
-    }
+for (const [key, Model] of Object.entries(models)) {
+  if (key === "doctor") {
+    user = await Model.findOne({ email })
+      .select("+password")          // ✅ FIX
+      .populate("hospital")
+      .populate("departments");
+  } else if (key === "staff") {
+    user = await Model.findOne({ email })
+      .select("+password")          // ✅ FIX
+      .populate("hospital")
+      .populate("department");
+  } else {
+    user = await Model.findOne({ email })
+      .select("+password")          // ✅ FIX
+      .populate("hospital");
+  }
+
+  if (user) {
+    role = key;
+    break;
+  }
+}
+
 
     if (!user) {
       return res.status(401).json({ message: "Invalid credentials." });

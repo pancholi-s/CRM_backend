@@ -4,36 +4,43 @@ import Staff from "../models/staffModel.js";
 import mongoose from "mongoose";
 
 export const addStaff = async (req, res) => {
-  const { profile, staff_id, name, phone, department, designation, status } = req.body;
+  const {
+    profile,
+    staff_id,
+    name,
+    email,
+    phone,
+    department,
+    designation,
+    status
+  } = req.body;
 
   const hospitalId = req.session.hospitalId;
   if (!hospitalId) {
     return res.status(403).json({ message: "Unauthorized access." });
   }
 
-  const session = await Staff.startSession(); // Start a transaction
+  const session = await Staff.startSession();
   session.startTransaction();
 
-  try { // Validate hospital
+  try {
     const hospital = await Hospital.findById(hospitalId).session(session);
-    if (!hospital) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(404).json({ message: "Hospital not found." });
-    }
+    if (!hospital) throw new Error("Hospital not found");
 
-    // Validate department
     const dept = await Department.findById(department).session(session);
     if (!dept || dept.hospital.toString() !== hospitalId) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(404).json({ message: "Department not found in the specified hospital." });
+      throw new Error("Invalid department");
     }
+
+    // 🔐 default password (staff must reset later)
+    const defaultPassword = "changeme123";
 
     const staff = new Staff({
       profile,
       staff_id,
       name,
+      email,
+      password: defaultPassword,
       phone,
       department: dept._id,
       designation,
@@ -43,36 +50,35 @@ export const addStaff = async (req, res) => {
 
     await staff.save({ session });
 
-    // Update department with staff reference
     await Department.findByIdAndUpdate(
       department,
       { $push: { staffs: staff._id } },
       { session }
     );
 
-    // Update hospital with staff reference
     await Hospital.findByIdAndUpdate(
       hospitalId,
       { $push: { staffs: staff._id } },
       { session }
     );
 
-    // Commit transaction
     await session.commitTransaction();
     session.endSession();
 
-    // Fetch the newly created staff along with department name
     const populatedStaff = await Staff.findById(staff._id)
-    .populate("department", "name")
-    .lean();
+      .populate("department", "name")
+      .select("-password");
 
-    res.status(201).json({ message: "Staff added successfully.", staff: populatedStaff });
+    res.status(201).json({
+      message: "Staff added successfully",
+      staff: populatedStaff,
+      tempPassword: defaultPassword // ⚠️ optional – show once
+    });
 
   } catch (error) {
-    await session.abortTransaction(); // Rollback transaction on error
+    await session.abortTransaction();
     session.endSession();
-
-    res.status(500).json({ message: "Error adding staff.", error: error.message });
+    res.status(500).json({ message: error.message });
   }
 };
 
