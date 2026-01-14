@@ -8,6 +8,8 @@ import ProgressLog from '../models/progressLog.js';
 import Service from '../models/serviceModel.js';
 import Doctor from '../models/doctorModel.js';
 import AdmissionRequest from '../models/admissionReqModel.js';
+import mongoose from 'mongoose';
+import Bill from '../models/billModel.js';
 
 import { updateBillAfterAction } from '../middleware/billingMiddleware.js'; // Import the billing middleware function
 import { uploadToCloudinary } from '../utils/cloudinary.js';
@@ -1050,19 +1052,22 @@ export const getProgressPhaseCounts = async (req, res) => {
 // };
 
 export const addProgressPhase = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const {
       caseId: providedCaseId,
       patient,
       title,
-      date, // e.g. "2025-08-13"
+      date,
       assignedDoctor,
       isFinalPhase,
-      data // dynamic JSON or string
+      data
     } = req.body;
 
     if (!patient || !title || !assignedDoctor) {
-      return res.status(400).json({ message: 'Required fields are missing' });
+      return res.status(400).json({ message: "Required fields are missing" });
     }
 
     // 1️⃣ Determine correct latest caseId (Admission > Consultation)
@@ -1090,14 +1095,10 @@ export const addProgressPhase = async (req, res) => {
     }
 
     if (!caseId) {
-      return res
-        .status(400)
-        .json({ message: "No valid caseId found for this patient." });
+      return res.status(400).json({ message: "No valid caseId found for this patient." });
     }
 
-    console.log("✅ Using latest caseId:", caseId);
-
-    // 2️⃣ Block if final phase already exists
+    // 2️⃣ Block if final phase exists
     const finalExists = await ProgressPhase.exists({ caseId, isFinal: true });
     if (finalExists) {
       return res
@@ -1159,7 +1160,7 @@ export const addProgressPhase = async (req, res) => {
       }
     }
 
-    // 5️⃣ Parse data safely
+    // 4️⃣ Parse data safely
     let parsedData = {};
     if (data) {
       try {
@@ -1170,33 +1171,102 @@ export const addProgressPhase = async (req, res) => {
       }
     }
 
-    // 3. Merge user date with system time
+    // 5️⃣ Merge user date with system time
     const now = new Date();
     const [year, month, day] = new Date(date).toISOString().split("T")[0].split("-");
     const finalDate = new Date(`${year}-${month}-${day}T${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now.getSeconds().toString().padStart(2, "0")}Z`);
 
-    // 7️⃣ Create new progress phase
-    const newPhase = await ProgressPhase.create({
-      caseId,
-      patient,
-      title: isFinalPhase ? "final" : title,
-      date: finalDate,
-      assignedDoctor,
-      data: parsedData,
-      files: uploadedFiles,
-      isDone: false,
-      isFinal: !!isFinalPhase,
-    });
+    // 6️⃣ Create progress phase
+    const newPhase = await ProgressPhase.create(
+      [
+        {
+          caseId,
+          patient,
+          title: isFinalPhase ? "final" : title,
+          date: finalDate,
+          assignedDoctor,
+          data: parsedData,
+          isDone: false,
+          isFinal: !!isFinalPhase
+        }
+      ],
+      { session }
+    );
+
+    // 🔥 7️⃣ DOCTOR VISIT BILLING (ONLY IF PROVIDED)
+    const doctorVisit = parsedData?.doctorVisit;
+
+    if (doctorVisit && doctorVisit.doctor) {
+      const bill = await Bill.findOne({ caseId }).session(session);
+      if (!bill) throw new Error("Bill not found for this case");
+
+      const service = await Service.findOne({
+        hospital: bill.hospital,
+        name: "IPD Consultation"
+      }).session(session);
+
+      if (!service) throw new Error("IPD Consultation service missing");
+
+      const category = service.categories.find(
+        c => c.subCategoryName === "Daily Doctor Visit"
+      );
+
+      if (!category) {
+        throw new Error("Daily Doctor Visit category not found");
+      }
+
+      const doctor = await Doctor.findById(doctorVisit.doctor)
+        .select("name")
+        .session(session);
+
+      const billEntry = {
+        service: service._id,
+        category: "Daily Doctor Visit",
+        quantity: 1,
+        rate: category.rate,
+        details: {
+          phaseId: newPhase[0]._id,
+          doctorId: doctor._id,
+          doctorName: doctor.name,
+          visitDate: doctorVisit.date,
+          visitTime: doctorVisit.time,
+          note: doctorVisit.note || "",
+          type: "IPD"
+        }
+      };
+
+      bill.services.push(billEntry);
+      bill.totalAmount += category.rate;
+      bill.outstanding = bill.totalAmount - bill.paidAmount;
+      bill.lastBilledAt = new Date();
+
+      await bill.save({ session });
+
+      // mark billing reference inside phase data
+      newPhase[0].data.doctorVisit.billed = true;
+      newPhase[0].data.doctorVisit.billServiceEntryId =
+        bill.services[bill.services.length - 1]._id;
+
+      await newPhase[0].save({ session });
+    }
+
+    await session.commitTransaction();
+    session.endSession();
 
     res.status(201).json({
       message: "Progress phase added successfully",
-      phase: newPhase
+      phase: newPhase[0]
     });
+
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+
     console.error("Error adding progress phase:", error);
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
 
 
 export const updatePhase = async (req, res) => {
