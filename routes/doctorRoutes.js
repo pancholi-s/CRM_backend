@@ -11,6 +11,6 @@ router.use(requireHospitalContext);
 
 router.get("/getDoctorsByHospital", authorizeRoles("receptionist", "hospitalAdmin",'doctor'), getDoctorsByHospital, paginationMiddleware)
 router.get("/getDoctorsByDepartment/:departmentId", authorizeRoles("receptionist", "hospitalAdmin",'doctor'), getDoctorsByDepartment, paginationMiddleware);
-router.get("/reports/doctors/:doctorId/earnings", authorizeRoles("hospitalAdmin",'doctor'), doctorEarningsReport);
+router.get("/reports/doctors/earnings", authorizeRoles("hospitalAdmin",'doctor'), doctorEarningsReport);
 
 export default router;
