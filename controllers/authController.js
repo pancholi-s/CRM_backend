@@ -37,37 +37,46 @@ export const registerUser = async (req, res) => {
     return res.status(400).json({ message: "All fields are required." });
   }
 
-  if (!["receptionist", "doctor", "patient", "hospitalAdmin"].includes(role)) {
+  const allowedRoles = ["receptionist", "doctor", "patient", "hospitalAdmin"];
+  if (!allowedRoles.includes(role)) {
     return res.status(400).json({ message: "Invalid role specified." });
   }
 
   try {
-    let Model = models[role];
+    const Model = models[role];
 
-    // Check if email is unique for role
+    // ✅ Email uniqueness per role
     const existingUser = await Model.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ message: "Email already in use." });
     }
 
+    // ✅ Hospital validation
     const hospital = await Hospital.findOne({ name: hospitalName });
     if (!hospital) {
       return res.status(400).json({ message: "Hospital not found." });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-
     let newUser;
 
+    /* ===================== DOCTOR ===================== */
     if (role === "doctor") {
       const { department } = additionalData;
-
-      const departmentDoc = await Department.findOne({ name: department });
-      if (!departmentDoc) {
-        return res.status(400).json({ message: "Department not found." });
+      if (!department) {
+        return res.status(400).json({ message: "Department is required for doctor." });
       }
 
-      newUser = new Doctor({
+      const departmentDoc = await Department.findOne({
+        name: department,
+        hospital: hospital._id,
+      });
+
+      if (!departmentDoc) {
+        return res.status(400).json({ message: "Department not found in this hospital." });
+      }
+
+      newUser = await Doctor.create({
         name,
         email,
         password: hashedPassword,
@@ -78,73 +87,82 @@ export const registerUser = async (req, res) => {
         ...additionalData,
       });
 
-      await newUser.save();
-
+      // ✅ Link doctor → department (no duplicates)
       await Department.findByIdAndUpdate(
         departmentDoc._id,
-        { $push: { doctors: newUser._id } },
-        { new: true }
+        { $addToSet: { doctors: newUser._id } }
       );
-    } else if (role === "patient") {
-      const patientStatus = additionalData.status || "active";
-      newUser = new Patient({
+    }
+
+    /* ===================== PATIENT ===================== */
+    else if (role === "patient") {
+      newUser = await Patient.create({
         name,
         email,
         password: hashedPassword,
         phone,
         role,
-        status: patientStatus,
+        status: additionalData.status || "active",
         hospital: hospital._id,
         registrationDate: new Date(),
         ...additionalData,
       });
-    } else if (role === "receptionist") {
-      newUser = new Receptionist({
-        name,
-        email,
-        password: hashedPassword,
-        phone,
-        role,
-        hospital: hospital._id,
-        ...additionalData,
-      });
-    } else if (role === "hospitalAdmin") {
-      newUser = new HospitalAdmin({
-        name,
-        email,
-        password: hashedPassword,
-        phone,
-        role,
-        hospital: hospital._id,
-        ...additionalData,
-      });
+    }
 
-      await newUser.save();
-      await Hospital.findByIdAndUpdate(hospital._id, {
-        $push: { admins: newUser._id },
+    /* ===================== RECEPTIONIST ===================== */
+    else if (role === "receptionist") {
+      newUser = await Receptionist.create({
+        name,
+        email,
+        password: hashedPassword,
+        phone,
+        role,
+        hospital: hospital._id,
+        ...additionalData,
       });
     }
 
-    await newUser.save();
+    /* ===================== HOSPITAL ADMIN ===================== */
+    else if (role === "hospitalAdmin") {
+      newUser = await HospitalAdmin.create({
+        name,
+        email,
+        password: hashedPassword,
+        phone,
+        role,
+        hospital: hospital._id,
+        ...additionalData,
+      });
 
-    // Update the hospital document with the new user
-    const updateField =
-      role === "doctor"
-        ? "doctors"
-        : role === "receptionist"
-        ? "receptionists"
-        : "patients";
+      await Hospital.findByIdAndUpdate(
+        hospital._id,
+        { $addToSet: { admins: newUser._id } }
+      );
+    }
 
-    await Hospital.findByIdAndUpdate(
-      hospital._id,
-      { $push: { [updateField]: newUser._id } },
-      { new: true }
-    );
+    /* ===================== HOSPITAL LINK ===================== */
+    const hospitalFieldMap = {
+      doctor: "doctors",
+      receptionist: "receptionists",
+      patient: "patients",
+    };
 
-    res.status(201).json({ message: `${role} registered successfully.`, newUser});
+    const hospitalField = hospitalFieldMap[role];
+    if (hospitalField) {
+      await Hospital.findByIdAndUpdate(
+        hospital._id,
+        { $addToSet: { [hospitalField]: newUser._id } }
+      );
+    }
+
+    return res.status(201).json({
+      message: `${role} registered successfully.`,
+      newUser,
+    });
+
   } catch (error) {
-    console.error("Error registering user:", error);
-    res.status(500).json({ message: "Error registering user." });
+    console.error("❌ Error registering user:", error);
+    return res.status(500).json({ message: "Error registering user." });
   }
 };
 
