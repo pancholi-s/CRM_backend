@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import AdmissionRequest from "../models/admissionReqModel.js";
+import Bill from "../models/billModel.js";
 
 const MONTH_NAMES = [
   "January","February","March","April","May","June",
@@ -247,3 +248,227 @@ export const getMonthlyTPAReport = async (req, res) => {
     res.status(500).json({ message: "Failed to generate monthly TPA report." });
   }
 };
+
+const OPD_CATEGORY = "Doctor Consultation";
+const IPD_CATEGORY = "Daily Doctor Visit";
+
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const WEEK_DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+
+// ---------- helpers ----------
+const iso = d => d.toISOString().split("T")[0];
+
+const getWeekStart = d => {
+  const date = new Date(d);
+  const day = date.getDay() || 7;
+  date.setDate(date.getDate() - day + 1);
+  date.setHours(0,0,0,0);
+  return date;
+};
+
+// ---------- controller ----------
+export const earningsOverviewReport = async (req, res) => {
+  try {
+    const { range = "today", date } = req.query;
+    const hospitalId = req.session.hospitalId;
+
+    if (!hospitalId) {
+      return res.status(403).json({ message: "No hospital context" });
+    }
+
+    const base = date ? new Date(date) : new Date();
+    let from, to, trendUnit, label, buckets = [];
+
+    // ---------- RANGE RESOLUTION ----------
+    switch (range) {
+      case "today": {
+        from = new Date(base); from.setHours(0,0,0,0);
+        to = new Date(base); to.setHours(23,59,59,999);
+        trendUnit = "hour";
+        label = "Today";
+        buckets = Array.from({ length: 24 }, (_, i) =>
+          `${String(i).padStart(2,"0")}:00`
+        );
+        break;
+      }
+
+      case "last_7_days": {
+        to = new Date(base); to.setHours(23,59,59,999);
+        from = new Date(to); from.setDate(to.getDate() - 6); from.setHours(0,0,0,0);
+        trendUnit = "day";
+        label = "Last 7 Days";
+        buckets = Array.from({ length: 7 }, (_, i) => {
+          const d = new Date(from);
+          d.setDate(from.getDate() + i);
+          return iso(d);
+        });
+        break;
+      }
+
+      case "this_week": {
+        from = getWeekStart(base);
+        to = new Date(from); to.setDate(from.getDate() + 6); to.setHours(23,59,59,999);
+        trendUnit = "day";
+        label = "This Week";
+        buckets = WEEK_DAYS;
+        break;
+      }
+
+      case "last_week": {
+        to = getWeekStart(base); to.setDate(to.getDate() - 1); to.setHours(23,59,59,999);
+        from = new Date(to); from.setDate(to.getDate() - 6); from.setHours(0,0,0,0);
+        trendUnit = "day";
+        label = "Last Week";
+        buckets = WEEK_DAYS;
+        break;
+      }
+
+      case "this_month": {
+        from = new Date(base.getFullYear(), base.getMonth(), 1);
+        to = new Date(base.getFullYear(), base.getMonth() + 1, 0, 23,59,59);
+        trendUnit = "week";
+        label = "This Month";
+        buckets = ["Week 1","Week 2","Week 3","Week 4","Week 5"];
+        break;
+      }
+
+      case "this_year": {
+        from = new Date(base.getFullYear(), 0, 1);
+        to = new Date(base.getFullYear(), 11, 31, 23,59,59);
+        trendUnit = "month";
+        label = "This Year";
+        buckets = MONTHS;
+        break;
+      }
+
+      default:
+        return res.status(400).json({ message: "Invalid range" });
+    }
+
+    // ---------- AGGREGATION ----------
+    const data = await Bill.aggregate([
+      { $match: { hospital: new mongoose.Types.ObjectId(hospitalId) } },
+      { $unwind: "$services" },
+
+      {
+        $addFields: {
+          eventDate: {
+            $cond: [
+              { $eq: ["$services.category", OPD_CATEGORY] },
+              "$invoiceDate",
+              {
+                $cond: [
+                  { $ifNull: ["$services.details.visitDate", false] },
+                  { $dateFromString: { dateString: "$services.details.visitDate" } },
+                  "$invoiceDate"
+                ]
+              }
+            ]
+          }
+        }
+      },
+
+      { $match: { eventDate: { $gte: from, $lte: to } } },
+
+      {
+        $group: {
+          _id: {
+            bucket:
+              trendUnit === "hour" ? { $hour: "$eventDate" } :
+              trendUnit === "day"  ? { $dateToString: { format: "%Y-%m-%d", date: "$eventDate" } } :
+              trendUnit === "week" ? { $week: "$eventDate" } :
+              { $month: "$eventDate" },
+            type: "$services.category"
+          },
+          count: { $sum: 1 },
+          earnings: { $sum: { $multiply: ["$services.rate", "$services.quantity"] } }
+        }
+      }
+    ]);
+
+    // ---------- TOTALS ----------
+    let opdPatients = 0, ipdPatients = 0;
+    let opdEarnings = 0, ipdEarnings = 0;
+
+    data.forEach(d => {
+      if (d._id.type === OPD_CATEGORY) {
+        opdPatients += d.count;
+        opdEarnings += d.earnings;
+      }
+      if (d._id.type === IPD_CATEGORY) {
+        ipdPatients += d.count;
+        ipdEarnings += d.earnings;
+      }
+    });
+
+    // ---------- TREND MAP ----------
+    const map = {};
+    buckets.forEach(b => {
+      map[b] = {
+        opdPatients: 0,
+        ipdPatients: 0,
+        opdEarnings: 0,
+        ipdEarnings: 0
+      };
+    });
+
+    data.forEach(d => {
+      let key;
+      if (trendUnit === "hour") key = `${String(d._id.bucket).padStart(2,"0")}:00`;
+      else if (trendUnit === "month") key = MONTHS[d._id.bucket - 1];
+      else if (trendUnit === "week") key = `Week ${d._id.bucket}`;
+      else key = d._id.bucket;
+
+      if (!map[key]) return;
+
+      if (d._id.type === OPD_CATEGORY) {
+        map[key].opdPatients += d.count;
+        map[key].opdEarnings += d.earnings;
+      }
+      if (d._id.type === IPD_CATEGORY) {
+        map[key].ipdPatients += d.count;
+        map[key].ipdEarnings += d.earnings;
+      }
+    });
+
+    // ---------- RESPONSE ----------
+    res.status(200).json({
+      range: {
+        key: range,
+        from: iso(from),
+        to: iso(to),
+        label
+      },
+      earnings: {
+        totalEarnings: opdEarnings + ipdEarnings,
+        opdEarnings,
+        ipdEarnings
+      },
+      patients: {
+        totalPatients: opdPatients + ipdPatients,
+        opdPatients,
+        ipdPatients
+      },
+      trends: {
+        earnings: buckets.map(b => ({
+          [trendUnit]: b,
+          opd: map[b].opdEarnings,
+          ipd: map[b].ipdEarnings
+        })),
+        patients: buckets.map(b => ({
+          [trendUnit]: b,
+          opd: map[b].opdPatients,
+          ipd: map[b].ipdPatients
+        }))
+      }
+    });
+
+  } catch (error) {
+    console.error("Earnings overview error:", error);
+    res.status(500).json({
+      message: "Error generating earnings overview",
+      error: error.message
+    });
+  }
+};
+
