@@ -206,7 +206,7 @@ export const createAdmissionRequest = async (req, res) => {
     // Step 10: Create the bill at the time of admission
     const depositAmount = admissionDetails?.deposit || 0;
 
-      const bill = new Bill({
+    const bill = new Bill({
       patient: patient._id,
       caseId: generatedCaseId,
       services: [],
@@ -430,12 +430,12 @@ export const getAdmissionRequests = async (req, res) => {
     }
 
     const statusFilter = req.query.status;
-    const searchQuery = req.query.search; 
-    const page = parseInt(req.query.page) || 1; 
-    const limit = parseInt(req.query.limit) || 10; 
+    const searchQuery = req.query.search;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
 
-    const sortOrder = req.query.sortOrder === "asc" ? 1 : -1; 
+    const sortOrder = req.query.sortOrder === "asc" ? 1 : -1;
 
     const filter = {
       hospital: hospitalId,
@@ -446,11 +446,11 @@ export const getAdmissionRequests = async (req, res) => {
     }
 
     const requests = await AdmissionRequest.find(filter)
-      .sort({ createdAt: sortOrder }) 
+      .sort({ createdAt: sortOrder })
       .populate({
         path: "patient",
         select: "name age contact phone admissionStatus patId",
-        match: { admissionStatus: { $ne: "Admitted" } }, 
+        match: { admissionStatus: { $ne: "Admitted" } },
       })
       .populate("doctor", "name email")
       .populate("admissionDetails.room", "name roomType")
@@ -458,7 +458,7 @@ export const getAdmissionRequests = async (req, res) => {
 
     // Filter out null patients (those who were excluded by match)
     let filteredRequests = requests.filter((r) => r.patient !== null);
-    
+
     if (searchQuery) {
       const search = searchQuery.toLowerCase().trim();
       filteredRequests = filteredRequests.filter((r) => {
@@ -484,7 +484,7 @@ export const getAdmissionRequests = async (req, res) => {
       totalRequests,
       totalPages: Math.ceil(totalRequests / limit),
       currentPage: page,
-      sortOrder: sortOrder === 1 ? "asc" : "desc", 
+      sortOrder: sortOrder === 1 ? "asc" : "desc",
       requests: mappedRequests,
     });
   } catch (error) {
@@ -1550,5 +1550,84 @@ export const addInsuranceAfterAdmission = async (req, res) => {
     session.endSession();
     console.error("Error updating admission after admission:", error);
     res.status(500).json({ message: "Internal server error", error: error.message });
+  }
+};
+
+export const getAdmissionRequestsAll = async (req, res) => {
+  try {
+    const hospitalId = req.session.hospitalId;
+    if (!hospitalId) {
+      return res.status(403).json({ message: "No hospital context found." });
+    }
+
+    const statusFilter = req.query.status;
+    const searchQuery = req.query.search;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+    const sortOrder = req.query.sortOrder === "asc" ? 1 : -1;
+
+    const filter = { hospital: hospitalId };
+
+    // 🔒 AdmissionRequest statuses ONLY
+    if (statusFilter && statusFilter !== "all" && statusFilter !== "") {
+      filter.status = statusFilter;
+    } else {
+      filter.status = {
+        $in: ["Pending", "Approved", "Rejected", "Admitted", "discharged"]
+      };
+    }
+
+    const requests = await AdmissionRequest.find(filter)
+      .sort({ createdAt: sortOrder })
+      .populate("patient", "name age phone patId")
+      .populate("doctor", "name email")
+      .populate("admissionDetails.room", "name roomType")
+      .populate("admissionDetails.bed", "bedNumber bedType status")
+      .lean();
+
+    // 🔍 Optional search
+    let filtered = requests;
+    if (searchQuery) {
+      const s = searchQuery.toLowerCase().trim();
+      filtered = requests.filter(r =>
+        r.patient &&
+        (
+          r.patient.name?.toLowerCase().includes(s) ||
+          r.patient.phone?.includes(s) ||
+          r.patient.patId?.toLowerCase().includes(s)
+        )
+      );
+    }
+
+    const totalRequests = filtered.length;
+    const paginated = filtered.slice(skip, skip + limit);
+
+    res.status(200).json({
+      message: "Admission requests fetched successfully.",
+      count: paginated.length,
+      totalRequests,
+      totalPages: Math.ceil(totalRequests / limit),
+      currentPage: page,
+      sortOrder: sortOrder === 1 ? "asc" : "desc",
+
+      // ✅ Explicit + unambiguous
+      requests: paginated.map(r => ({
+        _id: r._id,
+        caseId: r.caseId,
+        admissionRequestStatus: r.status, // 🔥 THIS IS IT
+        patient: r.patient,
+        doctor: r.doctor,
+        admissionDetails: r.admissionDetails,
+        createdAt: r.createdAt,
+      })),
+    });
+
+  } catch (error) {
+    console.error("Error fetching admission requests:", error);
+    res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+    });
   }
 };

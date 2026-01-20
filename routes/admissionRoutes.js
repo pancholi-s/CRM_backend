@@ -5,7 +5,7 @@ import { requireHospitalContext } from '../middleware/hospitalContext.js';
 import { updateStatusesMiddleware } from '../middleware/statusMiddleware.js';
 import { paginationMiddleware } from '../middleware/paginationMiddleware.js';
 
-import { createAdmissionRequest, approveAdmissionRequest, admitPatient, getAdmissionRequests, getApprovedAdmissions, getAdmittedPatients, getAdmissionRequestsWithInsurance , updateInsuranceStatus , dischargePatient, downloadDischargePDF, addInsuranceAfterAdmission} from '../controllers/admissionRequest.js';
+import { createAdmissionRequest, approveAdmissionRequest, admitPatient, getAdmissionRequests, getApprovedAdmissions, getAdmittedPatients, getAdmissionRequestsWithInsurance , updateInsuranceStatus , dischargePatient, downloadDischargePDF, addInsuranceAfterAdmission, getAdmissionRequestsAll} from '../controllers/admissionRequest.js';
 
 const router = express.Router();
 router.use(requireHospitalContext);
@@ -22,6 +22,7 @@ router.get('/getAdmissionRequests', getAdmissionRequests);
 router.get('/approvedAdmissions', getApprovedAdmissions);
 router.get('/admittedPatients', getAdmittedPatients);
 router.get('/getAdmissionRequestsWithInsurance', getAdmissionRequestsWithInsurance);
+router.get('/getAdmissionRequestsAll', getAdmissionRequestsAll);
 
 router.put('/updateInsuranceStatus/:admissionId', updateInsuranceStatus);
 router.patch('/addInsuranceAfterAdmission/:admissionId', addInsuranceAfterAdmission);
