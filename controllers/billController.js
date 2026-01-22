@@ -531,7 +531,6 @@ export const getBillDetails = async (req, res) => {
 };
 
 
-
 export const getBillsByPatient = async (req, res) => {
   try {
     const { patientId } = req.params; // Get patientId from URL params
