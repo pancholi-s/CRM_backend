@@ -203,18 +203,27 @@ export const getAllBills = async (req, res) => {
       .skip(skip)
       .limit(parseInt(limit));
 
-    // ✅ Collect department IDs
+    // ✅ Collect ONLY valid ObjectId department IDs
     const departmentIds = [
       ...new Set(
         bills.flatMap((bill) =>
-          bill.services.map((s) => s.details?.department).filter(Boolean)
+          bill.services
+            .map((s) => s.details?.department)
+            .filter(
+              (dept) =>
+                dept &&
+                typeof dept === "object" &&
+                mongoose.Types.ObjectId.isValid(dept)
+            )
         ),
       ),
     ];
 
-    const departments = await Department.find({
-      _id: { $in: departmentIds },
-    }).select("name");
+    const departments = departmentIds.length
+      ? await Department.find({
+          _id: { $in: departmentIds },
+        }).select("name")
+      : [];
 
     const departmentMap = {};
     departments.forEach((dept) => {
@@ -236,8 +245,7 @@ export const getAllBills = async (req, res) => {
       const discountAmount = bill.discount?.amount || 0;
       const netAmount = bill.netAmount ?? grossAmount - discountAmount;
 
-      // 💸 Refund summary (LIST SAFE)
-      // 💸 Refund extraction
+      // 💸 Refunds
       const refunds = (bill.payments || []).filter(
         (p) => p.type === "Refund" || p.amount < 0
       );
@@ -247,11 +255,7 @@ export const getAllBills = async (req, res) => {
         0
       );
 
-      const refundableAmount = Math.max(
-        0,
-        bill.paidAmount - netAmount
-      );
-
+      const refundableAmount = Math.max(0, bill.paidAmount - netAmount);
 
       return {
         _id: bill._id,
@@ -269,8 +273,11 @@ export const getAllBills = async (req, res) => {
             category?.departments?.map((d) => d.name).join(", ") || "N/A";
 
           const deptId = service.details?.department;
-          const deptName = deptId
-            ? departmentMap[deptId.toString()] || "Unknown"
+          const validDeptId =
+            deptId && mongoose.Types.ObjectId.isValid(deptId) ? deptId : null;
+
+          const deptName = validDeptId
+            ? departmentMap[validDeptId.toString()] || "Unknown"
             : "N/A";
 
           return {
@@ -282,8 +289,8 @@ export const getAllBills = async (req, res) => {
             departments: departmentNames,
             details: {
               ...service.details,
-              department: deptId
-                ? { _id: deptId, name: deptName }
+              department: validDeptId
+                ? { _id: validDeptId, name: deptName }
                 : null,
             },
           };
@@ -293,11 +300,11 @@ export const getAllBills = async (req, res) => {
         grossAmount,
         discount: bill.discount
           ? {
-            type: bill.discount.type,
-            value: bill.discount.value,
-            amount: bill.discount.amount,
-            reason: bill.discount.reason,
-          }
+              type: bill.discount.type,
+              value: bill.discount.value,
+              amount: bill.discount.amount,
+              reason: bill.discount.reason,
+            }
           : null,
         netAmount,
 
@@ -338,8 +345,6 @@ export const getAllBills = async (req, res) => {
 };
 
 
-
-
 export const getBillDetails = async (req, res) => {
   const { billId } = req.params;
 
@@ -365,16 +370,23 @@ export const getBillDetails = async (req, res) => {
     });
     const insurance = admissionRequest?.admissionDetails?.insurance || "N/A";
 
-    // ✅ Department mapping
+    // ✅ Collect ONLY valid ObjectId department IDs
     const departmentIds = [
       ...new Set(
-        bill.services.map((s) => s.details?.department).filter(Boolean)
+        bill.services
+          .map((s) => s.details?.department)
+          .filter(
+            (dept) =>
+              dept &&
+              typeof dept === "object" &&
+              mongoose.Types.ObjectId.isValid(dept)
+          ),
       ),
     ];
 
-    const departments = await Department.find({
-      _id: { $in: departmentIds },
-    }).select("name");
+    const departments = departmentIds.length
+      ? await Department.find({ _id: { $in: departmentIds } }).select("name")
+      : [];
 
     const departmentMap = {};
     departments.forEach((dept) => {
@@ -399,17 +411,19 @@ export const getBillDetails = async (req, res) => {
       }
 
       const categories = serviceDoc.categories || [];
-      const category = categories.find(
-        (c) => c.subCategoryName === item.category
-      ) || {};
+      const category =
+        categories.find((c) => c.subCategoryName === item.category) || {};
 
       const departmentsFromCategory =
         category.departments?.map((dep) => dep.name).join(", ") || "N/A";
 
-      // ✅ Inject department name from map (if exists)
+      // ✅ Safe department resolution
       const deptId = baseDetails?.department;
-      const deptName = deptId
-        ? departmentMap[deptId.toString()] || "Unknown"
+      const validDeptId =
+        deptId && mongoose.Types.ObjectId.isValid(deptId) ? deptId : null;
+
+      const deptName = validDeptId
+        ? departmentMap[validDeptId.toString()] || "Unknown"
         : "N/A";
 
       return {
@@ -421,9 +435,9 @@ export const getBillDetails = async (req, res) => {
         total: (item.rate || 0) * (item.quantity || 1),
         details: {
           ...baseDetails,
-          department: deptId
-            ? { _id: deptId, name: deptName }
-            : { _id: null, name: "N/A" },
+          department: validDeptId
+            ? { _id: validDeptId, name: deptName }
+            : null,
           rateType: category.rateType || "Unknown",
           effectiveDate: category.effectiveDate || null,
           departments: departmentsFromCategory,
@@ -455,10 +469,7 @@ export const getBillDetails = async (req, res) => {
       0
     );
 
-    const refundableAmount = Math.max(
-      0,
-      bill.paidAmount - netAmount
-    );
+    const refundableAmount = Math.max(0, bill.paidAmount - netAmount);
 
     res.status(200).json({
       invoiceNumber: bill.invoiceNumber,
@@ -467,17 +478,17 @@ export const getBillDetails = async (req, res) => {
 
       patient: bill.patient
         ? {
-          name: bill.patient.name,
-          phone: bill.patient.phone,
-          patId: bill.patient.patId,
-        }
+            name: bill.patient.name,
+            phone: bill.patient.phone,
+            patId: bill.patient.patId,
+          }
         : { name: "Unknown", phone: "N/A" },
 
       doctor: bill.doctor
         ? {
-          name: bill.doctor.name,
-          specialization: bill.doctor.specialization,
-        }
+            name: bill.doctor.name,
+            specialization: bill.doctor.specialization,
+          }
         : { name: "Unknown", specialization: "N/A" },
 
       insurance,
@@ -488,11 +499,11 @@ export const getBillDetails = async (req, res) => {
       grossAmount,
       discount: bill.discount
         ? {
-          type: bill.discount.type,
-          value: bill.discount.value,
-          amount: bill.discount.amount,
-          reason: bill.discount.reason,
-        }
+            type: bill.discount.type,
+            value: bill.discount.value,
+            amount: bill.discount.amount,
+            reason: bill.discount.reason,
+          }
         : null,
       netAmount,
 
@@ -518,6 +529,7 @@ export const getBillDetails = async (req, res) => {
     });
   }
 };
+
 
 
 export const getBillsByPatient = async (req, res) => {
