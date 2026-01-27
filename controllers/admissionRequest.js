@@ -396,7 +396,7 @@ export const admitPatient = async (req, res) => {
     const bill = await Bill.findOne({ caseId: admissionRequest.caseId }).session(session);
     if (bill) {
       bill.isLive = true;
-      bill.lastBilledAt = new Date();
+      bill.lastBilledAt = null;
       await bill.save({ session });
     }
 
@@ -733,37 +733,79 @@ export const getAdmissionRequestsWithInsurance = async (req, res) => {
 export const updateInsuranceStatus = async (req, res) => {
   try {
     const { admissionId } = req.params;
-    const { insuranceApproved, amountApproved } = req.body;
+    const { insuranceApproved, amountApproved, discount } = req.body;
 
-    const validStatuses = ['pending', 'approved', 'rejected'];
+    const validStatuses = ["pending", "approved", "rejected"];
     if (insuranceApproved && !validStatuses.includes(insuranceApproved)) {
       return res.status(400).json({
-        message: "Invalid insuranceApproved value. Must be 'pending', 'approved', or 'rejected'."
+        message:
+          "Invalid insuranceApproved value. Must be 'pending', 'approved', or 'rejected'.",
       });
     }
 
     const admissionRequest = await AdmissionRequest.findById(admissionId);
     if (!admissionRequest) {
-      return res.status(404).json({ message: "Admission request not found." });
+      return res
+        .status(404)
+        .json({ message: "Admission request not found." });
     }
 
     if (!admissionRequest.admissionDetails.insurance?.hasInsurance) {
-      return res.status(400).json({ message: "Patient does not have insurance." });
+      return res
+        .status(400)
+        .json({ message: "Patient does not have insurance." });
     }
 
-    const oldStatus = admissionRequest.admissionDetails.insurance.insuranceApproved;
+    const oldStatus =
+      admissionRequest.admissionDetails.insurance.insuranceApproved;
 
     // ✅ Update insuranceApproved if passed
     if (insuranceApproved) {
-      admissionRequest.admissionDetails.insurance.insuranceApproved = insuranceApproved;
+      admissionRequest.admissionDetails.insurance.insuranceApproved =
+        insuranceApproved;
     }
 
     // ✅ Update amountApproved if passed
     if (amountApproved !== undefined) {
       if (amountApproved < 0) {
-        return res.status(400).json({ message: "amountApproved cannot be negative." });
+        return res
+          .status(400)
+          .json({ message: "amountApproved cannot be negative." });
       }
-      admissionRequest.admissionDetails.insurance.amountApproved = amountApproved;
+      admissionRequest.admissionDetails.insurance.amountApproved =
+        amountApproved;
+    }
+
+    // 🆕 Insurance discount logic (FLAT / PERCENTAGE)
+    if (discount) {
+      const { type, value } = discount;
+
+      if (!["Flat", "Percentage"].includes(type)) {
+        return res.status(400).json({
+          message: "Invalid discount type. Must be 'Flat' or 'Percentage'.",
+        });
+      }
+
+      if (value < 0) {
+        return res.status(400).json({
+          message: "Discount value cannot be negative.",
+        });
+      }
+
+      // ⚠️ Only store metadata – no bill math here
+      let discountAmount = 0;
+
+      if (type === "Flat") {
+        discountAmount = value;
+      } else if (type === "Percentage") {
+        discountAmount = 0; // percentage applied later (if/when you decide)
+      }
+
+      admissionRequest.admissionDetails.insurance.discount = {
+        type,
+        value,
+        amount: discountAmount,
+      };
     }
 
     await admissionRequest.save();
@@ -772,22 +814,30 @@ export const updateInsuranceStatus = async (req, res) => {
       `📌 Insurance status changed for caseId=${admissionRequest.caseId}: ${oldStatus} → ${admissionRequest.admissionDetails.insurance.insuranceApproved}`
     );
 
-    // 🔄 Trigger bill recalculation (retroactive overwrite)
+    // 🔄 Existing behavior preserved
     let billChanges = null;
     try {
-      billChanges = await recalculateBillForInsuranceChange(admissionRequest.caseId);
+      billChanges = await recalculateBillForInsuranceChange(
+        admissionRequest.caseId
+      );
     } catch (err) {
-      console.error("❌ Error recalculating bill after insurance change:", err);
+      console.error(
+        "❌ Error recalculating bill after insurance change:",
+        err
+      );
     }
 
     res.status(200).json({
-      message: `Insurance details updated and bill recalculated.`,
+      message: "Insurance details updated and bill recalculated.",
       insurance: admissionRequest.admissionDetails.insurance,
-      billChanges
+      billChanges,
     });
   } catch (error) {
     console.error("❌ Error updating insurance status:", error);
-    res.status(500).json({ message: "Server error", error: error.message });
+    res.status(500).json({
+      message: "Server error",
+      error: error.message,
+    });
   }
 };
 

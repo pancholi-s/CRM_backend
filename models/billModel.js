@@ -47,10 +47,14 @@ const billSchema = new mongoose.Schema(
         date: { type: Date, default: Date.now },
         mode: {
           type: String,
-          enum: ["UPI", "Cash", "Card", "Net Banking","Original"],
+          enum: ["UPI", "Cash", "Card", "Net Banking","Original", "Insurance"],
           default: "Cash",
         },
         reference: String,
+
+        tds: { type: Number, default: 0 },     // 1,00,000
+        total: { type: Number },   
+        
         type: {
           type: String,
           enum: ["Payment", "Refund"],

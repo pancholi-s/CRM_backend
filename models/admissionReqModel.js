@@ -9,12 +9,12 @@ const admissionRequestSchema = new mongoose.Schema({
   caseId: { type: String, unique: true },
   status: {
     type: String,
-    enum: ['Pending', 'Approved', 'Rejected',"Admitted","discharged"],
+    enum: ['Pending', 'Approved', 'Rejected', "Admitted", "discharged"],
     default: 'Pending'
   },
   sendTo: {
     type: String,
-    enum: ['Doctor', 'Admin', 'Both','None'],
+    enum: ['Doctor', 'Admin', 'Both', 'None'],
     required: true
   },
   approval: {
@@ -34,12 +34,12 @@ const admissionRequestSchema = new mongoose.Schema({
     contact: { type: String, required: true },
     address: { type: String, required: true },
     age: { type: Number, required: true },
-    gender:{type: String, enum:['Male','Female','Other']},
+    gender: { type: String, enum: ['Male', 'Female', 'Other'] },
     emergencyContact: { type: String },
     emergencyName: { type: String },
     medicalNote: { type: String },
     date: { type: Date, required: true },
-    time: {type : String},
+    time: { type: String },
     room: { type: mongoose.Schema.Types.ObjectId, ref: 'Room', required: true },
     bed: { type: mongoose.Schema.Types.ObjectId, ref: 'Bed', required: true },
     deposit: { type: Number },
@@ -48,12 +48,20 @@ const admissionRequestSchema = new mongoose.Schema({
       employerName: String,
       insuranceIdNumber: String,
       policyNumber: String,
-      insuranceCompany: String ,
+      insuranceCompany: String,
       employeeCode: String,
       insuranceStartDate: Date,
       insuranceExpiryDate: Date,
-      insuranceApproved:{ type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
-      amountApproved: { type: Number, default:0 }
+      insuranceApproved: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+      amountApproved: { type: Number, default: 0 },
+      discount: {
+        type: {
+          type: String,
+          enum: ["Flat", "Percentage"],
+        },
+        value: { type: Number },
+        amount: { type: Number }, // computed later
+      }
     }
   },
 }, {

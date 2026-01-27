@@ -944,33 +944,52 @@ export const editEstimatedBill = async (req, res) => {
 export const addPayment = async (req, res) => {
   try {
     const { billId } = req.params;
-    const { amount, mode, reference } = req.body;
+    const { amount, mode, reference, tds, total } = req.body;
 
     const bill = await Bill.findById(billId);
-    if (!bill) return res.status(404).json({ message: "Bill not found." });
+    if (!bill) {
+      return res.status(404).json({ message: "Bill not found." });
+    }
 
-    // Record payment
-    bill.payments.push({
+    if (!amount || isNaN(amount)) {
+      return res.status(400).json({ message: "Valid amount is required." });
+    }
+
+    const paymentEntry = {
       amount,
       mode: mode || "Cash",
       reference: reference || "Payment",
       date: new Date(),
-    });
+    };
 
-    // Update totals
+    // ✅ Add TDS fields ONLY if provided
+    if (tds !== undefined && total !== undefined) {
+      paymentEntry.tds = tds;
+      paymentEntry.total = total;
+    }
+
+    bill.payments.push(paymentEntry);
+
+    // 🔢 Paid amount is ONLY actual received money
     bill.paidAmount += amount;
     bill.outstanding = Math.max(bill.totalAmount - bill.paidAmount, 0);
-
-    if (bill.paidAmount >= bill.totalAmount) bill.status = "Paid";
+    bill.status = bill.outstanding === 0 ? "Paid" : "Pending";
 
     await bill.save();
 
-    res.status(200).json({ message: "Payment added successfully", bill });
+    res.status(200).json({
+      message: "Payment added successfully",
+      bill,
+    });
   } catch (error) {
     console.error("Error adding payment:", error);
-    res.status(500).json({ message: "Internal Server Error", error: error.message });
+    res.status(500).json({
+      message: "Internal Server Error",
+      error: error.message,
+    });
   }
 };
+
 
 
 export const applyDiscount = async (req, res) => {
