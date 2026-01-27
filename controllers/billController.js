@@ -732,14 +732,14 @@ export const addToBill = async (req, res) => {
     // If date is not provided, use the current date (today's date)
     const billedDateStr = date || new Date().toISOString().split("T")[0];
 
-    const exists = bill.services.some(
-      (s) => s.category === category && s.details?.billedDate === billedDateStr
-    );
-    if (exists) {
-      return res
-        .status(400)
-        .json({ message: `Entry for ${category} already exists on ${billedDateStr}.` });
-    }
+    // const exists = bill.services.some(
+    //   (s) => s.category === category && s.details?.billedDate === billedDateStr
+    // );
+    // if (exists) {
+    //   return res
+    //     .status(400)
+    //     .json({ message: `Entry for ${category} already exists on ${billedDateStr}.` });
+    // }
 
     const newExpense = {
       service: null,
@@ -1097,6 +1097,60 @@ export const refundBill = async (req, res) => {
     console.error("Error processing refund:", error);
     return res.status(500).json({
       message: "Error processing refund",
+      error: error.message,
+    });
+  }
+};
+
+export const deleteBillServiceEntry = async (req, res) => {
+  const { billId, serviceEntryId } = req.params;
+
+  if (
+    !mongoose.Types.ObjectId.isValid(billId) ||
+    !mongoose.Types.ObjectId.isValid(serviceEntryId)
+  ) {
+    return res.status(400).json({ message: "Invalid ID format." });
+  }
+
+  try {
+    const bill = await Bill.findById(billId);
+    if (!bill) {
+      return res.status(404).json({ message: "Bill not found." });
+    }
+
+    const serviceIndex = bill.services.findIndex(
+      (s) => s._id.toString() === serviceEntryId
+    );
+
+    if (serviceIndex === -1) {
+      return res.status(404).json({ message: "Bill entry not found." });
+    }
+
+    const entry = bill.services[serviceIndex];
+
+    // 💰 Calculate amount to rollback
+    const entryTotal =
+      (entry.quantity || 1) * (entry.rate || 0);
+
+    // ❌ Remove entry
+    bill.services.splice(serviceIndex, 1);
+
+    // 🔄 Recalculate totals
+    bill.totalAmount -= entryTotal;
+    bill.outstanding = bill.totalAmount - bill.paidAmount;
+    bill.status = bill.outstanding <= 0 ? "Paid" : "Pending";
+
+    await bill.save();
+
+    res.status(200).json({
+      message: "Bill entry deleted successfully.",
+      deletedEntry: entry,
+      bill,
+    });
+  } catch (error) {
+    console.error("Delete bill entry error:", error);
+    res.status(500).json({
+      message: "Failed to delete bill entry.",
       error: error.message,
     });
   }
