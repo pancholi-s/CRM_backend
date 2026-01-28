@@ -400,13 +400,17 @@ export const getBillDetails = async (req, res) => {
 
       if (!serviceDoc) {
         return {
+          billServiceId: item._id,
           serviceId: null,
           service: "Unknown Service",
           category: item.category,
           quantity: item.quantity,
           rate: item.rate,
           total: (item.rate || 0) * (item.quantity || 1),
-          details: baseDetails,
+          details: {
+            _id: baseDetails?._id || null,
+            ...baseDetails,
+          },
         };
       }
 

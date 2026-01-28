@@ -1510,9 +1510,9 @@ export const addInsuranceAfterAdmission = async (req, res) => {
   session.startTransaction();
 
   try {
-    const { admissionId } = req.params; // AdmissionRequest ID
+    const { admissionId } = req.params;
+
     const {
-      // Admission fields
       name,
       contact,
       address,
@@ -1524,7 +1524,7 @@ export const addInsuranceAfterAdmission = async (req, res) => {
       date,
       time,
       deposit,
-      // Insurance fields
+
       hasInsurance,
       insuranceIdNumber,
       policyNumber,
@@ -1533,15 +1533,12 @@ export const addInsuranceAfterAdmission = async (req, res) => {
       insuranceStartDate,
       insuranceExpiryDate,
       insuranceApproved,
-      amountApproved
-    } = req.body;  // employerName removed
-
-    if (!admissionId) {
-      return res.status(400).json({ message: "Admission ID is required." });
-    }
+      amountApproved,
+      employerName,
+    } = req.body;
 
     const admissionRequest = await AdmissionRequest.findById(admissionId)
-      .populate('patient')
+      .populate("patient")
       .session(session);
 
     if (!admissionRequest) {
@@ -1549,42 +1546,81 @@ export const addInsuranceAfterAdmission = async (req, res) => {
       return res.status(404).json({ message: "Admission request not found." });
     }
 
-    // 1️⃣ Update admissionDetails
-    admissionRequest.admissionDetails = {
-      ...admissionRequest.admissionDetails,
-      name: name || admissionRequest.admissionDetails.name,
-      contact: contact || admissionRequest.admissionDetails.contact,
-      address: address || admissionRequest.admissionDetails.address,
-      age: age !== undefined ? age : admissionRequest.admissionDetails.age,
-      gender: gender || admissionRequest.admissionDetails.gender,
-      emergencyContact: emergencyContact || admissionRequest.admissionDetails.emergencyContact,
-      emergencyName: emergencyName || admissionRequest.admissionDetails.emergencyName,
-      medicalNote: medicalNote || admissionRequest.admissionDetails.medicalNote,
-      date: date || admissionRequest.admissionDetails.date,
-      time: time || admissionRequest.admissionDetails.time,
-      deposit: deposit !== undefined ? deposit : admissionRequest.admissionDetails.deposit,
-      // Keep insurance nested (without employerName)
-      insurance: {
-        ...admissionRequest.admissionDetails.insurance,
-        hasInsurance: hasInsurance !== undefined ? !!hasInsurance : admissionRequest.admissionDetails.insurance?.hasInsurance || false,
-        employerName: req.body.employerName || admissionRequest.admissionDetails.insurance?.employerName || "",
-        insuranceIdNumber: insuranceIdNumber || admissionRequest.admissionDetails.insurance?.insuranceIdNumber || "",
-        policyNumber: policyNumber || admissionRequest.admissionDetails.insurance?.policyNumber || "",
-        insuranceCompany: insuranceCompany || admissionRequest.admissionDetails.insurance?.insuranceCompany || "",
-        employeeCode: employeeCode || admissionRequest.admissionDetails.insurance?.employeeCode || "",
-        insuranceStartDate: insuranceStartDate || admissionRequest.admissionDetails.insurance?.insuranceStartDate || null,
-        insuranceExpiryDate: insuranceExpiryDate || admissionRequest.admissionDetails.insurance?.insuranceExpiryDate || null,
-        insuranceApproved: insuranceApproved || admissionRequest.admissionDetails.insurance?.insuranceApproved || "pending",
-        amountApproved: amountApproved !== undefined ? amountApproved : admissionRequest.admissionDetails.insurance?.amountApproved || 0
-      }
-    };
+    const ad = admissionRequest.admissionDetails;
+
+    /* ----------------------------------------------------
+       1️⃣ SAFELY UPDATE ADMISSION DETAILS (FIELD BY FIELD)
+    ---------------------------------------------------- */
+
+    if (name) ad.name = name;
+    if (contact) ad.contact = contact;
+    if (address) ad.address = address;
+    if (age !== undefined) ad.age = age;
+    if (gender) ad.gender = gender;
+    if (emergencyContact) ad.emergencyContact = emergencyContact;
+    if (emergencyName) ad.emergencyName = emergencyName;
+    if (medicalNote) ad.medicalNote = medicalNote;
+    if (date) ad.date = date;
+    if (time) ad.time = time;
+    if (deposit !== undefined) ad.deposit = deposit;
+
+    /* ----------------------------------------------------
+       2️⃣ ENSURE INSURANCE OBJECT EXISTS
+    ---------------------------------------------------- */
+
+    if (!ad.insurance) {
+      ad.insurance = {};
+    }
+
+    /* 🚨 CRITICAL: ENSURE DISCOUNT OBJECT EXISTS */
+    if (!ad.insurance.discount) {
+      ad.insurance.discount = {};
+    }
+
+    /* ----------------------------------------------------
+       3️⃣ UPDATE INSURANCE FIELDS (SAFE)
+    ---------------------------------------------------- */
+
+    if (hasInsurance !== undefined)
+      ad.insurance.hasInsurance = !!hasInsurance;
+
+    if (employerName !== undefined)
+      ad.insurance.employerName = employerName;
+
+    if (insuranceIdNumber !== undefined)
+      ad.insurance.insuranceIdNumber = insuranceIdNumber;
+
+    if (policyNumber !== undefined)
+      ad.insurance.policyNumber = policyNumber;
+
+    if (insuranceCompany !== undefined)
+      ad.insurance.insuranceCompany = insuranceCompany;
+
+    if (employeeCode !== undefined)
+      ad.insurance.employeeCode = employeeCode;
+
+    if (insuranceStartDate !== undefined)
+      ad.insurance.insuranceStartDate = insuranceStartDate;
+
+    if (insuranceExpiryDate !== undefined)
+      ad.insurance.insuranceExpiryDate = insuranceExpiryDate;
+
+    if (insuranceApproved !== undefined)
+      ad.insurance.insuranceApproved = insuranceApproved;
+
+    if (amountApproved !== undefined)
+      ad.insurance.amountApproved = amountApproved;
 
     await admissionRequest.save({ session });
 
-    // 2️⃣ Update patient insurance flag and details
+    /* ----------------------------------------------------
+       4️⃣ UPDATE PATIENT INSURANCE (SYNC)
+    ---------------------------------------------------- */
+
     const patient = admissionRequest.patient;
-    patient.hasInsurance = admissionRequest.admissionDetails.insurance.hasInsurance;
-    patient.insuranceDetails = admissionRequest.admissionDetails.insurance;
+    patient.hasInsurance = ad.insurance.hasInsurance;
+    patient.insuranceDetails = ad.insurance;
+
     await patient.save({ session });
 
     await session.commitTransaction();
@@ -1594,14 +1630,20 @@ export const addInsuranceAfterAdmission = async (req, res) => {
       message: "Admission and insurance details updated successfully.",
       admissionRequest,
     });
-
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
+
     console.error("Error updating admission after admission:", error);
-    res.status(500).json({ message: "Internal server error", error: error.message });
+
+    res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+    });
   }
 };
+
+
 
 export const getAdmissionRequestsAll = async (req, res) => {
   try {
