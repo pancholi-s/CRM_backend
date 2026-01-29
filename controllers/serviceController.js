@@ -440,6 +440,7 @@ export const searchServiceSubCategories = async (req, res) => {
       {
         $project: {
           _id: 0,
+          serviceName: "$name",
           subCategoryName: "$categories.subCategoryName",
           rate: "$categories.rate",
           rateType: "$categories.rateType"
