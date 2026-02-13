@@ -6,6 +6,8 @@ import Doctor from "../models/doctorModel.js";
 import Patient from "../models/patientModel.js";
 import Appointment from "../models/appointmentModel.js";
 import RejectedAppointment from "../models/rejectedAppointmentModel.js";
+import Bill from "../models/billModel.js";
+
 import moment from "moment";
 import { getYearlyData, getMonthlyData, getWeeklyData } from "../utils/appointmentStatsUtils.js";
 import jwt from "jsonwebtoken";
@@ -27,7 +29,7 @@ export const bookAppointment = async (req, res) => {
     age,
     address,
     rescheduledFrom,
-    procedureCategory, 
+    procedureCategory,
   } = req.body;
 
   const { hospitalId } = req.session;
@@ -35,7 +37,7 @@ export const bookAppointment = async (req, res) => {
     return res.status(403).json({ message: "Access denied. No hospital context found." });
   }
 
-  if (!patientName  || !appointmentType || !typeVisit || !departmentName || !doctorEmail || !mobileNumber ||  !date) {
+  if (!patientName || !appointmentType || !typeVisit || !departmentName || !doctorEmail || !mobileNumber || !date) {
     return res.status(400).json({ message: "All required fields must be provided." });
   }
 
@@ -44,10 +46,10 @@ export const bookAppointment = async (req, res) => {
   }
 
   const processEmail = (emailInput) => {
-  if (!emailInput || emailInput.trim() === "" || emailInput.trim() === "null" || emailInput.trim() === "undefined") {
-    return null; 
-  }
-  return emailInput.trim().toLowerCase(); 
+    if (!emailInput || emailInput.trim() === "" || emailInput.trim() === "null" || emailInput.trim() === "undefined") {
+      return null;
+    }
+    return emailInput.trim().toLowerCase();
   };
 
   const processedEmail = processEmail(email);
@@ -69,7 +71,7 @@ export const bookAppointment = async (req, res) => {
 
   try {
     // let patient = await Patient.findOne({ email, hospital: hospitalId });
-    let patient = await Patient.findOne({           
+    let patient = await Patient.findOne({
       name: patientName.trim(),
       phone: normalizedPhone,
       hospital: hospitalId,
@@ -80,7 +82,7 @@ export const bookAppointment = async (req, res) => {
       const emailExistsForOther = await Patient.findOne({
         email: processedEmail,
         hospital: hospitalId,
-        ...(patient && { _id: { $ne: patient._id } }) 
+        ...(patient && { _id: { $ne: patient._id } })
       });
 
       if (emailExistsForOther) {
@@ -89,8 +91,8 @@ export const bookAppointment = async (req, res) => {
 
       if (patient && patient.email && patient.email !== processedEmail) {
         console.log("Patient exists with different email");
-        return res.status(400).json({ 
-          message: "Email already registered for this patient. Please use the same email or contact support." 
+        return res.status(400).json({
+          message: "Email already registered for this patient. Please use the same email or contact support."
         });
       }
     } else {
@@ -121,11 +123,11 @@ export const bookAppointment = async (req, res) => {
 
       await patient.save({ session });
     } else {
-        if (isEmailProvided && !patient.email) {
-            patient.email = processedEmail;
-            await patient.save({ session });
-            console.log("Updated existing patient with email:", patient.email);
-        }
+      if (isEmailProvided && !patient.email) {
+        patient.email = processedEmail;
+        await patient.save({ session });
+        console.log("Updated existing patient with email:", patient.email);
+      }
     }
 
 
@@ -840,7 +842,7 @@ export const getAppointments = async (req, res) => {
     if (token) {
       try {
         decoded = jwt.verify(token, process.env.JWT_SECRET);
-      } catch (err) {}
+      } catch (err) { }
     }
 
     const userId = decoded?.userId;
@@ -964,6 +966,29 @@ export const getAppointments = async (req, res) => {
       .skip(skip)
       .limit(parseInt(limit));
 
+    const caseIds = appointments.map((apt) => apt.caseId);
+
+    const bills = await Bill.find({
+      caseId: { $in: caseIds },
+      hospital: hospitalId,
+    }).select("caseId status");
+
+    // Map caseId → bill status
+    const billMap = {};
+    bills.forEach((bill) => {
+      billMap[bill.caseId] = bill.status;
+    });
+
+    // Attach billStatus to each appointment
+    const appointmentsWithBillStatus = appointments.map((apt) => {
+      const aptObj = apt.toObject();
+
+      return {
+        ...aptObj,
+        billStatus: billMap[apt.caseId] || "No Bill",
+      };
+    });
+
     return res.status(200).json({
       message: `${status || "Scheduled"} appointments retrieved successfully`,
       filtersApplied: { start, end, status: status || "Scheduled", departmentId, typeVisit },
@@ -971,7 +996,7 @@ export const getAppointments = async (req, res) => {
       totalAppointments: total,
       totalPages: Math.ceil(total / limit),
       currentPage: parseInt(page, 10),
-      appointments,
+      appointments: appointmentsWithBillStatus,
     });
 
   } catch (error) {
@@ -1081,14 +1106,14 @@ export const startAppointment = async (req, res) => {
       hospital: hospitalId,
       status: "Waiting"
     })
-    .populate("patient", "name email phone")
-    .populate("doctor", "name specialization email")
-    .populate("department", "name")
-    .populate("hospital", "name address");
+      .populate("patient", "name email phone")
+      .populate("doctor", "name specialization email")
+      .populate("department", "name")
+      .populate("hospital", "name address");
 
     if (!appointment) {
-      return res.status(404).json({ 
-        message: "No waiting appointment found for this patient in the current hospital." 
+      return res.status(404).json({
+        message: "No waiting appointment found for this patient in the current hospital."
       });
     }
 
@@ -1115,9 +1140,9 @@ export const startAppointment = async (req, res) => {
 
   } catch (error) {
     console.error("Error updating appointment status:", error);
-    res.status(500).json({ 
-      message: "Error updating appointment status.", 
-      error: error.message 
+    res.status(500).json({
+      message: "Error updating appointment status.",
+      error: error.message
     });
   }
 };
@@ -1150,8 +1175,8 @@ export const sendPatientToLast = async (req, res) => {
       .populate("department", "_id name");
 
     if (!appointment) {
-      return res.status(404).json({ 
-        message: "Waiting appointment not found." 
+      return res.status(404).json({
+        message: "Waiting appointment not found."
       });
     }
 
@@ -1177,10 +1202,10 @@ export const sendPatientToLast = async (req, res) => {
     const actualReason = reason && reason.trim() ? reason.trim() : defaultReason;
 
     appointment.tokenNumber = newTokenNumber;
-    appointment.note = appointment.note ? 
-      `${appointment.note}\n[MOVED TO LAST] Reason: ${actualReason}` : 
+    appointment.note = appointment.note ?
+      `${appointment.note}\n[MOVED TO LAST] Reason: ${actualReason}` :
       `[MOVED TO LAST] Reason: ${actualReason}`;
-    
+
     await appointment.save();
 
     const currentQueue = await Appointment.find({
@@ -1191,9 +1216,9 @@ export const sendPatientToLast = async (req, res) => {
       typeVisit: "Walk in",
       status: { $nin: ["Cancelled", "RescheduledOld", "Completed"] }
     })
-    .populate("patient", "name")
-    .sort({ tokenNumber: 1 })
-    .select("tokenNumber patient status caseId");
+      .populate("patient", "name")
+      .sort({ tokenNumber: 1 })
+      .select("tokenNumber patient status caseId");
 
     res.status(200).json({
       message: "Patient sent to last in queue successfully.",
@@ -1205,7 +1230,7 @@ export const sendPatientToLast = async (req, res) => {
         newTokenNumber: newTokenNumber,
         status: appointment.status,
         reasonProvided: reason ? true : false,
-        actualReason: actualReason 
+        actualReason: actualReason
       },
       currentQueue: currentQueue.map(apt => ({
         tokenNumber: apt.tokenNumber,
@@ -1222,9 +1247,9 @@ export const sendPatientToLast = async (req, res) => {
 
   } catch (error) {
     console.error("Error sending patient to last:", error);
-    res.status(500).json({ 
-      message: "Error moving patient to last in queue.", 
-      error: error.message 
+    res.status(500).json({
+      message: "Error moving patient to last in queue.",
+      error: error.message
     });
   }
 };
@@ -1257,9 +1282,9 @@ export const getTodayQueue = async (req, res) => {
       typeVisit: "Walk in",
       status: { $nin: ["Cancelled", "RescheduledOld", "Completed"] }
     })
-    .populate("patient", "name phone")
-    .sort({ tokenNumber: 1 })
-    .select("tokenNumber patient status caseId tokenDate");
+      .populate("patient", "name phone")
+      .sort({ tokenNumber: 1 })
+      .select("tokenNumber patient status caseId tokenDate");
 
     const queueStatus = todayAppointments.map(apt => ({
       appointmentId: apt._id,
@@ -1289,9 +1314,9 @@ export const getTodayQueue = async (req, res) => {
 
   } catch (error) {
     console.error("Error fetching today's queue:", error);
-    res.status(500).json({ 
-      message: "Error fetching queue status.", 
-      error: error.message 
+    res.status(500).json({
+      message: "Error fetching queue status.",
+      error: error.message
     });
   }
 };
@@ -1305,8 +1330,8 @@ export const getAppointmentStats = async (req, res) => {
   }
 
   if (!["yearly", "monthly", "weekly"].includes(filterType)) {
-    return res.status(400).json({ 
-      message: "Invalid filterType. Use: yearly, monthly, or weekly" 
+    return res.status(400).json({
+      message: "Invalid filterType. Use: yearly, monthly, or weekly"
     });
   }
 
@@ -1332,9 +1357,9 @@ export const getAppointmentStats = async (req, res) => {
 
     res.status(200).json(result);
   } catch (err) {
-    res.status(500).json({ 
-      message: "Failed to get appointment stats", 
-      error: err.message 
+    res.status(500).json({
+      message: "Failed to get appointment stats",
+      error: err.message
     });
   }
 };
@@ -1343,7 +1368,7 @@ export const getAppointmentStats = async (req, res) => {
 export const repositionToken = async (req, res) => {
   try {
     const { doctorId, date, fromToken, afterToken } = req.body;
-    if (!doctorId || !date || !fromToken==null || !afterToken==null) {
+    if (!doctorId || !date || !fromToken == null || !afterToken == null) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
