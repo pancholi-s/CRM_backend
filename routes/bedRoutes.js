@@ -63,14 +63,14 @@ router.get(
 router.get(
   "/patients/:patientId/bed-info",
   requireHospitalContext,
-  authorizeRoles("hospitalAdmin", "doctor", "receptionist"),
+  authorizeRoles("hospitalAdmin", "doctor", "receptionist",'staff'),
   getPatientBedInfo
 );
 
 router.patch(
   "/beds/transfer-patient",
   requireHospitalContext,
-  authorizeRoles("hospitalAdmin", "doctor", "receptionist"),
+  authorizeRoles("hospitalAdmin", "doctor", "receptionist","staff"),
   transferPatientToBed
 );
 

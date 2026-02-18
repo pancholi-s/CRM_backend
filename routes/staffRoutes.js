@@ -10,7 +10,7 @@ router.use(requireHospitalContext);
 
 router.post('/addStaff', authorizeRoles("hospitalAdmin"), addStaff);
 
-router.get('/getStaff', authorizeRoles("receptionist", "hospitalAdmin",'doctor'), getStaff);
+router.get('/getStaff', authorizeRoles("receptionist", "hospitalAdmin",'doctor','staff'), getStaff);
 
 router.get(
   "/getStaffByDepartment/:departmentId",

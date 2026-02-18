@@ -30,14 +30,14 @@ router.post(
 // Get all insurance companies
 router.get(
   "/getInsuranceCompanies",
-  authorizeRoles("hospitalAdmin", "doctor"),
+  authorizeRoles("hospitalAdmin", "doctor","staff"),
   getInsuranceCompanies
 );
 
 // Get details of a specific insurance company by ID
 router.get(
   "/getInsuranceCompanyDetails/:id",
-  authorizeRoles("hospitalAdmin", "doctor"),
+  authorizeRoles("hospitalAdmin", "doctor",'staff'),
   getInsuranceCompanyDetails
 );
 

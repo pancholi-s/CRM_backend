@@ -9,7 +9,7 @@ import { getDoctorsByHospital, getDoctorsByDepartment, doctorEarningsReport } fr
 const router = express.Router();
 router.use(requireHospitalContext);
 
-router.get("/getDoctorsByHospital", authorizeRoles("receptionist", "hospitalAdmin",'doctor'), getDoctorsByHospital, paginationMiddleware)
+router.get("/getDoctorsByHospital", authorizeRoles("receptionist", "hospitalAdmin",'doctor','staff'), getDoctorsByHospital, paginationMiddleware)
 router.get("/getDoctorsByDepartment/:departmentId", authorizeRoles("receptionist", "hospitalAdmin",'doctor'), getDoctorsByDepartment, paginationMiddleware);
 router.get("/reports/doctors/earnings", authorizeRoles("hospitalAdmin",'doctor'), doctorEarningsReport);
 

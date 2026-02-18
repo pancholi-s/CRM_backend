@@ -9,13 +9,13 @@ const router = express.Router();
 router.use(requireHospitalContext);
 
 router.post('/submitConsultation', authorizeRoles('doctor', 'receptionist','hospitalAdmin'), upload.array('files', 5), submitConsultation);
-router.post('/addProgressPhase', authorizeRoles('doctor'), upload.array('files', 5), addProgressPhase);
-router.get('/getProgressTracker/:patientId/:caseId', authorizeRoles('doctor', 'receptionist','hospitalAdmin'), getProgressTracker);
+router.post('/addProgressPhase', authorizeRoles('doctor','staff'), upload.array('files', 5), addProgressPhase);
+router.get('/getProgressTracker/:patientId/:caseId', authorizeRoles('doctor', 'receptionist','hospitalAdmin','staff'), getProgressTracker);
 router.get('/getProgressPhaseCounts', authorizeRoles('doctor'), getProgressPhaseCounts);
 router.get('/getConsultationByAppointment/:appointmentId', authorizeRoles('doctor', 'receptionist', 'hospitalAdmin'), getConsultationByAppointment);
-router.get('/getPatientConsultationHistory/:patientId', authorizeRoles('doctor', 'hospitalAdmin'), getPatientConsultationHistory);
+router.get('/getPatientConsultationHistory/:patientId', authorizeRoles('doctor', 'hospitalAdmin','staff'), getPatientConsultationHistory);
 router.get('/diagnosis/most-common', authorizeRoles('hospitalAdmin', 'doctor', 'receptionist'), getMostCommonDiagnoses);
 router.put('/updateConsultation/:consultationId', authorizeRoles('doctor'), updateConsultation);
-router.put('/updatePhase/:sourceType/:sourceId', authorizeRoles('doctor'), upload.array('files', 5), updatePhase);
+router.put('/updatePhase/:sourceType/:sourceId', authorizeRoles('doctor','staff'), upload.array('files', 5), updatePhase);
 
 export default router;

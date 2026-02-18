@@ -16,6 +16,6 @@ router.delete("/deleteService/delete/:serviceId", authorizeRoles("receptionist",
 router.delete("/deleteSubcategory/:serviceId/:subcategoryId", authorizeRoles("receptionist", "hospitalAdmin"), deleteSubcategory);
 
 router.get("/getPackages", authorizeRoles("receptionist", "hospitalAdmin"),getPackages );
-router.get("/searchServiceSubCategories", authorizeRoles("receptionist", "hospitalAdmin","doctor"),searchServiceSubCategories );
+router.get("/searchServiceSubCategories", authorizeRoles("receptionist", "hospitalAdmin","doctor",'staff'),searchServiceSubCategories );
 
 export default router;

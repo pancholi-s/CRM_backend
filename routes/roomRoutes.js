@@ -16,6 +16,6 @@ router.get('/getRoomSubcategories', authorizeRoles("receptionist", "hospitalAdmi
 
 router.get('/getRoom/:roomId', authorizeRoles("receptionist", "hospitalAdmin", "doctor"), getRoomById);
 router.patch('/updateRoom/:roomId', authorizeRoles("receptionist", "hospitalAdmin", "doctor"), updateRoom);
-router.get('/getAvailableRooms', authorizeRoles("receptionist", "hospitalAdmin", "doctor"), getAvailableRooms);
+router.get('/getAvailableRooms', authorizeRoles("receptionist", "hospitalAdmin", "doctor","staff"), getAvailableRooms);
 
 export default router;

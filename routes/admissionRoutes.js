@@ -10,8 +10,8 @@ import { createAdmissionRequest, approveAdmissionRequest, admitPatient, getAdmis
 const router = express.Router();
 router.use(requireHospitalContext);
 
-router.post('/createAdmissionRequest',authorizeRoles("hospitalAdmin","doctor"), createAdmissionRequest);
-router.post('/dischargePatient',authorizeRoles("hospitalAdmin","doctor"), dischargePatient);
+router.post('/createAdmissionRequest',authorizeRoles("hospitalAdmin","doctor","staff"), createAdmissionRequest);
+router.post('/dischargePatient',authorizeRoles("hospitalAdmin","doctor",'staff'), dischargePatient);
 router.get('/discharge/:dischargeId/download-pdf', 
   authorizeRoles("hospitalAdmin","doctor","receptionist"), 
   downloadDischargePDF
