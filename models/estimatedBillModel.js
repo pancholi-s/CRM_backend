@@ -22,15 +22,16 @@ const estimatedBillSchema = new mongoose.Schema(
         subtotal: { type: Number, required: true },
         items: [
           {
-            description: { type: String, required: true }, //category
-            ward: { type: String }, //name
-            package: { type: String }, //type
+            category: { type: String, required: true },
+            name: { type: String },
+            type: { type: String },
             rate: { type: Number, required: true },
-            unit: { type: Number, required: true }, //quantity
+            quantity: { type: Number, required: true },
             total: { type: Number, required: true },
             date: { type: Date, required: true }
           }
         ]
+
       }
     ],
     isFinalized: { type: Boolean, default: false } // later if converted to real bill
