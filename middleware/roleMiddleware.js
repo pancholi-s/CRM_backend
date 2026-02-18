@@ -6,6 +6,7 @@ import HospitalAdmin from "../models/hospitalAdminModel.js";
 import Doctor from "../models/doctorModel.js";
 import Receptionist from "../models/receptionistModel.js";
 import Patient from "../models/patientModel.js";
+import Staff from "../models/staffModel.js";
 
 dotenv.config();
 
@@ -37,6 +38,9 @@ export const authorizeRoles = (...allowedRoles) => {
           break;
         case "patient":
           user = await Patient.findById(decoded.userId);
+          break;
+        case "staff":                     // ✅ ADD THIS
+          user = await Staff.findById(decoded.userId);
           break;
         default:
           return res.status(403).json({ message: "Invalid role. Access denied." });
