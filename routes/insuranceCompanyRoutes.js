@@ -1,4 +1,6 @@
 import express from "express";
+import { upload } from "../middleware/uploadMiddleware.js";
+import { uploadInsuranceCompaniesExcel } from "../controllers/insuranceCompanyController.js";
 import {
   addInsuranceCompany,
   addServiceToCompany,
@@ -25,6 +27,13 @@ router.post(
   "/addServiceToCompany/:companyId",
   authorizeRoles("hospitalAdmin"),
   addServiceToCompany
+);
+
+router.post(
+  "/uploadInsuranceCompanies",
+  authorizeRoles("hospitalAdmin"),
+  upload.single("file"),
+  uploadInsuranceCompaniesExcel
 );
 
 // Get all insurance companies

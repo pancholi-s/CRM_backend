@@ -2,7 +2,7 @@ import InsuranceCompany from "../models/insuranceCompanyModel.js";
 import mongoose from "mongoose";
 import AdmissionRequest from "../models/admissionReqModel.js";
 import Service from "../models/serviceModel.js";
-
+import XLSX from "xlsx";
 
 // Add a new insurance company
 export const addInsuranceCompany = async (req, res) => {
@@ -512,5 +512,104 @@ export const updateAdmissionInsuranceDetails = async (req, res) => {
   } catch (error) {
     console.error("❌ Error updating insurance details:", error);
     res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+export const uploadInsuranceCompaniesExcel = async (req, res) => {
+  try {
+    const hospitalId = req.session.hospitalId;
+    const createdBy = req.user._id;
+
+    if (!hospitalId) {
+      return res.status(403).json({
+        message: "Unauthorized. No hospital context found.",
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        message: "Excel file is required.",
+      });
+    }
+
+    // 📖 Read Excel from buffer
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+
+    const data = XLSX.utils.sheet_to_json(sheet);
+
+    if (!data.length) {
+      return res.status(400).json({
+        message: "Excel sheet is empty.",
+      });
+    }
+
+    const hospitalServices = await Service.find({ hospital: hospitalId }).lean();
+
+    const servicesForInsurance = hospitalServices.map(service => ({
+      serviceName: service.name,
+      categories: service.categories.map(cat => ({
+        subCategoryName: cat.subCategoryName,
+        rateType: cat.rateType,
+        rate: cat.rate,
+        effectiveDate: cat.effectiveDate,
+        amenities: cat.amenities || "N/A",
+        departments: cat.departments || [],
+        additionaldetails: cat.additionaldetails || null
+      }))
+    }));
+
+    let createdCompanies = [];
+    let skipped = [];
+
+    for (const row of data) {
+      const { id, name, TPA, tieup } = row;
+
+      if (!id || !name || !TPA || !tieup) {
+        skipped.push({ row, reason: "Missing required fields" });
+        continue;
+      }
+
+      // prevent duplicate id per hospital
+      const existing = await InsuranceCompany.findOne({
+        id,
+        hospitalId
+      });
+
+      if (existing) {
+        skipped.push({ row, reason: "Company ID already exists" });
+        continue;
+      }
+
+      const company = new InsuranceCompany({
+        id,
+        name: name.trim(),
+        TPA: TPA.trim(),
+        tieup: tieup.trim(),
+        hospitalId,
+        createdBy,
+        services: servicesForInsurance
+      });
+
+      await company.save();
+      createdCompanies.push(company);
+    }
+
+    
+    res.status(201).json({
+      message: "Excel processed successfully",
+      totalRows: data.length,
+      created: createdCompanies.length,
+      skipped: skipped.length,
+      skippedDetails: skipped
+    });
+
+  } catch (error) {
+    console.error("Excel Upload Error:", error);
+    res.status(500).json({
+      message: "Error processing Excel file.",
+      error: error.message,
+    });
   }
 };
