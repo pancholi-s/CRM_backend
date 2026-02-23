@@ -1063,6 +1063,7 @@ export const addProgressPhase = async (req, res) => {
       date,
       assignedDoctor,
       isFinalPhase,
+      description,
       data
     } = req.body;
 
@@ -1185,8 +1186,10 @@ export const addProgressPhase = async (req, res) => {
           title: isFinalPhase ? "final" : title,
           date: finalDate,
           assignedDoctor,
+          description: description || "",
           data: parsedData,
           isDone: false,
+          files: uploadedFiles,
           isFinal: !!isFinalPhase
         }
       ],
@@ -1266,8 +1269,6 @@ export const addProgressPhase = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
-
 
 export const updatePhase = async (req, res) => {
   const { sourceType, sourceId } = req.params;
