@@ -3,6 +3,8 @@ import mongoose from 'mongoose';
 const insuranceCompanySchema = new mongoose.Schema({
   id: { type: String, required: true },
   name: { type: String, required: true },
+  TPA: { type: String, required: true },
+  tieup: { type: String, required: true },
   services: [{
     serviceName: { type: String, required: true },
     categories: [

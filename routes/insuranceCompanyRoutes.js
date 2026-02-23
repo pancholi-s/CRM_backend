@@ -36,7 +36,7 @@ router.get(
 
 // Get details of a specific insurance company by ID
 router.get(
-  "/getInsuranceCompanyDetails/:id",
+  "/getInsuranceCompanyDetails/:companyId",
   authorizeRoles("hospitalAdmin", "doctor",'staff'),
   getInsuranceCompanyDetails
 );

@@ -7,11 +7,11 @@ import Service from "../models/serviceModel.js";
 // Add a new insurance company
 export const addInsuranceCompany = async (req, res) => {
   try {
-    const { id, name } = req.body;
+    const { id, name, TPA, tieup } = req.body;
     const hospitalId = req.session.hospitalId;
     const createdBy = req.user._id;
 
-    if (!id || !name || !hospitalId) {
+    if (!id || !name || !TPA || !tieup || !hospitalId) {
       return res.status(400).json({ message: "Missing required fields." });
     }
 
@@ -36,6 +36,8 @@ export const addInsuranceCompany = async (req, res) => {
     const newInsuranceCompany = new InsuranceCompany({
       id,
       name,
+      TPA,
+      tieup,
       services: servicesForInsurance,
       hospitalId,
       createdBy,
@@ -213,16 +215,30 @@ export const getInsuranceCompanies = async (req, res) => {
 export const getInsuranceCompanyDetails = async (req, res) => {
   try {
     const { companyId } = req.params;
-    const company = await InsuranceCompany.findById(companyId).lean();
+    const hospitalId = req.session.hospitalId;
+
+    if (!hospitalId) {
+      return res.status(403).json({
+        message: "Unauthorized. No hospital context found."
+      });
+    }
+
+    const company = await InsuranceCompany.findOne({
+      _id: companyId,
+      hospitalId: hospitalId
+    }).lean();
 
     if (!company) {
-      return res.status(404).json({ message: "Insurance company not found." });
+      return res.status(404).json({
+        message: "Insurance company not found for this hospital."
+      });
     }
 
     res.status(200).json({
       message: "Insurance company details fetched successfully",
       company,
     });
+
   } catch (error) {
     res.status(500).json({
       message: "Error fetching insurance company details.",
