@@ -2,6 +2,7 @@ import Service from "../models/serviceModel.js";
 import Department from "../models/departmentModel.js";
 import Hospital from "../models/hospitalModel.js";
 import mongoose from "mongoose";
+import XLSX from "xlsx";
 
 export const addService = async (req, res) => {
   const {
@@ -162,7 +163,7 @@ export const getServices = async (req, res) => {
 
 export const editService = async (req, res) => {
   const { serviceId } = req.params; // Main service ID
-  const { name, description, revenueType, categories } = req.body;
+  const { name, description, categories } = req.body;
 
   const hospitalId = req.session.hospitalId;
   if (!hospitalId) {
@@ -187,7 +188,6 @@ export const editService = async (req, res) => {
     // ✅ Update top-level service fields
     if (name) service.name = name;
     if (description) service.description = description;
-    if (revenueType) service.revenueType = revenueType;
 
     // ✅ Handle categories array updates
     if (Array.isArray(categories) && categories.length > 0) {
@@ -372,7 +372,7 @@ export const getServicesByDep = async (req, res) => {
       department: departmentId,
       hospital: hospitalId,
     })
-      .select("name description categories lastUpdated revenueType")
+      .select("name description categories lastUpdated ")
       .sort({ createdAt: -1 })
       .lean();
 
@@ -393,7 +393,6 @@ export const getServicesByDep = async (req, res) => {
           additionaldetails: cat.additionaldetails,
         })),
         lastUpdated: s.lastUpdated,
-        revenueType: s.revenueType,
       })),
     };
 
@@ -456,6 +455,129 @@ export const searchServiceSubCategories = async (req, res) => {
   } catch (error) {
     res.status(500).json({
       message: "Error searching subcategories",
+      error: error.message
+    });
+  }
+};
+
+export const uploadHospitalServicesExcel = async (req, res) => {
+  try {
+    const hospitalId = req.user?.hospital;
+    const userId = req.user?._id;
+
+    if (!hospitalId || !userId) {
+      return res.status(403).json({
+        message: "Unauthorized. Invalid authentication context."
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        message: "Excel file is required."
+      });
+    }
+
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const data = XLSX.utils.sheet_to_json(sheet);
+
+    if (!data.length) {
+      return res.status(400).json({
+        message: "Excel sheet is empty."
+      });
+    }
+
+    let created = 0;
+    let updated = 0;
+    let skipped = [];
+
+    for (const row of data) {
+      const {
+        name,
+        description,
+        subCategoryName,
+        rateType,
+        rate,
+        effectiveDate,
+        amenities,
+        departmentNames,
+      } = row;
+
+      if (!name || !subCategoryName || !rateType || !rate || !effectiveDate) {
+        skipped.push({ row, reason: "Missing required fields" });
+        continue;
+      }
+
+      // 🔹 Convert department names → ObjectIds
+      let departmentIds = [];
+      if (departmentNames) {
+        const namesArray = departmentNames.split(",").map(d => d.trim());
+
+        const departments = await Department.find({
+          name: { $in: namesArray },
+          hospital: hospitalId
+        });
+
+        departmentIds = departments.map(dep => dep._id);
+      }
+
+      // 🔹 Check if service exists
+      let service = await Service.findOne({ name, hospital: hospitalId });
+
+      const categoryObject = {
+        subCategoryName: subCategoryName.trim(),
+        rateType: rateType.trim(),
+        rate: Number(rate),
+        effectiveDate: new Date(effectiveDate),
+        amenities: amenities || "N/A",
+        hospital: hospitalId,
+        departments: departmentIds,
+        additionaldetails: null
+      };
+
+      if (!service) {
+        // CREATE NEW SERVICE
+        service = new Service({
+          name: name.trim(),
+          description: description || "",
+          hospital: hospitalId,
+          departments: departmentIds,
+          categories: [categoryObject]
+        });
+
+        await service.save();
+        created++;
+      } else {
+        // CHECK IF CATEGORY EXISTS
+        const existingCategory = service.categories.find(
+          c => c.subCategoryName === subCategoryName
+        );
+
+        if (existingCategory) {
+          skipped.push({ row, reason: "Category already exists" });
+          continue;
+        }
+
+        service.categories.push(categoryObject);
+        service.lastUpdated = new Date();
+        await service.save();
+        updated++;
+      }
+    }
+
+    res.status(201).json({
+      message: "Hospital services Excel processed successfully",
+      totalRows: data.length,
+      createdServices: created,
+      updatedServices: updated,
+      skipped: skipped.length,
+      skippedDetails: skipped
+    });
+
+  } catch (error) {
+    console.error("Service Excel Upload Error:", error);
+    res.status(500).json({
+      message: "Error processing Excel file.",
       error: error.message
     });
   }

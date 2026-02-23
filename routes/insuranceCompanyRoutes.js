@@ -1,6 +1,5 @@
 import express from "express";
 import { upload } from "../middleware/uploadMiddleware.js";
-import { uploadInsuranceCompaniesExcel } from "../controllers/insuranceCompanyController.js";
 import {
   addInsuranceCompany,
   addServiceToCompany,
@@ -9,7 +8,8 @@ import {
   editServiceCategory,
   deleteSingleCategory,
   deleteAllCategories,
-  updateAdmissionInsuranceDetails
+  updateAdmissionInsuranceDetails,
+  uploadInsuranceCompaniesExcel
 } from "../controllers/insuranceCompanyController.js";
 import { requireHospitalContext } from "../middleware/hospitalContext.js";
 import { authorizeRoles } from "../middleware/roleMiddleware.js";

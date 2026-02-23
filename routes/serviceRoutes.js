@@ -2,8 +2,8 @@ import express from "express";
 
 import { authorizeRoles } from "../middleware/roleMiddleware.js";
 import { requireHospitalContext } from "../middleware/hospitalContext.js";
-
-import { addService, getServices, getPackages, editService, deleteService, deleteSubcategory, getServicesByDep, searchServiceSubCategories } from "../controllers/serviceController.js";
+import { upload } from "../middleware/uploadMiddleware.js";
+import { addService, getServices, getPackages, editService, deleteService, deleteSubcategory, getServicesByDep, searchServiceSubCategories,uploadHospitalServicesExcel } from "../controllers/serviceController.js";
 
 const router = express.Router();
 router.use(requireHospitalContext);
@@ -17,5 +17,12 @@ router.delete("/deleteSubcategory/:serviceId/:subcategoryId", authorizeRoles("re
 
 router.get("/getPackages", authorizeRoles("receptionist", "hospitalAdmin"),getPackages );
 router.get("/searchServiceSubCategories", authorizeRoles("receptionist", "hospitalAdmin","doctor",'staff'),searchServiceSubCategories );
+
+router.post(
+  "/uploadHospitalServices",
+  authorizeRoles("hospitalAdmin"),
+  upload.single("file"),
+  uploadHospitalServicesExcel
+);
 
 export default router;
