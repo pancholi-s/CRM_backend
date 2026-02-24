@@ -5,6 +5,7 @@ import mongoose from 'mongoose';
 import session from 'express-session';
 
 import './middleware/statusMiddleware.js'; // This starts the cron job
+import { loadMedicines } from './utils/loadMedicine.js';
 
 import authRoutes from './routes/authRoutes.js';
 import appointmentRoutes from './routes/appointmentRoutes.js';
@@ -45,7 +46,9 @@ dotenv.config();
 const app = express();
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json());  
+
+await loadMedicines();
 
 app.use(
   session({

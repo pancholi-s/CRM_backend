@@ -1,5 +1,5 @@
 import express from "express";
-import {recordVitals, getVitalsByPatient, addMedicalRecord,updateMedicationAction, getMedicalRecords} from "../controllers/nursingSection.js";
+import {recordVitals, getVitalsByPatient, addMedicalRecord,updateMedicationAction, getMedicalRecords, searchMedicines} from "../controllers/nursingSection.js";
 // import { updateBillAfterAction } from "../middleware/billingMiddleware.js"; // Import the billing middleware function
 
 const router = express.Router();
@@ -12,5 +12,6 @@ router.get("/getVitalsByPatient/:patientId", getVitalsByPatient);
 router.post("/addMedicalRecord", addMedicalRecord);
 router.post("/updateMedicationAction", updateMedicationAction);
 router.get("/getMedicalRecords/:patientId", getMedicalRecords);
+router.get("/searchMedicines", searchMedicines);
 
 export default router;

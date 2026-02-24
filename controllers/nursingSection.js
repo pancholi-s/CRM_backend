@@ -2,6 +2,7 @@ import Vitals from "../models/VitalTrackerModel.js";
 import MedicalRecord from "../models/medicalRecordsModel.js";
 import Service from "../models/serviceModel.js";
 import { updateBillAfterAction } from "../middleware/billingMiddleware.js"; // Import the billing middleware function
+import { getMedicines } from "../utils/loadMedicine.js";
 
 // Record vitals dynamically
 export const recordVitals = async (req, res) => {
@@ -251,3 +252,33 @@ export const getMedicalRecords = async (req, res) => {
   }
 };
 
+export const searchMedicines = async (req, res) => {
+  try {
+    const { query } = req.query;
+
+    if (!query || query.length < 2) {
+      return res.status(400).json({
+        message: "Minimum 2 characters required"
+      });
+    }
+
+    const medicines = getMedicines();
+
+    const results = medicines
+      .filter(m =>
+        m.brandName.toLowerCase().includes(query.toLowerCase())
+      )
+      .slice(0, 20);
+
+    res.status(200).json({
+      count: results.length,
+      medicines: results.map(m => m.brandName)
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      message: "Error searching medicines",
+      error: error.message
+    });
+  }
+};
