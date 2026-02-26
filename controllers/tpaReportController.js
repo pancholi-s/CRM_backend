@@ -19,14 +19,12 @@ const buildTPAAggregation = ({
 }) => {
   const matchStage = {
     hospital: new mongoose.Types.ObjectId(hospitalId),
-    "admissionDetails.insurance.hasInsurance": true,
-    createdAt: { $gte: startDate, $lte: endDate }
+    createdAt: { $gte: startDate, $lte: endDate },
+    "admissionDetails.insurance.insuranceCompany": { $exists: true, $ne: null }
   };
 
   if (company) {
     matchStage["admissionDetails.insurance.insuranceCompany"] = company;
-  } else {
-    matchStage["admissionDetails.insurance.insuranceCompany"] = { $ne: null };
   }
 
   return [
@@ -46,12 +44,27 @@ const buildTPAAggregation = ({
         billAmount: {
           $ifNull: [{ $arrayElemAt: ["$bill.totalAmount", 0] }, 0]
         },
-        approvedAmount: {
+        paidAmount: {
+          $ifNull: [{ $arrayElemAt: ["$bill.paidAmount", 0] }, 0]
+        },
+        outstandingAmount: {
+          $ifNull: [{ $arrayElemAt: ["$bill.outstanding", 0] }, 0]
+        },
+        approvedAmountRaw: {
           $ifNull: ["$admissionDetails.insurance.amountApproved", 0]
         },
         status: "$admissionDetails.insurance.insuranceApproved",
         company: "$admissionDetails.insurance.insuranceCompany",
         month: { $month: "$createdAt" }
+      }
+    },
+
+    // Prevent over-approval errors
+    {
+      $addFields: {
+        approvedAmount: {
+          $min: ["$approvedAmountRaw", "$billAmount"]
+        }
       }
     },
 
@@ -62,16 +75,28 @@ const buildTPAAggregation = ({
           ...(groupByMonth ? { month: "$month" } : {})
         },
 
+        // ---- COUNTS ----
         totalCases: { $sum: 1 },
-        acceptedCases: { $sum: { $cond: [{ $eq: ["$status", "approved"] }, 1, 0] } },
-        rejectedCases: { $sum: { $cond: [{ $eq: ["$status", "rejected"] }, 1, 0] } },
-        pendingCases: { $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] } },
+        acceptedCases: {
+          $sum: { $cond: [{ $eq: ["$status", "approved"] }, 1, 0] }
+        },
+        rejectedCases: {
+          $sum: { $cond: [{ $eq: ["$status", "rejected"] }, 1, 0] }
+        },
+        pendingCases: {
+          $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] }
+        },
 
+        // ---- AMOUNTS ----
         totalClaimedAmount: { $sum: "$billAmount" },
 
         acceptedAmount: {
           $sum: {
-            $cond: [{ $eq: ["$status", "approved"] }, "$approvedAmount", 0]
+            $cond: [
+              { $eq: ["$status", "approved"] },
+              "$approvedAmount",
+              0
+            ]
           }
         },
 
@@ -79,7 +104,7 @@ const buildTPAAggregation = ({
           $sum: {
             $cond: [
               { $eq: ["$status", "rejected"] },
-              { $subtract: ["$billAmount", "$approvedAmount"] },
+              "$billAmount",
               0
             ]
           }
@@ -87,9 +112,17 @@ const buildTPAAggregation = ({
 
         pendingAmount: {
           $sum: {
-            $cond: [{ $eq: ["$status", "pending"] }, "$billAmount", 0]
+            $cond: [
+              { $eq: ["$status", "pending"] },
+              "$billAmount",
+              0
+            ]
           }
-        }
+        },
+
+        // ---- PAYMENT DIMENSION ----
+        recoveredAmount: { $sum: "$paidAmount" },
+        remainingAmount: { $sum: "$outstandingAmount" }
       }
     },
 
@@ -147,7 +180,9 @@ export const getYearlyTPAReport = async (req, res) => {
         totalClaimedAmount: 0,
         acceptedAmount: 0,
         rejectedAmount: 0,
-        pendingAmount: 0
+        pendingAmount: 0,
+        recoveredAmount: 0,
+        remainingAmount: 0
       },
       months: {}
     };
@@ -167,7 +202,9 @@ export const getYearlyTPAReport = async (req, res) => {
             totalClaimedAmount: 0,
             acceptedAmount: 0,
             rejectedAmount: 0,
-            pendingAmount: 0
+            pendingAmount: 0,
+            recoveredAmount: 0,
+            remainingAmount: 0
           },
           companies: []
         };
@@ -182,7 +219,9 @@ export const getYearlyTPAReport = async (req, res) => {
         totalClaimedAmount: row.totalClaimedAmount,
         acceptedAmount: row.acceptedAmount,
         rejectedAmount: row.rejectedAmount,
-        pendingAmount: row.pendingAmount
+        pendingAmount: row.pendingAmount,
+        recoveredAmount: row.recoveredAmount,
+        remainingAmount: row.remainingAmount
       });
 
       Object.keys(response.overall).forEach(key => {
@@ -260,7 +299,9 @@ export const getMonthlyTPAReport = async (req, res) => {
         totalClaimedAmount: 0,
         acceptedAmount: 0,
         rejectedAmount: 0,
-        pendingAmount: 0
+        pendingAmount: 0,
+        recoveredAmount: 0,
+        remainingAmount: 0
       },
       companies: []
     };
@@ -275,7 +316,9 @@ export const getMonthlyTPAReport = async (req, res) => {
         totalClaimedAmount: row.totalClaimedAmount,
         acceptedAmount: row.acceptedAmount,
         rejectedAmount: row.rejectedAmount,
-        pendingAmount: row.pendingAmount
+        pendingAmount: row.pendingAmount,
+        recoveredAmount: row.recoveredAmount,
+        remainingAmount: row.remainingAmount
       });
 
       Object.keys(response.overall).forEach(key => {
