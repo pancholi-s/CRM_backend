@@ -100,16 +100,32 @@ const buildTPAAggregation = ({
 
 export const getYearlyTPAReport = async (req, res) => {
   try {
-    const { year, company } = req.query;
+    const {
+      year,
+      company,
+      startDate: customStart,
+      endDate: customEnd
+    } = req.query;
+
     const { hospitalId } = req.session;
 
     if (!hospitalId) {
       return res.status(403).json({ message: "No hospital context." });
     }
 
-    const targetYear = parseInt(year) || new Date().getFullYear();
-    const startDate = new Date(`${targetYear}-01-01T00:00:00.000Z`);
-    const endDate = new Date(`${targetYear}-12-31T23:59:59.999Z`);
+    let startDate, endDate;
+    let targetYear;
+
+    // ✅ If custom date range is provided
+    if (customStart && customEnd) {
+      startDate = new Date(customStart);
+      endDate = new Date(customEnd);
+      targetYear = new Date(startDate).getFullYear();
+    } else {
+      targetYear = parseInt(year) || new Date().getFullYear();
+      startDate = new Date(`${targetYear}-01-01T00:00:00.000Z`);
+      endDate = new Date(`${targetYear}-12-31T23:59:59.999Z`);
+    }
 
     const data = await AdmissionRequest.aggregate(
       buildTPAAggregation({
@@ -176,6 +192,7 @@ export const getYearlyTPAReport = async (req, res) => {
     });
 
     res.status(200).json(response);
+
   } catch (err) {
     console.error("Yearly TPA Error:", err);
     res.status(500).json({ message: "Failed to generate yearly TPA report." });
@@ -185,18 +202,42 @@ export const getYearlyTPAReport = async (req, res) => {
 
 export const getMonthlyTPAReport = async (req, res) => {
   try {
-    const { year, month, company } = req.query;
+    const {
+      year,
+      month,
+      company,
+      startDate: customStart,
+      endDate: customEnd
+    } = req.query;
+
     const { hospitalId } = req.session;
 
-    if (!hospitalId || !year || !month) {
-      return res.status(400).json({ message: "Year and month are required." });
+    if (!hospitalId) {
+      return res.status(403).json({ message: "No hospital context." });
     }
 
-    const y = parseInt(year);
-    const m = parseInt(month);
+    let startDate, endDate;
+    let y, m;
 
-    const startDate = new Date(Date.UTC(y, m - 1, 1));
-    const endDate = new Date(Date.UTC(y, m, 0, 23, 59, 59));
+    // ✅ If custom date range provided
+    if (customStart && customEnd) {
+      startDate = new Date(customStart);
+      endDate = new Date(customEnd);
+      y = startDate.getFullYear();
+      m = startDate.getMonth() + 1;
+    } else {
+      if (!year || !month) {
+        return res.status(400).json({
+          message: "Year and month are required (unless using custom startDate & endDate)."
+        });
+      }
+
+      y = parseInt(year);
+      m = parseInt(month);
+
+      startDate = new Date(Date.UTC(y, m - 1, 1));
+      endDate = new Date(Date.UTC(y, m, 0, 23, 59, 59));
+    }
 
     const data = await AdmissionRequest.aggregate(
       buildTPAAggregation({
@@ -243,6 +284,7 @@ export const getMonthlyTPAReport = async (req, res) => {
     });
 
     res.status(200).json(response);
+
   } catch (err) {
     console.error("Monthly TPA Error:", err);
     res.status(500).json({ message: "Failed to generate monthly TPA report." });
@@ -269,7 +311,13 @@ const getWeekStart = d => {
 // ---------- controller ----------
 export const earningsOverviewReport = async (req, res) => {
   try {
-    const { range = "today", date } = req.query;
+    const {
+      range = "today",
+      date,
+      startDate,
+      endDate
+    } = req.query;
+
     const hospitalId = req.session.hospitalId;
 
     if (!hospitalId) {
@@ -279,70 +327,90 @@ export const earningsOverviewReport = async (req, res) => {
     const base = date ? new Date(date) : new Date();
     let from, to, trendUnit, label, buckets = [];
 
-    // ---------- RANGE RESOLUTION ----------
-    switch (range) {
-      case "today": {
-        from = new Date(base); from.setHours(0,0,0,0);
-        to = new Date(base); to.setHours(23,59,59,999);
-        trendUnit = "hour";
-        label = "Today";
-        buckets = Array.from({ length: 24 }, (_, i) =>
-          `${String(i).padStart(2,"0")}:00`
-        );
-        break;
-      }
+    // ✅ CUSTOM DATE RANGE (PRIORITY)
+    if (startDate && endDate) {
+      from = new Date(startDate);
+      to = new Date(endDate);
+      from.setHours(0, 0, 0, 0);
+      to.setHours(23, 59, 59, 999);
 
-      case "last_7_days": {
-        to = new Date(base); to.setHours(23,59,59,999);
-        from = new Date(to); from.setDate(to.getDate() - 6); from.setHours(0,0,0,0);
-        trendUnit = "day";
-        label = "Last 7 Days";
-        buckets = Array.from({ length: 7 }, (_, i) => {
-          const d = new Date(from);
-          d.setDate(from.getDate() + i);
-          return iso(d);
-        });
-        break;
-      }
+      trendUnit = "day";
+      label = "Custom Range";
 
-      case "this_week": {
-        from = getWeekStart(base);
-        to = new Date(from); to.setDate(from.getDate() + 6); to.setHours(23,59,59,999);
-        trendUnit = "day";
-        label = "This Week";
-        buckets = WEEK_DAYS;
-        break;
-      }
+      const diffDays = Math.ceil((to - from) / (1000 * 60 * 60 * 24));
+      buckets = Array.from({ length: diffDays + 1 }, (_, i) => {
+        const d = new Date(from);
+        d.setDate(from.getDate() + i);
+        return iso(d);
+      });
 
-      case "last_week": {
-        to = getWeekStart(base); to.setDate(to.getDate() - 1); to.setHours(23,59,59,999);
-        from = new Date(to); from.setDate(to.getDate() - 6); from.setHours(0,0,0,0);
-        trendUnit = "day";
-        label = "Last Week";
-        buckets = WEEK_DAYS;
-        break;
-      }
+    } else {
 
-      case "this_month": {
-        from = new Date(base.getFullYear(), base.getMonth(), 1);
-        to = new Date(base.getFullYear(), base.getMonth() + 1, 0, 23,59,59);
-        trendUnit = "week";
-        label = "This Month";
-        buckets = ["Week 1","Week 2","Week 3","Week 4","Week 5"];
-        break;
-      }
+      // ---------- PREDEFINED RANGE RESOLUTION ----------
+      switch (range) {
+        case "today": {
+          from = new Date(base); from.setHours(0,0,0,0);
+          to = new Date(base); to.setHours(23,59,59,999);
+          trendUnit = "hour";
+          label = "Today";
+          buckets = Array.from({ length: 24 }, (_, i) =>
+            `${String(i).padStart(2,"0")}:00`
+          );
+          break;
+        }
 
-      case "this_year": {
-        from = new Date(base.getFullYear(), 0, 1);
-        to = new Date(base.getFullYear(), 11, 31, 23,59,59);
-        trendUnit = "month";
-        label = "This Year";
-        buckets = MONTHS;
-        break;
-      }
+        case "last_7_days": {
+          to = new Date(base); to.setHours(23,59,59,999);
+          from = new Date(to); from.setDate(to.getDate() - 6); from.setHours(0,0,0,0);
+          trendUnit = "day";
+          label = "Last 7 Days";
+          buckets = Array.from({ length: 7 }, (_, i) => {
+            const d = new Date(from);
+            d.setDate(from.getDate() + i);
+            return iso(d);
+          });
+          break;
+        }
 
-      default:
-        return res.status(400).json({ message: "Invalid range" });
+        case "this_week": {
+          from = getWeekStart(base);
+          to = new Date(from); to.setDate(from.getDate() + 6); to.setHours(23,59,59,999);
+          trendUnit = "day";
+          label = "This Week";
+          buckets = WEEK_DAYS;
+          break;
+        }
+
+        case "last_week": {
+          to = getWeekStart(base); to.setDate(to.getDate() - 1); to.setHours(23,59,59,999);
+          from = new Date(to); from.setDate(to.getDate() - 6); from.setHours(0,0,0,0);
+          trendUnit = "day";
+          label = "Last Week";
+          buckets = WEEK_DAYS;
+          break;
+        }
+
+        case "this_month": {
+          from = new Date(base.getFullYear(), base.getMonth(), 1);
+          to = new Date(base.getFullYear(), base.getMonth() + 1, 0, 23,59,59);
+          trendUnit = "week";
+          label = "This Month";
+          buckets = ["Week 1","Week 2","Week 3","Week 4","Week 5"];
+          break;
+        }
+
+        case "this_year": {
+          from = new Date(base.getFullYear(), 0, 1);
+          to = new Date(base.getFullYear(), 11, 31, 23,59,59);
+          trendUnit = "month";
+          label = "This Year";
+          buckets = MONTHS;
+          break;
+        }
+
+        default:
+          return res.status(400).json({ message: "Invalid range" });
+      }
     }
 
     // ---------- AGGREGATION ----------
@@ -401,15 +469,9 @@ export const earningsOverviewReport = async (req, res) => {
       }
     });
 
-    // ---------- TREND MAP ----------
     const map = {};
     buckets.forEach(b => {
-      map[b] = {
-        opdPatients: 0,
-        ipdPatients: 0,
-        opdEarnings: 0,
-        ipdEarnings: 0
-      };
+      map[b] = { opdPatients: 0, ipdPatients: 0, opdEarnings: 0, ipdEarnings: 0 };
     });
 
     data.forEach(d => {
@@ -431,10 +493,9 @@ export const earningsOverviewReport = async (req, res) => {
       }
     });
 
-    // ---------- RESPONSE ----------
     res.status(200).json({
       range: {
-        key: range,
+        key: startDate && endDate ? "custom" : range,
         from: iso(from),
         to: iso(to),
         label
@@ -471,4 +532,3 @@ export const earningsOverviewReport = async (req, res) => {
     });
   }
 };
-
