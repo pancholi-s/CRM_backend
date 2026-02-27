@@ -1,10 +1,12 @@
 import mongoose from "mongoose";
 import AdmissionRequest from "../models/admissionReqModel.js";
 import Bill from "../models/billModel.js";
+import Room from "../models/roomModel.js";
+import Bed from "../models/bedModel.js";
 
 const MONTH_NAMES = [
-  "January","February","March","April","May","June",
-  "July","August","September","October","November","December"
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
 ];
 
 /**
@@ -337,17 +339,20 @@ export const getMonthlyTPAReport = async (req, res) => {
 const OPD_CATEGORY = "Doctor Consultation";
 const IPD_CATEGORY = "Daily Doctor Visit";
 
-const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-const WEEK_DAYS = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const WEEK_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 // ---------- helpers ----------
-const iso = d => d.toISOString().split("T")[0];
+const iso = (d) => {
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return local.toISOString().split("T")[0];
+};
 
 const getWeekStart = d => {
   const date = new Date(d);
   const day = date.getDay() || 7;
   date.setDate(date.getDate() - day + 1);
-  date.setHours(0,0,0,0);
+  date.setHours(0, 0, 0, 0);
   return date;
 };
 
@@ -392,19 +397,19 @@ export const earningsOverviewReport = async (req, res) => {
       // ---------- PREDEFINED RANGE RESOLUTION ----------
       switch (range) {
         case "today": {
-          from = new Date(base); from.setHours(0,0,0,0);
-          to = new Date(base); to.setHours(23,59,59,999);
+          from = new Date(base); from.setHours(0, 0, 0, 0);
+          to = new Date(base); to.setHours(23, 59, 59, 999);
           trendUnit = "hour";
           label = "Today";
           buckets = Array.from({ length: 24 }, (_, i) =>
-            `${String(i).padStart(2,"0")}:00`
+            `${String(i).padStart(2, "0")}:00`
           );
           break;
         }
 
         case "last_7_days": {
-          to = new Date(base); to.setHours(23,59,59,999);
-          from = new Date(to); from.setDate(to.getDate() - 6); from.setHours(0,0,0,0);
+          to = new Date(base); to.setHours(23, 59, 59, 999);
+          from = new Date(to); from.setDate(to.getDate() - 6); from.setHours(0, 0, 0, 0);
           trendUnit = "day";
           label = "Last 7 Days";
           buckets = Array.from({ length: 7 }, (_, i) => {
@@ -417,7 +422,7 @@ export const earningsOverviewReport = async (req, res) => {
 
         case "this_week": {
           from = getWeekStart(base);
-          to = new Date(from); to.setDate(from.getDate() + 6); to.setHours(23,59,59,999);
+          to = new Date(from); to.setDate(from.getDate() + 6); to.setHours(23, 59, 59, 999);
           trendUnit = "day";
           label = "This Week";
           buckets = WEEK_DAYS;
@@ -425,8 +430,8 @@ export const earningsOverviewReport = async (req, res) => {
         }
 
         case "last_week": {
-          to = getWeekStart(base); to.setDate(to.getDate() - 1); to.setHours(23,59,59,999);
-          from = new Date(to); from.setDate(to.getDate() - 6); from.setHours(0,0,0,0);
+          to = getWeekStart(base); to.setDate(to.getDate() - 1); to.setHours(23, 59, 59, 999);
+          from = new Date(to); from.setDate(to.getDate() - 6); from.setHours(0, 0, 0, 0);
           trendUnit = "day";
           label = "Last Week";
           buckets = WEEK_DAYS;
@@ -435,16 +440,16 @@ export const earningsOverviewReport = async (req, res) => {
 
         case "this_month": {
           from = new Date(base.getFullYear(), base.getMonth(), 1);
-          to = new Date(base.getFullYear(), base.getMonth() + 1, 0, 23,59,59);
+          to = new Date(base.getFullYear(), base.getMonth() + 1, 0, 23, 59, 59);
           trendUnit = "week";
           label = "This Month";
-          buckets = ["Week 1","Week 2","Week 3","Week 4","Week 5"];
+          buckets = ["Week 1", "Week 2", "Week 3", "Week 4", "Week 5"];
           break;
         }
 
         case "this_year": {
           from = new Date(base.getFullYear(), 0, 1);
-          to = new Date(base.getFullYear(), 11, 31, 23,59,59);
+          to = new Date(base.getFullYear(), 11, 31, 23, 59, 59);
           trendUnit = "month";
           label = "This Year";
           buckets = MONTHS;
@@ -486,9 +491,9 @@ export const earningsOverviewReport = async (req, res) => {
           _id: {
             bucket:
               trendUnit === "hour" ? { $hour: "$eventDate" } :
-              trendUnit === "day"  ? { $dateToString: { format: "%Y-%m-%d", date: "$eventDate" } } :
-              trendUnit === "week" ? { $week: "$eventDate" } :
-              { $month: "$eventDate" },
+                trendUnit === "day" ? { $dateToString: { format: "%Y-%m-%d", date: "$eventDate" } } :
+                  trendUnit === "week" ? { $week: "$eventDate" } :
+                    { $month: "$eventDate" },
             type: "$services.category"
           },
           count: { $sum: 1 },
@@ -519,7 +524,7 @@ export const earningsOverviewReport = async (req, res) => {
 
     data.forEach(d => {
       let key;
-      if (trendUnit === "hour") key = `${String(d._id.bucket).padStart(2,"0")}:00`;
+      if (trendUnit === "hour") key = `${String(d._id.bucket).padStart(2, "0")}:00`;
       else if (trendUnit === "month") key = MONTHS[d._id.bucket - 1];
       else if (trendUnit === "week") key = `Week ${d._id.bucket}`;
       else key = d._id.bucket;
@@ -571,6 +576,285 @@ export const earningsOverviewReport = async (req, res) => {
     console.error("Earnings overview error:", error);
     res.status(500).json({
       message: "Error generating earnings overview",
+      error: error.message
+    });
+  }
+};
+
+export const roomBedReport = async (req, res) => {
+  try {
+    const {
+      range = "today",
+      date,
+      startDate,
+      endDate
+    } = req.query;
+
+    const hospitalId = req.session.hospitalId;
+    if (!hospitalId) {
+      return res.status(403).json({ message: "No hospital context" });
+    }
+
+    const base = date ? new Date(date) : new Date();
+    let from, to, trendUnit, label, buckets = [];
+
+    // ==============================
+    // RANGE RESOLUTION
+    // ==============================
+
+    if (startDate && endDate) {
+      from = new Date(startDate);
+      to = new Date(endDate);
+      from.setHours(0, 0, 0, 0);
+      to.setHours(23, 59, 59, 999);
+
+      trendUnit = "day";
+      label = "Custom Range";
+
+      const diffDays = Math.ceil((to - from) / (1000 * 60 * 60 * 24));
+      buckets = Array.from({ length: diffDays + 1 }, (_, i) => {
+        const d = new Date(from);
+        d.setDate(from.getDate() + i);
+        return iso(d);
+      });
+
+    } else {
+
+      switch (range) {
+
+        case "today": {
+          from = new Date(base);
+          from.setHours(0, 0, 0, 0);
+
+          to = new Date(base);
+          to.setHours(23, 59, 59, 999);
+
+          trendUnit = "hour";
+          label = "Today";
+          buckets = Array.from({ length: 24 }, (_, i) =>
+            `${String(i).padStart(2, "0")}:00`
+          );
+          break;
+        }
+
+        case "last_7_days": {
+          to = new Date(base);
+          to.setHours(23, 59, 59, 999);
+
+          from = new Date(to);
+          from.setDate(to.getDate() - 6);
+          from.setHours(0, 0, 0, 0);
+
+          trendUnit = "day";
+          label = "Last 7 Days";
+          buckets = Array.from({ length: 7 }, (_, i) => {
+            const d = new Date(from);
+            d.setDate(from.getDate() + i);
+            return iso(d);
+          });
+          break;
+        }
+
+        case "this_month": {
+          const year = new Date().getFullYear();
+          const month = new Date().getMonth();
+
+          from = new Date(year, month, 1);
+          to = new Date(year, month + 1, 0, 23, 59, 59);
+
+          trendUnit = "week";
+          label = "This Month";
+          buckets = ["Week 1", "Week 2", "Week 3", "Week 4", "Week 5"];
+          break;
+        }
+
+        case "this_year": {
+          const year = new Date().getFullYear();
+
+          from = new Date(year, 0, 1);
+          to = new Date(year, 11, 31, 23, 59, 59);
+
+          trendUnit = "month";
+          label = "This Year";
+          buckets = MONTHS;
+          break;
+        }
+
+        default:
+          return res.status(400).json({ message: "Invalid range" });
+      }
+    }
+    // ==============================
+    // SUMMARY + ROOM REVENUE AGGREGATION (FILTERED)
+    // ==============================
+
+    const totalRooms = await Room.countDocuments({ hospital: hospitalId });
+    const totalBeds = await Bed.countDocuments({ hospital: hospitalId });
+
+    const revenueData = await Bill.aggregate([
+
+      {
+        $match: {
+          hospital: new mongoose.Types.ObjectId(hospitalId)
+        }
+      },
+
+      { $unwind: "$services" },
+
+      {
+        $match: {
+          "services.details.bedType": { $exists: true },
+          "services.details.billedDate": {
+            $gte: iso(from),
+            $lte: iso(to)
+          }
+        }
+      },
+
+      {
+        $addFields: {
+          billedDateObj: {
+            $dateFromString: {
+              dateString: "$services.details.billedDate"
+            }
+          }
+        }
+      },
+
+      {
+        $group: {
+          _id: {
+            date: "$services.details.billedDate",
+            month: { $month: "$billedDateObj" },
+            roomType: "$services.details.bedType"
+          },
+          revenue: {
+            $sum: { $multiply: ["$services.rate", "$services.quantity"] }
+          },
+          occupiedEntries: { $sum: 1 }
+        }
+      }
+
+    ]);
+
+    // ==============================
+    // PROCESS FILTERED DATA
+    // ==============================
+
+    const map = {};
+    buckets.forEach(b => {
+      map[b] = { revenue: 0 };
+    });
+
+    const revenueByRoomType = {};
+
+    let totalRoomRevenue = 0;
+    let totalOccupiedEntries = 0;
+
+    revenueData.forEach(item => {
+
+      totalRoomRevenue += item.revenue;
+      totalOccupiedEntries += item.occupiedEntries;
+
+      // Revenue by room type
+      if (!revenueByRoomType[item._id.roomType]) {
+        revenueByRoomType[item._id.roomType] = 0;
+      }
+
+      revenueByRoomType[item._id.roomType] += item.revenue;
+
+      // Date-wise revenue
+      let key;
+
+
+      if (trendUnit === "month") {
+
+        key = MONTHS[item._id.month - 1];
+
+      } else if (trendUnit === "week") {
+
+        const dayOfMonth = new Date(item._id.date).getDate();
+        const weekNumber = Math.ceil(dayOfMonth / 7);
+        key = `Week ${weekNumber}`;
+
+      } else if (trendUnit === "day") {
+
+        key = item._id.date;
+
+      } else {
+
+        key = item._id.date;
+
+      }
+
+      if (map[key]) {
+        map[key].revenue += item.revenue;
+      }
+    });
+
+    // ==============================
+    // FILTER-BASED OCCUPANCY
+    // ==============================
+
+    const totalDays = buckets.length;
+
+    // average beds occupied per day during selected range
+    const avgOccupiedBeds =
+      totalDays > 0 ? (totalOccupiedEntries / totalDays) : 0;
+
+    const occupiedBeds = Math.round(avgOccupiedBeds);
+
+    const availableBeds =
+      totalBeds - occupiedBeds;
+
+    const occupancyPercentage =
+      totalBeds > 0
+        ? ((occupiedBeds / totalBeds) * 100).toFixed(2)
+        : 0;
+
+    // ==============================
+    // FINAL RESPONSE
+    // ==============================
+
+    res.status(200).json({
+
+      range: {
+        key: startDate && endDate ? "custom" : range,
+        from: iso(from),
+        to: iso(to),
+        label
+      },
+
+      summary: {
+        totalRooms,
+        totalBeds,
+        occupiedBeds,
+        availableBeds,
+        occupancyPercentage: `${occupancyPercentage}%`
+      },
+
+      revenue: {
+        totalRoomRevenue,
+        revenueByRoomType: Object.entries(revenueByRoomType)
+          .map(([roomType, revenue]) => ({
+            roomType,
+            revenue
+          }))
+      },
+
+      trends: {
+        dateWiseRevenue: buckets.map(b => ({
+          [trendUnit]: b,
+          revenue: map[b]?.revenue || 0
+        }))
+      }
+
+    });
+
+  } catch (error) {
+    console.error("Room/Bed report error:", error);
+    res.status(500).json({
+      message: "Error generating room/bed report",
       error: error.message
     });
   }
