@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import Counter from "./counterModel.js";
 
 const patientSchema = new mongoose.Schema({
   name: {
@@ -167,10 +168,18 @@ const patientSchema = new mongoose.Schema({
   bills: [{ type: mongoose.Schema.Types.ObjectId, ref: "Bill" }],
 });
 
-patientSchema.pre('save', async function (next) {
+patientSchema.pre("save", async function (next) {
   if (!this.patId) {
-    this.patId = `PAT-${Date.now().toString().slice(-6)}`;
+    const counter = await Counter.findOneAndUpdate(
+      { name: "patientUHID" },
+      { $inc: { seq: 1 } },
+      { new: true, upsert: true }
+    );
+
+    const formatted = String(counter.seq).padStart(5, "0");
+    this.patId = `UHID-${formatted}`;
   }
+
   next();
 });
 
