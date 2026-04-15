@@ -847,7 +847,9 @@ export const getAppointments = async (req, res) => {
 
     const userId = decoded?.userId;
     const role = decoded?.role;
-    const hospitalId = decoded?.hospitalId;
+    const hospitalId = req.user?.hospitalId ||   // ✅ integration (API key)
+      decoded?.hospitalId ||    // ✅ JWT
+      req.session?.hospitalId;  // ✅ browser
 
 
     if (!hospitalId) {

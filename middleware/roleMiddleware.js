@@ -13,6 +13,19 @@ dotenv.config();
 export const authorizeRoles = (...allowedRoles) => {
   return async (req, res, next) => {
     try {
+      
+      if (req.isIntegration) {
+        console.log("Skipping JWT for integration");
+
+        if (allowedRoles.length && !allowedRoles.includes("integration")) {
+          return res.status(403).json({
+            message: "Integration not allowed for this route",
+          });
+        }
+
+        return next();
+      }
+
       const token = req.headers.authorization?.split(" ")[1];
 
       if (!token) {

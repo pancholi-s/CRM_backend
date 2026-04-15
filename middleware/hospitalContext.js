@@ -1,6 +1,19 @@
 import jwt from "jsonwebtoken";
 
 export const requireHospitalContext = (req, res, next) => {
+  if (req.isIntegration) {
+    console.log("Skipping hospital context for integration");
+
+    // ensure hospitalId exists (important)
+    if (!req.user?.hospitalId) {
+      return res.status(400).json({
+        message: "Hospital ID missing in integration request",
+      });
+    }
+
+    return next();
+  }
+  
   const token = req.headers.authorization?.split(" ")[1];
 
   if (!token) {

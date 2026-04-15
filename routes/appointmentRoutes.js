@@ -11,7 +11,7 @@ import { requestAppointment, getRequestedAppointments, approveAppointment, rejec
 const router = express.Router();
 router.use(requireHospitalContext);
 
-router.post('/bookAppointment', authorizeRoles("receptionist"), bookAppointment); 
+router.post('/bookAppointment', authorizeRoles("receptionist", "integration"), bookAppointment); 
 router.post('/completeAppointment', authorizeRoles("doctor"), completeAppointment);
 
 router.post('/requestAppointment', authorizeRoles("patient"), requestAppointment);
@@ -27,7 +27,7 @@ router.get('/getRejectedAppointments', authorizeRoles("receptionist", "hospitalA
 router.get('/getAppointmentsByVisitType', authorizeRoles("receptionist", "hospitalAdmin","doctor"), updateStatusesMiddleware, getAppointmentsByVisitType, paginationMiddleware);
 router.get('/getRequestedAppointments', authorizeRoles("receptionist", "hospitalAdmin","doctor"), updateStatusesMiddleware, getRequestedAppointments);
 router.get('/getCancelledAppointments', authorizeRoles("receptionist", "hospitalAdmin","doctor"), updateStatusesMiddleware, getCancelledAppointments);
-router.get('/getAppointments', authorizeRoles("receptionist", "hospitalAdmin","doctor"), updateStatusesMiddleware, getAppointments);
+router.get('/getAppointments', authorizeRoles("receptionist", "hospitalAdmin","doctor","integration"), updateStatusesMiddleware, getAppointments);
 router.get('/getAppointmentsHistory', authorizeRoles("receptionist", "hospitalAdmin","doctor"), getAppointmentHistory);
 router.post('/setOngoing', authorizeRoles("receptionist", "hospitalAdmin","doctor"), startAppointment);
 router.post("/send-to-last", authorizeRoles("receptionist", "hospitalAdmin","doctor"), sendPatientToLast );
