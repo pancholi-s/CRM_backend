@@ -71,6 +71,9 @@ const connectDB = async () => {
 };
 connectDB();
 
+app.use(express.json({ limit: "25mb" }));
+app.use(express.urlencoded({ limit: "25mb", extended: true }));
+
 // Routes
 app.use('/', authRoutes);
 app.use('/', appointmentRoutes);
