@@ -123,7 +123,29 @@ const buildTPAAggregation = ({
         },
 
         // ---- PAYMENT DIMENSION ----
-        recoveredAmount: { $sum: "$paidAmount" },
+        recoveredAmount: {
+  $sum: {
+    $cond: [
+      { $eq: ["$status", "approved"] },
+      {
+        $sum: {
+          $map: {
+            input: { $ifNull: [{ $arrayElemAt: ["$bill.payments", 0] }, []] },
+            as: "p",
+            in: {
+              $cond: [
+                { $eq: ["$$p.mode", "Insurance"] },
+                "$$p.amount",
+                0
+              ]
+            }
+          }
+        }
+      },
+      0
+    ]
+  }
+},
         remainingAmount: { $sum: "$outstandingAmount" }
       }
     },
