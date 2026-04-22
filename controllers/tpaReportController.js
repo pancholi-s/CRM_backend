@@ -386,7 +386,6 @@ export const getMonthlyTPAReport = async (req, res) => {
 };
 
 const OPD_CATEGORY = "Doctor Consultation";
-const IPD_CATEGORY = "Daily Doctor Visit";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const WEEK_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -408,13 +407,7 @@ const getWeekStart = d => {
 // ---------- controller ----------
 export const earningsOverviewReport = async (req, res) => {
   try {
-    const {
-      range = "today",
-      date,
-      startDate,
-      endDate
-    } = req.query;
-
+    const { range = "today", date, startDate, endDate } = req.query;
     const hospitalId = req.session.hospitalId;
 
     if (!hospitalId) {
@@ -424,7 +417,7 @@ export const earningsOverviewReport = async (req, res) => {
     const base = date ? new Date(date) : new Date();
     let from, to, trendUnit, label, buckets = [];
 
-    // ✅ CUSTOM DATE RANGE (PRIORITY)
+    // ---------- RANGE ----------
     if (startDate && endDate) {
       from = new Date(startDate);
       to = new Date(endDate);
@@ -442,10 +435,8 @@ export const earningsOverviewReport = async (req, res) => {
       });
 
     } else {
-
-      // ---------- PREDEFINED RANGE RESOLUTION ----------
       switch (range) {
-        case "today": {
+        case "today":
           from = new Date(base); from.setHours(0, 0, 0, 0);
           to = new Date(base); to.setHours(23, 59, 59, 999);
           trendUnit = "hour";
@@ -454,9 +445,8 @@ export const earningsOverviewReport = async (req, res) => {
             `${String(i).padStart(2, "0")}:00`
           );
           break;
-        }
 
-        case "last_7_days": {
+        case "last_7_days":
           to = new Date(base); to.setHours(23, 59, 59, 999);
           from = new Date(to); from.setDate(to.getDate() - 6); from.setHours(0, 0, 0, 0);
           trendUnit = "day";
@@ -467,129 +457,173 @@ export const earningsOverviewReport = async (req, res) => {
             return iso(d);
           });
           break;
-        }
 
-        case "this_week": {
+        case "this_week":
           from = getWeekStart(base);
           to = new Date(from); to.setDate(from.getDate() + 6); to.setHours(23, 59, 59, 999);
           trendUnit = "day";
           label = "This Week";
           buckets = WEEK_DAYS;
           break;
-        }
 
-        case "last_week": {
-          to = getWeekStart(base); to.setDate(to.getDate() - 1); to.setHours(23, 59, 59, 999);
-          from = new Date(to); from.setDate(to.getDate() - 6); from.setHours(0, 0, 0, 0);
-          trendUnit = "day";
-          label = "Last Week";
-          buckets = WEEK_DAYS;
-          break;
-        }
-
-        case "this_month": {
+        case "this_month":
           from = new Date(base.getFullYear(), base.getMonth(), 1);
           to = new Date(base.getFullYear(), base.getMonth() + 1, 0, 23, 59, 59);
           trendUnit = "week";
           label = "This Month";
           buckets = ["Week 1", "Week 2", "Week 3", "Week 4", "Week 5"];
           break;
-        }
 
-        case "this_year": {
+        case "this_year":
           from = new Date(base.getFullYear(), 0, 1);
           to = new Date(base.getFullYear(), 11, 31, 23, 59, 59);
           trendUnit = "month";
           label = "This Year";
           buckets = MONTHS;
           break;
-        }
 
         default:
           return res.status(400).json({ message: "Invalid range" });
       }
     }
 
-    // ---------- AGGREGATION ----------
-    const data = await Bill.aggregate([
+    // ==============================
+    // OPD AGGREGATION
+    // ==============================
+    const opdData = await Bill.aggregate([
       { $match: { hospital: new mongoose.Types.ObjectId(hospitalId) } },
       { $unwind: "$services" },
 
       {
-        $addFields: {
-          eventDate: {
-            $cond: [
-              { $eq: ["$services.category", OPD_CATEGORY] },
-              "$invoiceDate",
-              {
-                $cond: [
-                  { $ifNull: ["$services.details.visitDate", false] },
-                  { $dateFromString: { dateString: "$services.details.visitDate" } },
-                  "$invoiceDate"
-                ]
-              }
-            ]
-          }
+        $match: {
+          "services.category": OPD_CATEGORY,
+          invoiceDate: { $gte: from, $lte: to }
         }
       },
-
-      { $match: { eventDate: { $gte: from, $lte: to } } },
 
       {
         $group: {
           _id: {
             bucket:
-              trendUnit === "hour" ? { $hour: "$eventDate" } :
-                trendUnit === "day" ? { $dateToString: { format: "%Y-%m-%d", date: "$eventDate" } } :
-                  trendUnit === "week" ? { $week: "$eventDate" } :
-                    { $month: "$eventDate" },
-            type: "$services.category"
+              trendUnit === "hour" ? { $hour: "$invoiceDate" } :
+              trendUnit === "day" ? { $dateToString: { format: "%Y-%m-%d", date: "$invoiceDate" } } :
+              trendUnit === "week" ? { $week: "$invoiceDate" } :
+              { $month: "$invoiceDate" }
           },
-          count: { $sum: 1 },
-          earnings: { $sum: { $multiply: ["$services.rate", "$services.quantity"] } }
+          earnings: {
+            $sum: { $multiply: ["$services.rate", "$services.quantity"] }
+          },
+          patients: { $addToSet: "$caseId" }
+        }
+      },
+
+      {
+        $project: {
+          earnings: 1,
+          count: { $size: "$patients" }
         }
       }
     ]);
 
-    // ---------- TOTALS ----------
+    // ==============================
+    // IPD AGGREGATION (SAME AS ROOM REPORT)
+    // ==============================
+    const ipdData = await Bill.aggregate([
+      { $match: { hospital: new mongoose.Types.ObjectId(hospitalId) } },
+      { $unwind: "$services" },
+
+      {
+        $match: {
+          "services.details.bedType": { $exists: true },
+          "services.details.billedDate": {
+            $gte: iso(from),
+            $lte: iso(to)
+          }
+        }
+      },
+
+      {
+        $addFields: {
+          billedDateObj: {
+            $dateFromString: {
+              dateString: "$services.details.billedDate"
+            }
+          }
+        }
+      },
+
+      {
+        $group: {
+          _id: {
+            bucket:
+              trendUnit === "hour" ? { $hour: "$billedDateObj" } :
+              trendUnit === "day" ? "$services.details.billedDate" :
+              trendUnit === "week" ? { $week: "$billedDateObj" } :
+              { $month: "$billedDateObj" }
+          },
+          earnings: {
+            $sum: { $multiply: ["$services.rate", "$services.quantity"] }
+          },
+          patients: { $addToSet: "$caseId" }
+        }
+      },
+
+      {
+        $project: {
+          earnings: 1,
+          count: { $size: "$patients" }
+        }
+      }
+    ]);
+
+    // ==============================
+    // PROCESS
+    // ==============================
     let opdPatients = 0, ipdPatients = 0;
     let opdEarnings = 0, ipdEarnings = 0;
-
-    data.forEach(d => {
-      if (d._id.type === OPD_CATEGORY) {
-        opdPatients += d.count;
-        opdEarnings += d.earnings;
-      }
-      if (d._id.type === IPD_CATEGORY) {
-        ipdPatients += d.count;
-        ipdEarnings += d.earnings;
-      }
-    });
 
     const map = {};
     buckets.forEach(b => {
       map[b] = { opdPatients: 0, ipdPatients: 0, opdEarnings: 0, ipdEarnings: 0 };
     });
 
-    data.forEach(d => {
+    // OPD
+    opdData.forEach(d => {
       let key;
       if (trendUnit === "hour") key = `${String(d._id.bucket).padStart(2, "0")}:00`;
       else if (trendUnit === "month") key = MONTHS[d._id.bucket - 1];
       else if (trendUnit === "week") key = `Week ${d._id.bucket}`;
       else key = d._id.bucket;
 
-      if (!map[key]) return;
+      opdPatients += d.count;
+      opdEarnings += d.earnings;
 
-      if (d._id.type === OPD_CATEGORY) {
+      if (map[key]) {
         map[key].opdPatients += d.count;
         map[key].opdEarnings += d.earnings;
       }
-      if (d._id.type === IPD_CATEGORY) {
+    });
+
+    // IPD
+    ipdData.forEach(d => {
+      let key;
+      if (trendUnit === "hour") key = `${String(d._id.bucket).padStart(2, "0")}:00`;
+      else if (trendUnit === "month") key = MONTHS[d._id.bucket - 1];
+      else if (trendUnit === "week") key = `Week ${d._id.bucket}`;
+      else key = d._id.bucket;
+
+      ipdPatients += d.count;
+      ipdEarnings += d.earnings;
+
+      if (map[key]) {
         map[key].ipdPatients += d.count;
         map[key].ipdEarnings += d.earnings;
       }
     });
 
+    // ==============================
+    // RESPONSE
+    // ==============================
     res.status(200).json({
       range: {
         key: startDate && endDate ? "custom" : range,
