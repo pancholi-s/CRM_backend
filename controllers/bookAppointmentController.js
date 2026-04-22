@@ -284,7 +284,7 @@ export const bookAppointment = async (req, res) => {
                 type: "body",
                 parameters: [
                   { type: "text", text: patient.name },
-                  { type: "text", text: `Dr. ${doctor.name}` },
+                  { type: "text", text: `${doctor.name}` },
                   { type: "text", text: hospital?.name || "Hospital" },
                   {
                     type: "text",
