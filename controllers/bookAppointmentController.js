@@ -7,6 +7,8 @@ import Patient from "../models/patientModel.js";
 import Appointment from "../models/appointmentModel.js";
 import RejectedAppointment from "../models/rejectedAppointmentModel.js";
 import Bill from "../models/billModel.js";
+import { sendWhatsAppMessage } from "../utils/whatsApp.js";
+import axios from "axios";
 
 import moment from "moment";
 import { getYearlyData, getMonthlyData, getWeeklyData } from "../utils/appointmentStatsUtils.js";
@@ -260,6 +262,58 @@ export const bookAppointment = async (req, res) => {
 
     await session.commitTransaction();
     session.endSession();
+
+    const phoneWithCountryCode = normalizedPhone.startsWith("91")
+      ? normalizedPhone
+      : `91${normalizedPhone}`;
+
+    const hospital = await Hospital.findById(hospitalId).select("name");
+
+    try {
+      await axios.post(
+        `https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`,
+        {
+          messaging_product: "whatsapp",
+          to: phoneWithCountryCode,
+          type: "template",
+          template: {
+            name: "appointment_confirmation_1",
+            language: { code: "en" },
+            components: [
+              {
+                type: "body",
+                parameters: [
+                  { type: "text", text: patient.name },
+                  { type: "text", text: `Dr. ${doctor.name}` },
+                  { type: "text", text: hospital?.name || "Hospital" },
+                  {
+                    type: "text",
+                    text: new Date(date).toLocaleDateString("en-IN")
+                  },
+                  {
+                    type: "text",
+                    text: new Date(date).toLocaleTimeString("en-IN", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${process.env.WHATSAPP_TOKEN}`,
+            "Content-Type": "application/json"
+          }
+        }
+      );
+
+      console.log("✅ WhatsApp sent to:", phoneWithCountryCode);
+    } catch (err) {
+      console.error("❌ WhatsApp error:", err.response?.data || err.message);
+    }
 
     const populatedAppointment = await Appointment.findById(newAppointment._id)
       .populate("patient", "name email phone")
