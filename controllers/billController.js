@@ -1083,7 +1083,10 @@ export const refundBill = async (req, res) => {
       return res.status(404).json({ message: "Bill not found" });
     }
 
-    //  gross & net are correct
+    // ================================
+    // 🧮 1. Recalculate amounts safely
+    // ================================
+
     const computedGross = bill.services.reduce(
       (sum, s) => sum + (s.rate || 0) * (s.quantity || 1),
       0
@@ -1095,40 +1098,70 @@ export const refundBill = async (req, res) => {
         : computedGross;
 
     const discountAmount = bill.discount?.amount || 0;
-    const netAmount = bill.netAmount ?? grossAmount - discountAmount;
 
+    const netAmount = grossAmount - discountAmount;
+
+    // ✅ IMPORTANT: DO NOT override totalAmount
     bill.grossAmount = grossAmount;
     bill.netAmount = netAmount;
-    bill.totalAmount = netAmount;
 
-    // 🧮 Refund calculation
-    const refundAmount = bill.paidAmount - netAmount;
+    // ==========================================
+    // 💰 2. Calculate total payments (source truth)
+    // ==========================================
 
-    if (refundAmount <= 0) {
+    const totalPayments = bill.payments.reduce(
+      (sum, p) => sum + (p.amount || 0),
+      0
+    );
+
+    const refundableAmount = Math.max(0, totalPayments - netAmount);
+
+    if (refundableAmount <= 0) {
       return res.status(400).json({
         message: "No refundable amount available for this bill",
       });
     }
 
-    // 💸 Record refund (negative payment)
+    // ==========================================
+    // 💸 3. Add refund entry (negative payment)
+    // ==========================================
+
     bill.payments.push({
-      amount: -refundAmount,
+      amount: -refundableAmount,
       mode,
       reference,
       type: "Refund",
       date: new Date(),
     });
 
-    // Update paid & outstanding
-    bill.paidAmount -= refundAmount;
-    bill.outstanding = 0;
-    bill.status = "Paid";
+    // ==========================================
+    // 🔁 4. Recalculate paid & outstanding
+    // ==========================================
+
+    const updatedPaidAmount = bill.payments.reduce(
+      (sum, p) => sum + (p.amount || 0),
+      0
+    );
+
+    bill.paidAmount = updatedPaidAmount;
+
+    bill.outstanding = Math.max(0, netAmount - updatedPaidAmount);
+
+    // ==========================================
+    // 🟢 5. Status logic
+    // ==========================================
+
+    bill.status = bill.outstanding <= 0 ? "Paid" : "Pending";
+
+    // ==========================================
+    // 💾 6. Save
+    // ==========================================
 
     await bill.save();
 
     return res.status(200).json({
       message: "Refund processed successfully",
-      refundAmount,
+      refundAmount: refundableAmount,
       bill,
     });
   } catch (error) {
