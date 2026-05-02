@@ -174,69 +174,78 @@ export const loginUser = async (req, res) => {
   }
 
   try {
-    let user = null;
-    let role = null;
+    let candidates = [];
 
-for (const [key, Model] of Object.entries(models)) {
-  if (key === "doctor") {
-    user = await Model.findOne({ email })
-      .select("+password")          // ✅ FIX
-      .populate("hospital")
-      .populate("departments");
-  } else if (key === "staff") {
-    user = await Model.findOne({ email })
-      .select("+password")          // ✅ FIX
-      .populate("hospital")
-      .populate("department");
-  } else {
-    user = await Model.findOne({ email })
-      .select("+password")          // ✅ FIX
-      .populate("hospital");
-  }
+    for (const [key, Model] of Object.entries(models)) {
+      let user;
+      if (key === "doctor") {
+        user = await Model.findOne({ email })
+          .select("+password")
+          .populate("hospital")
+          .populate("departments");
+      } else if (key === "staff") {
+        user = await Model.findOne({ email })
+          .select("+password")
+          .populate("hospital")
+          .populate("department");
+      } else {
+        user = await Model.findOne({ email })
+          .select("+password")
+          .populate("hospital");
+      }
 
-  if (user) {
-    role = key;
-    break;
-  }
-}
+      if (user) {
+        candidates.push({ user, role: key });
+      }
+    }
 
-
-    if (!user) {
+    if (candidates.length === 0) {
       return res.status(401).json({ message: "Invalid credentials." });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
+    let matchedUser = null;
+    let matchedRole = null;
+
+    for (const candidate of candidates) {
+      const isMatch = await bcrypt.compare(password, candidate.user.password);
+      if (isMatch) {
+        matchedUser = candidate.user;
+        matchedRole = candidate.role;
+        break; // Use the first match
+      }
+    }
+
+    if (!matchedUser) {
       return res.status(401).json({ message: "Invalid credentials." });
     }
 
     const token = jwt.sign(
       {
-        userId: user._id,
-        role,
-        hospitalId: user.hospital._id,
-        hospitalName: user.hospital.name,
+        userId: matchedUser._id,
+        role: matchedRole,
+        hospitalId: matchedUser.hospital._id,
+        hospitalName: matchedUser.hospital.name,
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || "1d" }
     );
 
-      res.status(200).json({
-        message: "Login successful",
-        token,
-        userId: user._id,
-        role,
-        username: user.name,
-        hospitalId: user.hospital._id,
-        hospitalName: user.hospital.name,
-        hospitalImage: user.hospital.hospitalImage || null, 
-        departmentIds: role === "doctor" && user.departments
-          ? user.departments.map((dep) => dep._id)
-          : undefined,
-        departmentNames: role === "doctor" && user.departments
-          ? user.departments.map((dep) => dep.name)
-          : undefined,
-      });
+    res.status(200).json({
+      message: "Login successful",
+      token,
+      userId: matchedUser._id,
+      role: matchedRole,
+      username: matchedUser.name,
+      hospitalId: matchedUser.hospital._id,
+      hospitalName: matchedUser.hospital.name,
+      hospitalImage: matchedUser.hospital.hospitalImage || null,
+      departmentIds: matchedRole === "doctor" && matchedUser.departments
+        ? matchedUser.departments.map((dep) => dep._id)
+        : undefined,
+      departmentNames: matchedRole === "doctor" && matchedUser.departments
+        ? matchedUser.departments.map((dep) => dep.name)
+        : undefined,
+    });
 
   } catch (error) {
     console.error("Error logging in:", error);
