@@ -189,7 +189,7 @@ export const getAllBills = async (req, res) => {
     const total = await Bill.countDocuments(filter);
 
     const bills = await Bill.find(filter)
-      .populate("patient", "name phone")
+      .populate("patient", "name phone patId")
       .populate("doctor", "name specialization")
       .populate({
         path: "services.service",

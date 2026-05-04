@@ -417,7 +417,7 @@ export const getInpatients = async (req, res) => {
 
     // Filters
     const statusFilter = req.query.status
-      ? req.query.status.split(",") // allow multiple statuses
+      ? req.query.status.split(",")
       : [];
 
     // 🔹 Build filter for admitted patients
@@ -425,8 +425,9 @@ export const getInpatients = async (req, res) => {
       hospital: hospitalId,
       admissionStatus: "Admitted"
     };
+
     if (req.query.doctorId) {
-      admittedFilter.doctors = req.query.doctorId; // match patients assigned to this doctor
+      admittedFilter.doctors = req.query.doctorId;
     }
 
     // Fetch admitted patients
@@ -435,15 +436,15 @@ export const getInpatients = async (req, res) => {
       .populate("doctors", "name specialization")
       .lean();
 
-    // 🔹 Build filter for follow-up consultations
+    // 🔹 Follow-up consultations
     const consultationFilter = {
       followUpRequired: true
     };
+
     if (req.query.doctorId) {
-      consultationFilter.doctor = req.query.doctorId; // match consultations by this doctor
+      consultationFilter.doctor = req.query.doctorId;
     }
 
-    // Fetch follow-up consultations
     const followUpConsultations = await Consultation.find(consultationFilter)
       .populate({
         path: "patient",
@@ -456,61 +457,59 @@ export const getInpatients = async (req, res) => {
 
     // Combine follow-up patients
     const followUpPatients = followUpConsultations
-      .filter((consultation) => consultation.patient)
-      .map((consultation) => ({
-        ...consultation.patient,
-        consultation: consultation,
-        doctors: consultation.doctor ? [consultation.doctor] : []
+      .filter((c) => c.patient)
+      .map((c) => ({
+        ...c.patient,
+        consultation: c,
+        doctors: c.doctor ? [c.doctor] : []
       }));
 
-    // Merge admitted & follow-up patients (avoid duplicates)
+    // Merge admitted + follow-up
     const inpatientMap = new Map();
 
-    admittedPatients.forEach((patient) => {
-      inpatientMap.set(patient._id.toString(), {
-        ...patient,
+    admittedPatients.forEach((p) => {
+      inpatientMap.set(p._id.toString(), {
+        ...p,
         consultation: null
       });
     });
 
-    followUpPatients.forEach((patientData) => {
-      const patientId = patientData._id.toString();
-      if (!inpatientMap.has(patientId)) {
-        inpatientMap.set(patientId, patientData);
+    followUpPatients.forEach((p) => {
+      const id = p._id.toString();
+      if (!inpatientMap.has(id)) {
+        inpatientMap.set(id, p);
       } else {
-        // Add consultation if exists
-        const existingPatient = inpatientMap.get(patientId);
-        existingPatient.consultation = patientData.consultation;
+        inpatientMap.get(id).consultation = p.consultation;
       }
     });
 
-    // Convert to array
     let allInpatients = Array.from(inpatientMap.values());
 
-    // Filter by status
+    // Status filter
     if (statusFilter.length > 0) {
-      allInpatients = allInpatients.filter((patient) => {
+      allInpatients = allInpatients.filter((p) => {
         const status =
-          patient.consultation?.referralUrgency ||
-          patient.healthStatus ||
+          p.consultation?.referralUrgency ||
+          p.healthStatus ||
           "Stable";
         return statusFilter.includes(status);
       });
     }
 
+    // Search
     if (req.query.search) {
       const search = req.query.search.toLowerCase();
-      allInpatients = allInpatients.filter((patient) => {
+      allInpatients = allInpatients.filter((p) => {
         return (
-          (patient.name && patient.name.toLowerCase().includes(search)) ||
-          (patient.email && patient.email.toLowerCase().includes(search)) ||
-          (patient.phone && patient.phone.toLowerCase().includes(search)) ||
-          (patient.patId && patient.patId.toLowerCase().includes(search))
+          p.name?.toLowerCase().includes(search) ||
+          p.email?.toLowerCase().includes(search) ||
+          p.phone?.toLowerCase().includes(search) ||
+          p.patId?.toLowerCase().includes(search)
         );
       });
     }
 
-    // Sort by registration date
+    // Sort
     allInpatients.sort((a, b) => {
       const dateA = new Date(a.registrationDate || 0);
       const dateB = new Date(b.registrationDate || 0);
@@ -518,10 +517,38 @@ export const getInpatients = async (req, res) => {
     });
 
     const totalInpatients = allInpatients.length;
+
+    // ✅ Pagination FIRST
     const paginatedInpatients = allInpatients.slice(skip, skip + limit);
 
-    // Fetch bed assignments for paginated patients
-    const patientIds = paginatedInpatients.map((patient) => patient._id);
+    // =====================================================
+    // ✅ FETCH LATEST APPOINTMENTS (CORRECT PLACEMENT)
+    // =====================================================
+    const latestAppointments = await Appointment.aggregate([
+      {
+        $match: {
+          patient: { $in: paginatedInpatients.map(p => p._id) }
+        }
+      },
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: "$patient",
+          latestAppointment: { $first: "$$ROOT" }
+        }
+      }
+    ]);
+
+    const appointmentMap = new Map();
+    latestAppointments.forEach((item) => {
+      appointmentMap.set(item._id.toString(), item.latestAppointment);
+    });
+
+    // =====================================================
+    // Beds
+    // =====================================================
+    const patientIds = paginatedInpatients.map((p) => p._id);
+
     const bedAssignments = await Bed.find({
       assignedPatient: { $in: patientIds },
       status: "Occupied"
@@ -529,17 +556,21 @@ export const getInpatients = async (req, res) => {
       .populate("room", "roomID name roomType floor wing")
       .lean();
 
-    // Create a bed map
     const bedMap = new Map();
     bedAssignments.forEach((bed) => {
       bedMap.set(bed.assignedPatient.toString(), bed);
     });
 
-    // Final response mapping
+    // =====================================================
+    // FINAL RESPONSE
+    // =====================================================
     const inpatientData = paginatedInpatients.map((patient) => {
       const consultation = patient.consultation;
       const doctor = patient.doctors?.[0] || consultation?.doctor || null;
       const assignedBed = bedMap.get(patient._id.toString());
+
+      // ✅ GET LATEST APPOINTMENT HERE (CORRECT SCOPE)
+      const latestAppointment = appointmentMap.get(patient._id.toString());
 
       return {
         _id: patient._id,
@@ -547,6 +578,11 @@ export const getInpatients = async (req, res) => {
         name: patient.name,
         email: patient.email,
         phone: patient.phone,
+
+        // ✅ NEW FIELDS
+        latestAppointment: latestAppointment?._id || null,
+        caseId: latestAppointment?.caseId || null,
+
         bedNumber: assignedBed?.bedNumber || "Not Assigned",
         bedType: assignedBed?.bedType || null,
         roomID: assignedBed?.room?.roomID || null,
@@ -554,20 +590,24 @@ export const getInpatients = async (req, res) => {
         roomType: assignedBed?.room?.roomType || null,
         floor: assignedBed?.room?.floor || null,
         wing: assignedBed?.room?.wing || null,
+
         condition:
           consultation?.primaryDiagnosis ||
           patient.healthStatus ||
           "Not Specified",
+
         doctor: doctor
           ? {
               _id: doctor._id,
               name: doctor.name
             }
           : null,
+
         status:
           consultation?.referralUrgency ||
           patient.healthStatus ||
-          "Stable", // same field used for filtering
+          "Stable",
+
         admissionStatus: patient.admissionStatus,
         followUpRequired: consultation?.followUpRequired || false,
         assignedDate: assignedBed?.assignedDate || null
@@ -582,6 +622,7 @@ export const getInpatients = async (req, res) => {
       currentPage: page,
       inpatients: inpatientData
     });
+
   } catch (error) {
     console.error("Error fetching inpatients:", error);
     res.status(500).json({
