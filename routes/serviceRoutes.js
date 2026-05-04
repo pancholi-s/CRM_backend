@@ -8,19 +8,19 @@ import { addService, getServices, getPackages, editService, deleteService, delet
 const router = express.Router();
 router.use(requireHospitalContext);
 
-router.post("/addService", authorizeRoles("hospitalAdmin"), addService);
-router.get("/getServices", authorizeRoles("receptionist", "hospitalAdmin"), getServices);
+router.post("/addService", authorizeRoles("hospitalAdmin", "doctor"), addService);
+router.get("/getServices", authorizeRoles("receptionist", "hospitalAdmin","doctor"), getServices);
 router.get("/getservicesbydep/:id", authorizeRoles("receptionist", "hospitalAdmin","doctor"), getServicesByDep);
-router.put("/editService/edit/:serviceId", authorizeRoles("receptionist", "hospitalAdmin"), editService);
-router.delete("/deleteService/delete/:serviceId", authorizeRoles("receptionist", "hospitalAdmin"), deleteService);
-router.delete("/deleteSubcategory/:serviceId/:subcategoryId", authorizeRoles("receptionist", "hospitalAdmin"), deleteSubcategory);
+router.put("/editService/edit/:serviceId", authorizeRoles("receptionist", "hospitalAdmin","doctor"), editService);
+router.delete("/deleteService/delete/:serviceId", authorizeRoles("receptionist", "hospitalAdmin","doctor"), deleteService);
+router.delete("/deleteSubcategory/:serviceId/:subcategoryId", authorizeRoles("receptionist", "hospitalAdmin","doctor"), deleteSubcategory);
 
-router.get("/getPackages", authorizeRoles("receptionist", "hospitalAdmin"),getPackages );
+router.get("/getPackages", authorizeRoles("receptionist", "hospitalAdmin","doctor"),getPackages );
 router.get("/searchServiceSubCategories", authorizeRoles("receptionist", "hospitalAdmin","doctor",'staff'),searchServiceSubCategories );
 
 router.post(
   "/uploadHospitalServices",
-  authorizeRoles("hospitalAdmin"),
+  authorizeRoles("hospitalAdmin","doctor"),
   upload.single("file"),
   uploadHospitalServicesExcel
 );
